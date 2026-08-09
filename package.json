@@ -1,0 +1,17 @@
+{
+  "name": "ccwatch",
+  "version": "1.0.0",
+  "description": "Local dashboard for every Claude Code CLI session on your machine: what is running, what is idle, and what is waiting for your input",
+  "type": "commonjs",
+  "license": "MIT",
+  "author": "ferhatural",
+  "repository": { "type": "git", "url": "https://github.com/ferhatural/ccwatch.git" },
+  "keywords": ["claude", "claude-code", "dashboard", "monitor", "cli", "sessions"],
+  "engines": { "node": ">=18" },
+  "bin": { "ccwatch": "./server.js" },
+  "scripts": {
+    "start": "node server.js",
+    "once": "node server.js --once",
+    "watch": "node server.js --watch"
+  }
+}
