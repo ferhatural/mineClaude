@@ -198,7 +198,11 @@
     return s;
   }
 
-  const SCENE = `
+  // arayuz metinleri disaridan gelir (index.html'deki sozluk); veri asla cevrilmez
+  let T = (k) => k;
+  let curLang = null;
+
+  const buildScene = () => `
     <defs>
       <pattern id="of-floorPat" width="80" height="80" patternUnits="userSpaceOnUse">
         <rect width="80" height="80" class="of-floorA"/>
@@ -239,8 +243,8 @@
     ${R(WALL_X, 200, 16, DOOR_TOP - 200, 'of-skirt')}
     ${R(WALL_X, DOOR_BOT, 16, H - DOOR_BOT, 'of-skirt')}
 
-    <text class="of-label" x="60" y="246">MASALAR</text>
-    <text class="of-label" x="${WALL_X + 150}" y="246">LOUNGE</text>
+    <text class="of-label" x="60" y="246">${T('desks')}</text>
+    <text class="of-label" x="${WALL_X + 150}" y="246">${T('lounge')}</text>
 
     <!-- lounge -->
     <rect x="1168" y="512" width="330" height="220" fill="url(#of-rugPat)"/>
@@ -305,8 +309,8 @@
   function init(container) {
     container.innerHTML =
       `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges"
-            role="img" aria-label="Session'ların ofis görünümü">
-         <g id="of-scene">${SCENE}</g>
+            role="img" aria-label="${T('appTitle')}">
+         <g id="of-scene">${buildScene()}</g>
          <g id="of-people"></g>
          <g id="of-desks"></g>
        </svg>`;
@@ -393,7 +397,9 @@
     }
     node.g.dataset.y = y;                 // derinlik anahtari: hedef y (yururken sabit kalir)
 
-    const t = `${s.project} — ${s.status}${s.waitingFor ? ' (' + s.waitingFor + ')' : ''}`;
+    // proje adi ve Claude Code'un kendi metni cevrilmez, yalnizca durum etiketi cevrilir
+    const dispKey = st === 'wait' ? 'waiting' : st;
+    const t = `${s.project} — ${T(dispKey)}${s.waitingFor ? ' (' + s.waitingFor + ')' : ''}`;
     let title = node.g.querySelector('title');
     if (!title) {
       title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
@@ -452,8 +458,13 @@
     return out;
   }
 
-  function render(list, container) {
-    if (!root || !container.contains(root)) init(container);
+  function render(list, container, translate, langCode) {
+    if (translate) T = translate;
+    // dil degistiyse sahneyi (MASALAR / DESKS gibi etiketleri) bastan kur
+    if (!root || !container.contains(root) || langCode !== curLang) {
+      init(container);
+      curLang = langCode;
+    }
     for (const n of nodes.values()) n.seen = false;
 
     const desks = list.filter(atDesk);

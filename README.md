@@ -118,6 +118,9 @@ the conversation) before they get one.
   fullscreen button in the corner
 - Icon buttons on every card copy `claude --resume <id>`, `cd <folder>`, or the transcript path
 - Sessions an editor started but never used are hidden by default
+- **TR / EN switch** in the top right. It changes the interface only — Claude's messages, project
+  names, tool names and paths are data and are never translated. The default follows your browser's
+  language list and your choice is remembered.
 
 ## Office view
 
@@ -148,8 +151,8 @@ All animation stops under `prefers-reduced-motion`.
 - It leans on Claude Code internals (`~/.claude/sessions`, the transcript format, the messaging
   socket) that are undocumented and may change between versions. If a release breaks something
   here, that is why.
-- The UI strings are in Turkish. They are inline in `index.html` and `office.js` if you want to
-  change them.
+- The interface ships in English and Turkish. Adding a language means one more entry in the `I18N`
+  dictionary at the top of the script block in `index.html`.
 
 ## License
 

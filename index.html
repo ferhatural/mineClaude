@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ccwatch — Claude session'ları</title>
+<title>ccwatch</title>
 <link rel="stylesheet" href="/office.css">
 <style>
   :root{
@@ -146,11 +146,12 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Claude session'ları <span class="sub" id="host"></span></h1>
+    <h1><span id="appTitle"></span> <span class="sub" id="host"></span></h1>
     <div class="hright">
-      <div class="conn" id="conn"><span class="dot"></span><span id="connText">bağlanıyor…</span></div>
-      <button class="iconbtn" id="viewBtn" title="Ofis görünümü"></button>
-      <button class="iconbtn" id="fs" title="Tam ekran">
+      <div class="conn" id="conn"><span class="dot"></span><span id="connText"></span></div>
+      <div class="opts" id="langSw"></div>
+      <button class="iconbtn" id="viewBtn"></button>
+      <button class="iconbtn" id="fs">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/>
         </svg>
@@ -161,10 +162,10 @@
   <div class="counts" id="counts"></div>
 
   <div class="toolbar">
-    <label><input type="checkbox" id="notify"> input bekleyince bildirim gönder</label>
-    <label><input type="checkbox" id="hideEmpty" checked> boş/kullanılmayan süreçleri gizle</label>
+    <label><input type="checkbox" id="notify"> <span id="notifyLabel"></span></label>
+    <label><input type="checkbox" id="hideEmpty" checked> <span id="hideEmptyLabel"></span></label>
     <div class="seg" id="colsWrap">
-      <span>kolon</span>
+      <span id="colsLabel"></span>
       <div class="opts" id="cols"></div>
     </div>
   </div>
@@ -172,20 +173,71 @@
   <div id="office" hidden></div>
   <div id="live" class="grid"></div>
 
-  <h2 id="endedHead" class="closed"><span class="caret">▾</span> son kapanan session'lar <span id="endedCount"></span></h2>
+  <h2 id="endedHead" class="closed"><span class="caret">▾</span> <span id="endedLabel"></span> <span id="endedCount"></span></h2>
   <div id="ended" class="grid" hidden></div>
 
-  <footer>
-    Kaynak: <code>~/.claude/sessions/*.json</code> + <code>ps</code> + <code>~/.claude/projects/**/*.jsonl</code>.
-    2 saniyede bir yenilenir.<br>
-    Terminalden: <code>node server.js --watch</code> · JSON: <code>node server.js --json</code>
-  </footer>
+  <footer><span id="footer1"></span><br><span id="footer2"></span></footer>
 </div>
 
 <script src="/office.js"></script>
 <script>
-const LABEL = {waiting:'input bekliyor', busy:'çalışıyor', ready:'beklemede', idle:'boşta',
-               unknown:'bilinmiyor', ended:'kapandı'};
+// --- diller ---
+// SADECE arayüz metinleri çevrilir. Claude'un mesajları, proje adları, tool adları,
+// yollar ve Claude Code'un kendi ürettiği metinler (waitingFor) olduğu gibi kalır.
+const I18N = {
+  tr: {
+    appTitle:"Claude session'ları", live:'canlı', connecting:'bağlanıyor…',
+    disconnected:'bağlantı koptu — yeniden deneniyor',
+    officeView:'Ofis görünümü', cardView:'Kart görünümü', fullscreen:'Tam ekran',
+    all:'tümü', waiting:'input bekliyor', busy:'çalışıyor', ready:'beklemede', idle:'boşta',
+    unknown:'bilinmiyor', ended:'kapandı',
+    notifyLabel:'input bekleyince bildirim gönder', hideEmptyLabel:'boş/kullanılmayan süreçleri gizle',
+    columns:'kolon', waitsForYou:'Senden input bekliyor',
+    'no-conversation':'Bu süreçte hiç konuşma yok', 'maybe-permission':'izin bekliyor olabilir',
+    context:'bağlam', messages:'mesaj', openFor:'açık', permission:'izin',
+    send:'gönder', msgPlaceholder:'mesaj gönder', msgClosed:'mesajlaşmaya kapalı',
+    msgClosedWhy:'Bu session mesajlaşmaya kapalı: açılışta soket almamış. Devam ettirirken --messaging-socket-path verirsen açılır.',
+    copyResume:'resume komutunu kopyala', copyCd:'klasöre gitme komutunu kopyala',
+    copyTranscript:'transcript yolunu kopyala',
+    noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
+    notifTitle:(p)=>`${p} senden input bekliyor`,
+    justNow:'az önce', sec:'sn önce', min:'dk önce', hour:'sa önce', day:'gün önce',
+    dMin:'dk', dHour:'sa', dDay:'g',
+    desks:'MASALAR', lounge:'LOUNGE',
+    footer1:(a,b,c)=>`Kaynak: ${a} + ${b} + ${c}. 2 saniyede bir yenilenir.`,
+    footer2:(a,b)=>`Terminalden: ${a} · JSON: ${b}`,
+  },
+  en: {
+    appTitle:'Claude sessions', live:'live', connecting:'connecting…',
+    disconnected:'connection lost — retrying',
+    officeView:'Office view', cardView:'Card view', fullscreen:'Fullscreen',
+    all:'all', waiting:'waiting for input', busy:'working', ready:'standing by', idle:'idle',
+    unknown:'unknown', ended:'ended',
+    notifyLabel:'notify me when a session wants input', hideEmptyLabel:'hide unused processes',
+    columns:'columns', waitsForYou:'Waiting for your input',
+    'no-conversation':'No conversation in this process', 'maybe-permission':'may be waiting for permission',
+    context:'context', messages:'messages', openFor:'open', permission:'perm',
+    send:'send', msgPlaceholder:'send a message', msgClosed:'messaging unavailable',
+    msgClosedWhy:'This session has no messaging socket: it did not get one at startup. Resume it with --messaging-socket-path to enable it.',
+    copyResume:'copy resume command', copyCd:'copy cd command',
+    copyTranscript:'copy transcript path',
+    noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
+    notifTitle:(p)=>`${p} is waiting for your input`,
+    justNow:'just now', sec:'s ago', min:'m ago', hour:'h ago', day:'d ago',
+    dMin:'m', dHour:'h', dDay:'d',
+    desks:'DESKS', lounge:'LOUNGE',
+    footer1:(a,b,c)=>`Sources: ${a} + ${b} + ${c}. Refreshes every 2 seconds.`,
+    footer2:(a,b)=>`In the terminal: ${a} · JSON: ${b}`,
+  },
+};
+// Varsayılan: tarayıcının dil listesinde Türkçe geçiyorsa TR, yoksa EN.
+// (Sistem "en-TR" olabiliyor; tek başına navigator.language yanıltıcı, listenin tamamına bakıyoruz.)
+const saved = localStorage.getItem('cc.lang');
+const prefersTr = (navigator.languages && navigator.languages.length
+    ? navigator.languages : [navigator.language || ''])
+  .some(l => String(l).toLowerCase().startsWith('tr'));
+let lang = (saved === 'tr' || saved === 'en') ? saved : (prefersTr ? 'tr' : 'en');
+const T = (k, ...a) => { const v = I18N[lang][k]; return typeof v === 'function' ? v(...a) : (v ?? k); };
 // Claude turu bitirince dosyaya hemen "idle" yaziyor; taze olani "beklemede" diye ayiriyoruz
 const disp = (s) => (s.status === 'idle' && !s.cold ? 'ready' : s.status);
 const ICON = {
@@ -202,6 +254,7 @@ const svg = (k) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" s
 
 const $ = (s)=>document.querySelector(s);
 let state = null, filter = 'all', prevWaiting = new Set(), endedOpen = false;
+let es = null;   // SSE bağlantısı — applyLang() açılışta buna bakıyor, bu yüzden burada tanımlı
 const drafts = new Map(); // pid -> yazilmakta olan mesaj (2sn'lik render'da kaybolmasin)
 
 const notifyBox = $('#notify'), hideEmptyBox = $('#hideEmpty');
@@ -227,18 +280,42 @@ function applyCols(){
 }
 applyCols();
 
+// --- dil anahtarı ---
+function applyLang(){
+  document.documentElement.lang = lang;
+  $('#appTitle').textContent = T('appTitle');
+  $('#notifyLabel').textContent = T('notifyLabel');
+  $('#hideEmptyLabel').textContent = T('hideEmptyLabel');
+  $('#colsLabel').textContent = T('columns');
+  $('#endedLabel').textContent = T('recentlyClosed');
+  const c = (x) => `<code>${x}</code>`;
+  $('#footer1').innerHTML = T('footer1', c('~/.claude/sessions/*.json'), c('ps'), c('~/.claude/projects/**/*.jsonl'));
+  $('#footer2').innerHTML = T('footer2', c('node server.js --watch'), c('node server.js --json'));
+  $('#langSw').innerHTML = ['tr','en'].map(l =>
+    `<button data-l="${l}" class="${l===lang?'on':''}">${l.toUpperCase()}</button>`).join('');
+  $('#langSw').querySelectorAll('button').forEach(b => b.onclick = () => {
+    if(b.dataset.l === lang) return;
+    lang = b.dataset.l;
+    localStorage.setItem('cc.lang', lang);
+    applyLang(); applyViewBtn(); render();
+  });
+  if(es && es.readyState === 1) setConn(true, T('live'));
+}
+
 // --- görünüm anahtarı: kartlar <-> ofis ---
 let view = localStorage.getItem('cc.view') === 'office' ? 'office' : 'cards';
 const viewBtn = $('#viewBtn');
 function applyViewBtn(){
   viewBtn.innerHTML = svg(view === 'cards' ? 'people' : 'grid');
-  viewBtn.title = view === 'cards' ? 'Ofis görünümü' : 'Kart görünümü';
+  viewBtn.title = view === 'cards' ? T('officeView') : T('cardView');
+  $('#fs').title = T('fullscreen');
 }
 viewBtn.onclick = () => {
   view = view === 'cards' ? 'office' : 'cards';
   localStorage.setItem('cc.view', view);
   applyViewBtn(); render();
 };
+applyLang();
 applyViewBtn();
 
 // --- tam ekran ---
@@ -256,18 +333,18 @@ $('#endedHead').onclick = () => {
 function rel(ms, now){
   if(!ms) return '—';
   const s = Math.max(0, Math.round((now - ms)/1000));
-  if(s < 10) return 'az önce';
-  if(s < 60) return s + ' sn önce';
-  if(s < 3600) return Math.round(s/60) + ' dk önce';
-  if(s < 86400) return Math.round(s/3600) + ' sa önce';
-  return Math.round(s/86400) + ' gün önce';
+  if(s < 10) return T('justNow');
+  if(s < 60) return s + ' ' + T('sec');
+  if(s < 3600) return Math.round(s/60) + ' ' + T('min');
+  if(s < 86400) return Math.round(s/3600) + ' ' + T('hour');
+  return Math.round(s/86400) + ' ' + T('day');
 }
 function dur(ms){
   if(!ms) return '—';
   const s = Math.round(ms/1000);
-  if(s < 3600) return Math.round(s/60)+'dk';
-  if(s < 86400) return Math.round(s/3600)+'sa';
-  return Math.round(s/86400)+'g';
+  if(s < 3600) return Math.round(s/60)+T('dMin');
+  if(s < 86400) return Math.round(s/3600)+T('dHour');
+  return Math.round(s/86400)+T('dDay');
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function shortModel(m){
@@ -296,41 +373,43 @@ function card(s, now){
   if(s.pid) bits.push(`<span><b>pid</b> ${s.pid}</span>`);
   if(s.host) bits.push(`<span>${esc(s.host)}</span>`);
   if(shortModel(s.model)) bits.push(`<span>${esc(shortModel(s.model))}</span>`);
-  if(s.contextTokens) bits.push(`<span><b>${Math.round(s.contextTokens/1000)}k</b> bağlam</span>`);
-  if(s.userTurns) bits.push(`<span>${s.userTurns}+ mesaj</span>`);
-  if(s.startedAt) bits.push(`<span>${dur(now - s.startedAt)} açık</span>`);
-  if(s.permissionMode && s.permissionMode !== 'default') bits.push(`<span>izin: ${esc(s.permissionMode)}</span>`);
+  if(s.contextTokens) bits.push(`<span><b>${Math.round(s.contextTokens/1000)}k</b> ${T('context')}</span>`);
+  if(s.userTurns) bits.push(`<span>${s.userTurns}+ ${T('messages')}</span>`);
+  if(s.startedAt) bits.push(`<span>${dur(now - s.startedAt)} ${T('openFor')}</span>`);
+  if(s.permissionMode && s.permissionMode !== 'default') bits.push(`<span>${T('permission')}: ${esc(s.permissionMode)}</span>`);
   if(s.sizeMb) bits.push(`<span>${s.sizeMb} MB</span>`);
 
+  // waitingFor Claude Code'un kendi metni — çevrilmez, olduğu gibi gösterilir
+  const why = [s.waitingFor, s.hintKey && T(s.hintKey)].filter(Boolean).join(' · ');
   let banner = '';
   if(st === 'waiting'){
-    banner = `<div class="banner"><b>↳</b><div>Senden input bekliyor${s.waitingFor ? ' — ' + esc(s.waitingFor) : ''}</div></div>`;
+    banner = `<div class="banner"><b>↳</b><div>${T('waitsForYou')}${why ? ' — ' + esc(why) : ''}</div></div>`;
   } else if(st === 'busy' && s.lastTool){
     banner = `<div class="banner"><b>${esc(s.lastTool.name)}</b><div class="txt">${esc(s.lastTool.detail || '')}</div></div>`;
   } else if(s.empty){
-    banner = `<div class="banner"><b>·</b><div>Bu süreçte hiç konuşma yok</div></div>`;
+    banner = `<div class="banner"><b>·</b><div>${T('no-conversation')}</div></div>`;
   }
 
   const acts = [];
-  if(s.sessionId) acts.push(`<button class="iconbtn" title="claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
-  if(s.cwd) acts.push(`<button class="iconbtn" title="cd ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
-  if(s.transcript) acts.push(`<button class="iconbtn" title="${esc(s.transcript)}" data-copy="${esc(s.transcript)}">${svg('file')}</button>`);
+  if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
+  if(s.cwd) acts.push(`<button class="iconbtn" title="${T('copyCd')}: ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
+  if(s.transcript) acts.push(`<button class="iconbtn" title="${T('copyTranscript')}: ${esc(s.transcript)}" data-copy="${esc(s.transcript)}">${svg('file')}</button>`);
 
   // Soket yoksa kutu yine dursun ama pasif olsun — yoksa "neden bazılarında yok?" sorusu doğuyor.
   const msgBox = s.kind === 'live'
     ? `<form class="msg${s.socket ? '' : ' off'}" data-pid="${s.pid}"
-             title="${s.socket ? '' : 'Bu session mesajlaşmaya kapalı: açılışta soket almamış. Devam ettirirken --messaging-socket-path verirsen açılır.'}">
-         <input type="text" placeholder="${s.socket ? 'mesaj gönder' : 'mesajlaşmaya kapalı'}"
+             title="${s.socket ? '' : T('msgClosedWhy')}">
+         <input type="text" placeholder="${s.socket ? T('msgPlaceholder') : T('msgClosed')}"
                 autocomplete="off" spellcheck="false" ${s.socket ? '' : 'disabled'}
                 value="${esc(drafts.get(s.pid) || '')}">
-         <button type="submit" class="iconbtn" title="gönder" ${s.socket ? '' : 'disabled'}>${svg('send')}</button>
+         <button type="submit" class="iconbtn" title="${T('send')}" ${s.socket ? '' : 'disabled'}>${svg('send')}</button>
        </form>`
     : '';
 
   el.innerHTML = `
     <div class="row1">
       <div class="proj" title="${esc(s.name || s.project)}">${esc(s.project || '?')}</div>
-      <div class="pill"><span class="d"></span>${LABEL[st] || st}</div>
+      <div class="pill"><span class="d"></span>${T(st)}</div>
     </div>
     <div class="path" title="${esc(s.cwd||'')}">${esc(s.cwdShort || s.cwd || '')}${s.gitBranch ? ` <span class="branch">@${esc(s.gitBranch)}</span>` : ''}</div>
     ${s.lastText || s.lastPrompt || s.title
@@ -394,11 +473,11 @@ function render(){
   const n = (f) => base.filter(f).length;
 
   const defs = [
-    ['all','tümü', base.length],
-    ['waiting','input bekliyor', n(s => disp(s) === 'waiting')],
-    ['busy','çalışıyor', n(s => disp(s) === 'busy')],
-    ['ready','beklemede', n(s => disp(s) === 'ready')],
-    ['idle','boşta', n(s => disp(s) === 'idle' || disp(s) === 'unknown')],
+    ['all', T('all'), base.length],
+    ['waiting', T('waiting'), n(s => disp(s) === 'waiting')],
+    ['busy', T('busy'), n(s => disp(s) === 'busy')],
+    ['ready', T('ready'), n(s => disp(s) === 'ready')],
+    ['idle', T('idle'), n(s => disp(s) === 'idle' || disp(s) === 'unknown')],
   ];
   $('#counts').innerHTML = defs.map(([k,l,c]) =>
     `<button class="count ${k} ${filter===k?'active':''}" data-f="${k}"><div class="n">${c}</div><div class="l">${l}</div></button>`
@@ -418,12 +497,12 @@ function render(){
   $('#colsWrap').hidden = office;
 
   if(office){
-    Office.render(list, $('#office'));
+    Office.render(list, $('#office'), T, lang);
     $('#ended').hidden = true;
   } else {
     const live = $('#live');
     live.innerHTML = '';
-    if(!list.length) live.innerHTML = `<div class="empty" style="grid-column:1/-1">Bu filtrede session yok.</div>`;
+    if(!list.length) live.innerHTML = `<div class="empty" style="grid-column:1/-1">${T('noneInFilter')}</div>`;
     else for(const s of list) live.appendChild(card(s, now));
 
     $('#endedCount').textContent = state.ended.length ? `(${state.ended.length})` : '';
@@ -445,7 +524,7 @@ function checkNotify(){
     for(const s of state.live){
       const key = s.sessionId || s.pid;
       if(s.status === 'waiting' && !prevWaiting.has(key)){
-        new Notification(`${s.project} senden input bekliyor`, {
+        new Notification(T('notifTitle', s.project), {
           body: (s.waitingFor || '') + (s.title ? '\n' + s.title : ''), tag: String(key),
         });
       }
@@ -459,13 +538,12 @@ function setConn(ok, text){
   $('#connText').textContent = text;
 }
 
-let es;
 function connect(){
   es = new EventSource('/events');
-  es.onopen = () => setConn(true, 'canlı');
-  es.onmessage = (e) => { state = JSON.parse(e.data); checkNotify(); render(); setConn(true, 'canlı'); };
+  es.onopen = () => setConn(true, T('live'));
+  es.onmessage = (e) => { state = JSON.parse(e.data); checkNotify(); render(); setConn(true, T('live')); };
   es.onerror = () => {
-    setConn(false, 'bağlantı koptu — yeniden deneniyor');
+    setConn(false, T('disconnected'));
     es.close();
     setTimeout(connect, 2500);
   };

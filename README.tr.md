@@ -97,6 +97,8 @@ diğerleri yerinden oynamaz. `prefers-reduced-motion` açıksa tüm animasyonlar
 - Kolon sayısı seçilebilir (auto / 1–6, tercih saklanır), mobilde tek kolon, sağ üstte tam ekran
 - Her kartta ikon butonlar: ▶ `claude --resume <id>`, 📁 `cd <klasör>`, 📄 transcript yolu (panoya kopyalar)
 - Açılışta VS Code'un başlattığı, hiç konuşma geçmemiş boş süreçler varsayılan gizli
+- Sağ üstte **TR / EN anahtarı**. Yalnızca arayüzü çevirir; Claude'un mesajları, proje adları, tool
+  adları ve yollar veridir, asla çevrilmez. Varsayılan tarayıcının dil listesine bakar, seçimin saklanır.
 
 ## Notlar
 

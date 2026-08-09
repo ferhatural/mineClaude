@@ -327,7 +327,7 @@ function deriveStatus(sess, tr, now) {
   if (!tr) {
     const age = sess && sess.startedAt ? now - sess.startedAt : Infinity;
     if (age < 2 * 60e3) return { status: 'unknown', source: 'tahmin' };
-    return { status: 'idle', empty: true, hint: 'bu surecte hic konusma yok', source: 'tahmin' };
+    return { status: 'idle', empty: true, hintKey: 'no-conversation', source: 'tahmin' };
   }
   // Eski surumler (ornegin VS Code eklentisi) yazmiyor -> transcript'ten tahmin.
   if (!tr.lastEventAt) return { status: 'unknown', source: 'tahmin' };
@@ -337,7 +337,7 @@ function deriveStatus(sess, tr, now) {
   }
   if (age < 45e3) return { status: 'busy', source: 'tahmin' };
   if (age < 5 * 60e3 && tr.lastStopReason === 'tool_use') {
-    return { status: 'waiting', hint: 'izin bekliyor olabilir', source: 'tahmin' };
+    return { status: 'waiting', hintKey: 'maybe-permission', source: 'tahmin' };
   }
   return { status: 'idle', source: 'tahmin' };
 }
@@ -394,7 +394,9 @@ function collect() {
       cold,
       lastMessageAt,
       empty: !!st.empty,
-      waitingFor: s.waitingFor || st.hint || null,
+      // waitingFor Claude Code'un kendi metni (ceviri yok); kendi cikarimlarimiz anahtar olarak gider
+      waitingFor: s.waitingFor || null,
+      hintKey: st.hintKey || null,
       sessionKind: s.kind || 'interactive',
       entrypoint: s.entrypoint || null,
       version: s.version || (tr && tr.version) || null,
