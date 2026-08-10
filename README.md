@@ -44,9 +44,38 @@ To call it from anywhere:
 ln -s "$PWD/server.js" /usr/local/bin/ccwatch
 ```
 
-## Install as an app (macOS)
+## Menu bar app (macOS)
 
-The dashboard is a PWA, so there is nothing to package: open it, then **File → Add to Dock**
+If you would rather have it in the menu bar than in a browser tab, there is an Electron wrapper.
+Click the icon and the one window opens; click again and it goes away. The icon turns amber and
+grows a number the moment a session starts waiting on you.
+
+```bash
+npm install            # electron, dev dependency only — `node server.js` still needs nothing
+npm run app            # run it
+npm run app:build      # dist/ccwatch-1.0.0-arm64.dmg
+```
+
+The app starts `server.js` itself as a child process, so there is nothing else to keep running.
+If a ccwatch server of the same version is already up on port 7788 — from `--install` below, or
+a terminal — it adopts that one instead of starting a second. A server of a *different* version
+is not adopted: a launchd agent that has been up for days keeps serving the code it started
+with, which shows up as features mysteriously missing from the dashboard. In that case the app
+starts its own on the next free port and says so on stderr.
+
+The dock icon comes and goes with the window: while the window is open the app is a normal app
+and ⌘Tab reaches it; once you hide the window it drops out of the dock and the app switcher and
+lives only in the menu bar. Right-click the icon for open in browser, reload, **start at login**,
+and quit. Closing the window (⌘W or the red button) only hides it; ⌘Q quits.
+
+The icon is the head of the office-view character — a menu bar icon has to be a monochrome
+template image, so the eyes and mouth are holes rather than pixels of their own colour.
+
+The `.dmg` is unsigned, so the first launch needs right-click → Open.
+
+## Install as a PWA (macOS)
+
+The dashboard is also a PWA, if you prefer that: open it, then **File → Add to Dock**
 in Safari, or the install button in Chrome's address bar. You get a real window, a dock icon,
 and a badge with the number of sessions waiting on you.
 

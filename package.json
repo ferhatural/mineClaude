@@ -9,9 +9,45 @@
   "keywords": ["claude", "claude-code", "dashboard", "monitor", "cli", "sessions"],
   "engines": { "node": ">=18" },
   "bin": { "ccwatch": "./server.js" },
+  "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
     "once": "node server.js --once",
-    "watch": "node server.js --watch"
+    "watch": "node server.js --watch",
+    "app": "electron .",
+    "app:build": "electron-builder --mac",
+    "tray-icons": "node electron/make-tray-icons.js"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.github.ferhatural.ccwatch",
+    "productName": "ccwatch",
+    "asar": false,
+    "directories": { "output": "dist", "buildResources": "icons" },
+    "files": [
+      "electron/main.js",
+      "electron/preload.js",
+      "electron/assets/tray*.png",
+      "server.js",
+      "index.html",
+      "office.js",
+      "office3d.js",
+      "office.css",
+      "offline.html",
+      "sw.js",
+      "manifest.webmanifest",
+      "icons/**",
+      "vendor/**",
+      "package.json"
+    ],
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "category": "public.app-category.developer-tools",
+      "icon": "icons/icon-512.png",
+      "extendInfo": { "LSUIElement": true }
+    }
   }
 }

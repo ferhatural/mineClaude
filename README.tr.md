@@ -26,9 +26,38 @@ node server.js --port 7799 --no-open
 ln -s "$PWD/server.js" /usr/local/bin/ccwatch
 ```
 
-## Uygulama olarak kurmak (macOS)
+## Menü çubuğu uygulaması (macOS)
 
-Panel bir PWA, yani paketlenecek bir şey yok: aç, sonra Safari'de **Dosya → Dock'a Ekle**,
+Tarayıcı sekmesi yerine üstteki menü çubuğunda dursun istiyorsan bir Electron sarmalayıcı var.
+İkona basınca tek pencere açılır, tekrar basınca kapanır. Bir session sana bir şey sorduğu anda
+ikon amber olur ve yanına sayı gelir.
+
+```bash
+npm install            # sadece electron, dev bağımlılığı — `node server.js` hâlâ bağımlılıksız
+npm run app            # çalıştır
+npm run app:build      # dist/ccwatch-1.0.0-arm64.dmg
+```
+
+Uygulama `server.js`'i kendisi çocuk süreç olarak başlatır, ayrıca bir şey ayakta tutman
+gerekmez. 7788'de aynı sürümden bir ccwatch varsa (aşağıdaki `--install` ya da terminalden)
+ikincisini açmaz, onu benimser. *Farklı* sürümdekini benimsemez: günlerdir ayakta duran bir
+launchd servisi, başladığı andaki kodu servis etmeye devam ediyor ve bu panelde özelliklerin
+esrarengiz şekilde kaybolması olarak görünüyor. O durumda kendi sunucusunu bir sonraki boş
+portta açar ve stderr'e yazar.
+
+Dock ikonu pencereyle birlikte gelip gidiyor: pencere açıkken uygulama normal bir uygulama,
+⌘Tab ile ona geçebiliyorsun; pencereyi gizleyince dock'tan ve uygulama değiştiriciden düşüp
+yalnız menü çubuğunda kalıyor. İkona sağ tık: tarayıcıda aç, yenile, **açılışta başlat**, çık.
+Pencereyi kapatmak (⌘W ya da kırmızı düğme) sadece gizler; ⌘Q çıkar.
+
+Menü çubuğu ikonu ofis görünümündeki karakterin kafası — ikon zorunlu olarak tek renk
+"template" olduğu için gözler ve ağız kendi renkleriyle değil, delik olarak duruyor.
+
+`.dmg` imzasız, ilk açılışta sağ tık → Aç gerekiyor.
+
+## PWA olarak kurmak (macOS)
+
+Panel aynı zamanda bir PWA: aç, sonra Safari'de **Dosya → Dock'a Ekle**,
 ya da Chrome'un adres çubuğundaki kur düğmesi. Kendi penceresi, dock ikonu ve ikonun üstünde
 seni bekleyen session sayısı.
 

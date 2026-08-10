@@ -643,6 +643,8 @@ function render(){
     if(w) navigator.setAppBadge(w).catch(()=>{});
     else navigator.clearAppBadge().catch(()=>{});
   }
+  // Electron uygulamasinda menu bar ikonunun rengi ve yanindaki sayi
+  if(window.ccwatchDesktop) window.ccwatchDesktop.setStatus({ waiting: w, total: base.length });
   $('#host').textContent = state.host ? '· ' + state.host : '';
   restoreFocus(focus);
 }
@@ -665,9 +667,10 @@ function checkNotify(){
     for(const s of state.live){
       const key = s.sessionId || s.pid;
       if(s.status === 'waiting' && !prevWaiting.has(key)){
-        new Notification(T('notifTitle', s.project), {
+        const note = new Notification(T('notifTitle', s.project), {
           body: (s.waitingFor || '') + (s.title ? '\n' + s.title : ''), tag: String(key),
         });
+        note.onclick = () => { if(window.ccwatchDesktop) window.ccwatchDesktop.show(); else window.focus(); };
       }
     }
   }
@@ -677,6 +680,7 @@ function checkNotify(){
 function setConn(ok, text){
   $('#conn').classList.toggle('off', !ok);
   $('#connText').textContent = text;
+  if(!ok && window.ccwatchDesktop) window.ccwatchDesktop.setStatus({ down:true });
 }
 
 // Dock ikonundan acilip sunucunun kapali oldugu durum artik sik: ne yapmasi
@@ -705,8 +709,9 @@ function connect(){
 }
 connect();
 
-// PWA: kendi penceresinde kurulabilsin, sunucu kapaliyken duzgun bir sayfa gosterebilsin
-if('serviceWorker' in navigator && location.protocol !== 'file:'){
+// PWA: kendi penceresinde kurulabilsin, sunucu kapaliyken duzgun bir sayfa gosterebilsin.
+// Electron uygulamasinda gereksiz: orada cache yerine her acilista taze sayfa istiyoruz.
+if('serviceWorker' in navigator && location.protocol !== 'file:' && !window.ccwatchDesktop){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
 // goreli zamanlari tazele; mesaj yazilirken kozmetik render'i atla

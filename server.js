@@ -31,6 +31,17 @@ const flagValue = (f, d) => {
 };
 
 const PORT = parseInt(flagValue('--port', process.env.CCWATCH_PORT || '7788'), 10);
+// Gunlerdir ayakta duran bir launchd sunucusu, repo guncellenince eski kodu servis
+// etmeye devam ediyor. Surumu disari veriyoruz ki Electron uygulamasi boyle bir
+// sunucuyu benimsemek yerine kendi taze kopyasini kaldirabilsin.
+const VERSION = (() => {
+  try {
+    return require('./package.json').version;
+  } catch {
+    return '0';
+  }
+})();
+
 const TAIL_BYTES = 192 * 1024;      // transcript'in son N byte'i okunur
 const COLD_MS = 15 * 60 * 1000;     // bu kadar sessiz kalan "idle" session artik sogumus sayilir
 const ENDED_WINDOW_MS = 3 * 24 * 3600 * 1000; // kapanmis session'lari kac gun geriye listeleyelim
@@ -491,7 +502,7 @@ function collect() {
     counts[k] = (counts[k] || 0) + 1;
   }
 
-  return { now, live, ended, counts, host: os.hostname() };
+  return { now, live, ended, counts, host: os.hostname(), version: VERSION };
 }
 
 // ---------------------------------------------------------------- mesaj gonderme
@@ -737,6 +748,15 @@ function serve() {
       }
     }
   });
+
+  // Electron uygulamasi bizi cocuk surec olarak baslattiysa: o olurse biz de olelim.
+  // Duzgun cikista zaten kill ediliyoruz, bu sadece cokme/SIGKILL icin. launchd ile
+  // baslatilan sunucunun ppid'i bastan 1 oldugu icin bu yol yalniz env ile aciliyor.
+  if (process.env.CCWATCH_SUPERVISED === '1') {
+    setInterval(() => {
+      if (process.ppid === 1) process.exit(0);
+    }, 4000).unref?.();
+  }
 
   setInterval(() => {
     if (!clients.size) return;
