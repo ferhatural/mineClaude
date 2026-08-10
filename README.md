@@ -50,10 +50,38 @@ If you would rather have it in the menu bar than in a browser tab, there is an E
 Click the icon and the one window opens; click again and it goes away. The icon turns amber and
 grows a number the moment a session starts waiting on you.
 
+On a new machine there is nothing to clone and nothing to build:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ferhatural/ccwatch/main/install.sh | bash
+```
+
+That picks the DMG for your architecture from the latest release, copies the app into
+`/Applications`, and opens it. The app bundles its own Node, so nothing else is needed.
+
+Or [download the DMG](https://github.com/ferhatural/ccwatch/releases/latest) and drag it across
+by hand. In that case run this once, or macOS will refuse to open it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ccwatch.app
+```
+
+The app is not signed — that needs a paid Apple Developer account — and macOS quarantines
+unsigned apps that arrive from a browser. `install.sh` clears the flag for you; a manual
+download needs the line above. If you have an account, build it signed yourself.
+
+To work on it instead of just using it:
+
 ```bash
 npm install            # electron, dev dependency only — `node server.js` still needs nothing
 npm run app            # run it
 npm run app:build      # dist/ccwatch-1.0.0-arm64.dmg
+```
+
+Releases are built by `.github/workflows/release.yml` on a version tag:
+
+```bash
+npm version 1.1.0 && git push --follow-tags
 ```
 
 The app starts `server.js` itself as a child process, so there is nothing else to keep running.

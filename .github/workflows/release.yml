@@ -1,0 +1,47 @@
+name: release
+
+# Bir surum etiketi push edilince macOS DMG'lerini uretip Release'e ekler.
+#
+#   npm version 1.1.0 && git push --follow-tags
+#
+# Imzalama yok: Apple Developer hesabi gerektiriyor. Imzasiz uygulama indirilince
+# Gatekeeper karantinaya aliyor, install.sh onu temizliyor.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Etiket ile package.json surumu ayrisirsa dosya adlari etiketle uyusmuyor
+      # ve install.sh indirecegi URL'i bulamiyor. Sessizce gecmesin.
+      - name: Etiket ve surum ayni mi
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "etiket v$tag ile package.json surumu $pkg ayni degil" >&2
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: DMG uret ve yayinla
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

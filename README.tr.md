@@ -32,10 +32,38 @@ Tarayıcı sekmesi yerine üstteki menü çubuğunda dursun istiyorsan bir Elect
 İkona basınca tek pencere açılır, tekrar basınca kapanır. Bir session sana bir şey sorduğu anda
 ikon amber olur ve yanına sayı gelir.
 
+Yeni bir makinede klonlanacak ya da derlenecek bir şey yok:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ferhatural/ccwatch/main/install.sh | bash
+```
+
+Son sürümden makinenin mimarisine uyan DMG'yi indirir, uygulamayı `/Applications`'a kopyalar
+ve açar. Uygulama kendi Node'unu taşıyor, başka bir şey gerekmiyor.
+
+Ya da [DMG'yi indirip](https://github.com/ferhatural/ccwatch/releases/latest) elle sürükle.
+O durumda bir kez şunu çalıştırman gerekiyor, yoksa macOS açmıyor:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ccwatch.app
+```
+
+Uygulama imzalı değil — imzalamak ücretli Apple Developer hesabı istiyor — ve macOS
+tarayıcıdan gelen imzasız uygulamaları karantinaya alıyor. `install.sh` bu işareti kendisi
+siliyor; elle indirdiğinde yukarıdaki satır gerekiyor. Hesabın varsa imzalı derleyebilirsin.
+
+Kullanmak değil de üstünde çalışmak için:
+
 ```bash
 npm install            # sadece electron, dev bağımlılığı — `node server.js` hâlâ bağımlılıksız
 npm run app            # çalıştır
 npm run app:build      # dist/ccwatch-1.0.0-arm64.dmg
+```
+
+Release'leri `.github/workflows/release.yml` bir sürüm etiketinde üretiyor:
+
+```bash
+npm version 1.1.0 && git push --follow-tags
 ```
 
 Uygulama `server.js`'i kendisi çocuk süreç olarak başlatır, ayrıca bir şey ayakta tutman
