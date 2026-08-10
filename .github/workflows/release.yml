@@ -40,8 +40,21 @@ jobs:
 
       - run: npm ci
 
-      - name: DMG uret ve yayinla
-        run: npx electron-builder --mac --publish always
+      # electron-builder'in kendi yayincisi her dosyayi ayri ayri yukluyor ve her biri
+      # release'i yaratmayi deniyor: ayni etikete bagli iki release kaydi olusuyor,
+      # GitHub da /releases/download/<tag>/<dosya> adresini cozemeyip 404 veriyor.
+      # O yuzden once uret, sonra hepsini tek seferde biz ekliyoruz.
+      - name: DMG uret
+        run: npx electron-builder --mac --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Release olustur
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          ls -lh dist/*.dmg
+          gh release create "${GITHUB_REF#refs/tags/}" dist/*.dmg \
+            --title "${GITHUB_REF#refs/tags/}" \
+            --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
