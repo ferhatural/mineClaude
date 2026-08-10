@@ -382,6 +382,10 @@
     if (!node) {
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.setAttribute('class', 'person');
+      g.style.cursor = 'pointer';
+      g.addEventListener('click', (e) => {
+        if (window.Office.onPick) window.Office.onPick(key, e.clientX, e.clientY);
+      });
       peopleLayer.appendChild(g);
       node = { g, sig: '', at: { x, y }, fresh: true };
       nodes.set(key, node);
@@ -500,5 +504,5 @@
     for (const n of touched) applyPos(n);
   }
 
-  window.Office = { render };
+  window.Office = { render, onPick: null };
 })();

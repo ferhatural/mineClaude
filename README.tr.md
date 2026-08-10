@@ -26,6 +26,24 @@ node server.js --port 7799 --no-open
 ln -s "$PWD/server.js" /usr/local/bin/ccwatch
 ```
 
+## Uygulama olarak kurmak (macOS)
+
+Panel bir PWA, yani paketlenecek bir şey yok: aç, sonra Safari'de **Dosya → Dock'a Ekle**,
+ya da Chrome'un adres çubuğundaki kur düğmesi. Kendi penceresi, dock ikonu ve ikonun üstünde
+seni bekleyen session sayısı.
+
+Dock ikonu ancak sunucu ayaktaysa işe yarar; açılışta kendiliğinden kalksın diye:
+
+```bash
+ccwatch --install      # açılışta başlat, çökerse geri getir
+ccwatch --status       # yüklü mü, pid'i ne, log nerede
+ccwatch --uninstall
+```
+
+`--install`, `~/Library/LaunchAgents/com.github.ferhatural.ccwatch.plist` dosyasını yazar,
+log'u `~/Library/Logs/ccwatch.log`'a düşer. Önce paketi kalıcı kur (`npm i -g ccwatch`) —
+`npx` önbelleğindeki yol sonradan temizlenebilir ve servis kırılır.
+
 ## Durumlar
 
 | Durum | Anlamı |

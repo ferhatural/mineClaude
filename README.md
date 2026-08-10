@@ -44,6 +44,24 @@ To call it from anywhere:
 ln -s "$PWD/server.js" /usr/local/bin/ccwatch
 ```
 
+## Install as an app (macOS)
+
+The dashboard is a PWA, so there is nothing to package: open it, then **File → Add to Dock**
+in Safari, or the install button in Chrome's address bar. You get a real window, a dock icon,
+and a badge with the number of sessions waiting on you.
+
+A dock icon is only useful if the server is up, so let launchd keep it running:
+
+```bash
+ccwatch --install      # start at login, restart on crash
+ccwatch --status       # is it loaded? which pid? where are the logs?
+ccwatch --uninstall
+```
+
+`--install` writes `~/Library/LaunchAgents/com.github.ferhatural.ccwatch.plist` and logs to
+`~/Library/Logs/ccwatch.log`. Install the package globally first (`npm i -g ccwatch`) — a path
+inside the `npx` cache can be cleaned up later and would break the agent.
+
 ## Statuses
 
 | Status | Meaning |

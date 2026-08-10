@@ -40,6 +40,28 @@
   .of-label{fill:#98a0ac}
 }
 
+/* --- 3D gorunum (office3d.js) --- */
+#office3d{
+  position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;line-height:0;aspect-ratio:1600/860
+}
+#office3d canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#office3d canvas:active{cursor:grabbing}
+.of3-labels{position:absolute;inset:0;pointer-events:none;line-height:1}
+.of3-name{
+  position:absolute;transform:translate(-50%,-100%);white-space:nowrap;
+  font:500 11px/1 ui-monospace,Menlo,monospace;color:#cfd6de;
+  text-shadow:0 1px 2px #000,0 0 5px rgba(0,0,0,.85)
+}
+.of3-name.wait{color:var(--wait)}
+.of3-hint{
+  position:absolute;right:10px;bottom:8px;font:400 11px/1.4 ui-monospace,Menlo,monospace;
+  color:var(--faint);opacity:.55;pointer-events:none
+}
+@media (prefers-color-scheme: light){
+  .of3-name{color:#2b3340;text-shadow:0 1px 2px #fff,0 0 5px rgba(255,255,255,.9)}
+}
+
 /* --- insanlar --- */
 .person{transition:transform 900ms linear}   /* sure JS'te mesafeye gore ayarlanir */
 .arm{transform-box:fill-box;transform-origin:top center}

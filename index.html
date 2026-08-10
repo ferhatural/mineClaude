@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ccwatch</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ccwatch">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/office.css">
 <style>
   :root{
@@ -52,14 +60,16 @@
   .toolbar label{display:flex;gap:6px;align-items:center;cursor:pointer;user-select:none}
   .toolbar input[type=checkbox]{accent-color:var(--idle)}
   .seg{display:flex;align-items:center;gap:6px;margin-left:auto}
-  .seg .opts{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden}
-  .seg button{
-    font:inherit;font-size:12px;color:var(--dim);background:none;border:0;border-right:1px solid var(--line);
+  .opts{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .opts button{
+    font:inherit;font-size:12px;color:var(--faint);background:none;border:0;border-right:1px solid var(--line);
     padding:5px 10px;cursor:pointer;transition:.12s;min-width:32px
   }
-  .seg button:last-child{border-right:0}
-  .seg button:hover{color:var(--text);background:var(--panel2)}
-  .seg button.on{color:var(--text);background:var(--panel2);box-shadow:inset 0 -2px 0 var(--idle)}
+  .opts button:last-child{border-right:0}
+  .opts button:hover{color:var(--text);background:var(--panel2)}
+  .opts button.on{color:var(--text);background:var(--panel2);box-shadow:inset 0 -2px 0 var(--idle)}
+  .opts.icons button{display:flex;align-items:center;justify-content:center;padding:6px 9px}
+  .opts.icons button svg{width:15px;height:15px;display:block}
 
   .iconbtn{
     display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;
@@ -70,6 +80,18 @@
   .iconbtn.ok{color:var(--busy);border-color:var(--busy)}
   .iconbtn.err{color:#d0524a;border-color:#d0524a}
   .iconbtn svg{width:15px;height:15px;display:block}
+
+  /* ofis sahnesi + sahnedeki birine tıklayınca açılan kart */
+  #stage{position:relative}
+  #pick{position:absolute;z-index:5;width:330px;max-width:calc(100% - 20px)}
+  #pick .card{border-color:var(--faint);box-shadow:0 12px 34px rgba(0,0,0,.5)}
+  #pick .pick-x{
+    position:absolute;top:-9px;right:-9px;width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;padding:0;
+    background:var(--panel2);border:1px solid var(--line);color:var(--dim);cursor:pointer
+  }
+  #pick .pick-x:hover{color:var(--text);border-color:var(--faint)}
+  #pick .pick-x svg{width:11px;height:11px;display:block}
 
   .grid{display:grid;grid-template-columns:var(--gtc);gap:12px;align-items:start}
   @media (max-width:720px){
@@ -150,7 +172,7 @@
     <div class="hright">
       <div class="conn" id="conn"><span class="dot"></span><span id="connText"></span></div>
       <div class="opts" id="langSw"></div>
-      <button class="iconbtn" id="viewBtn"></button>
+      <div class="opts icons" id="viewSw"></div>
       <button class="iconbtn" id="fs">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/>
@@ -164,13 +186,18 @@
   <div class="toolbar">
     <label><input type="checkbox" id="notify"> <span id="notifyLabel"></span></label>
     <label><input type="checkbox" id="hideEmpty" checked> <span id="hideEmptyLabel"></span></label>
+    <label><input type="checkbox" id="sound"> <span id="soundLabel"></span></label>
     <div class="seg" id="colsWrap">
       <span id="colsLabel"></span>
       <div class="opts" id="cols"></div>
     </div>
   </div>
 
-  <div id="office" hidden></div>
+  <div id="stage" hidden>
+    <div id="office" hidden></div>
+    <div id="office3d" hidden></div>
+    <div id="pick" hidden></div>
+  </div>
   <div id="live" class="grid"></div>
 
   <h2 id="endedHead" class="closed"><span class="caret">▾</span> <span id="endedLabel"></span> <span id="endedCount"></span></h2>
@@ -180,6 +207,7 @@
 </div>
 
 <script src="/office.js"></script>
+<script type="module" src="/office3d.js"></script>
 <script>
 // --- diller ---
 // SADECE arayüz metinleri çevrilir. Claude'un mesajları, proje adları, tool adları,
@@ -188,10 +216,12 @@ const I18N = {
   tr: {
     appTitle:"Claude session'ları", live:'canlı', connecting:'bağlanıyor…',
     disconnected:'bağlantı koptu — yeniden deneniyor',
-    officeView:'Ofis görünümü', cardView:'Kart görünümü', fullscreen:'Tam ekran',
+    serverDown:'ccwatch sunucusu çalışmıyor', serverDownHint:'Terminalde başlat:',
+    officeView:'Ofis görünümü', office3dView:'3D ofis görünümü', cardView:'Kart görünümü',
+    fullscreen:'Tam ekran', camHint:'tıkla: kart · sürükle: döndür · tekerlek: yakınlaş',
     all:'tümü', waiting:'input bekliyor', busy:'çalışıyor', ready:'beklemede', idle:'boşta',
     unknown:'bilinmiyor', ended:'kapandı',
-    notifyLabel:'input bekleyince bildirim gönder', hideEmptyLabel:'boş/kullanılmayan süreçleri gizle',
+    notifyLabel:'input bekleyince bildirim gönder', soundLabel:'durum değişince ses çal', hideEmptyLabel:'boş/kullanılmayan süreçleri gizle',
     columns:'kolon', waitsForYou:'Senden input bekliyor',
     'no-conversation':'Bu süreçte hiç konuşma yok', 'maybe-permission':'izin bekliyor olabilir',
     context:'bağlam', messages:'mesaj', openFor:'açık', permission:'izin',
@@ -210,10 +240,12 @@ const I18N = {
   en: {
     appTitle:'Claude sessions', live:'live', connecting:'connecting…',
     disconnected:'connection lost — retrying',
-    officeView:'Office view', cardView:'Card view', fullscreen:'Fullscreen',
+    serverDown:'The ccwatch server is not running', serverDownHint:'Start it in your terminal:',
+    officeView:'Office view', office3dView:'3D office view', cardView:'Card view',
+    fullscreen:'Fullscreen', camHint:'click: card · drag: rotate · wheel: zoom',
     all:'all', waiting:'waiting for input', busy:'working', ready:'standing by', idle:'idle',
     unknown:'unknown', ended:'ended',
-    notifyLabel:'notify me when a session wants input', hideEmptyLabel:'hide unused processes',
+    notifyLabel:'notify me when a session wants input', soundLabel:'play a sound on status changes', hideEmptyLabel:'hide unused processes',
     columns:'columns', waitsForYou:'Waiting for your input',
     'no-conversation':'No conversation in this process', 'maybe-permission':'may be waiting for permission',
     context:'context', messages:'messages', openFor:'open', permission:'perm',
@@ -249,6 +281,7 @@ const ICON = {
   cross:'<path d="M4 4l8 8M12 4l-8 8"/>',
   people:'<circle cx="5.8" cy="5" r="2.6"/><path d="M1.4 13.4c0-2.6 2-4.2 4.4-4.2s4.4 1.6 4.4 4.2"/><circle cx="11.8" cy="5.6" r="2"/><path d="M11 9.4c2.1 0 3.6 1.5 3.6 4"/>',
   grid:'<rect x="2" y="2" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1.2"/><rect x="2" y="8.8" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1.2"/>',
+  cube:'<path d="M8 1.6l5.6 3.2v6.4L8 14.4 2.4 11.2V4.8z"/><path d="M2.4 4.8L8 8l5.6-3.2M8 8v6.4"/>',
 };
 const svg = (k) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 
@@ -265,6 +298,79 @@ notifyBox.onchange = () => {
   if (notifyBox.checked && Notification.permission === 'default') Notification.requestPermission();
 };
 hideEmptyBox.onchange = () => { localStorage.setItem('cc.hideEmpty', hideEmptyBox.checked ? '1':'0'); render(); };
+
+// --- ses: dosya yok, iki nota WebAudio ile sentezleniyor ---
+const soundBox = $('#sound');
+soundBox.checked = localStorage.getItem('cc.sound') === '1';
+let actx = null;
+soundBox.onchange = () => {
+  localStorage.setItem('cc.sound', soundBox.checked ? '1' : '0');
+  // AudioContext yalnızca kullanıcı hareketiyle açılabiliyor; kutuya tıklamak o hareket
+  if(soundBox.checked) ping('waiting');
+};
+function ping(kind){
+  if(!soundBox.checked) return;
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if(actx.state === 'suspended') actx.resume();
+    const t0 = actx.currentTime;
+    const g = actx.createGain();
+    g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.55);
+    // input bekliyor: yükselen ikili · turunu bitirdi: alçalan ikili
+    const notes = kind === 'waiting' ? [784, 1175] : [784, 523];
+    notes.forEach((f, i) => {
+      const o = actx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f, t0 + i * 0.1);
+      o.connect(g);
+      o.start(t0 + i * 0.1);
+      o.stop(t0 + i * 0.1 + 0.45);
+    });
+  }catch{}
+}
+
+// --- sahnedeki birine tıklayınca açılan kart ---
+let picked = null, pickAt = { x: 0, y: 0 };
+function onPick(key, clientX, clientY){
+  if(!key){ picked = null; renderPicked(Date.now()); return; }
+  const r = $('#stage').getBoundingClientRect();
+  picked = (picked === key) ? null : key;
+  pickAt = { x: clientX - r.left + 14, y: clientY - r.top + 10 };
+  renderPicked(Date.now());
+}
+function renderPicked(now){
+  const pop = $('#pick');
+  const s = picked && state && state.live.find(x => String(x.sessionId || x.pid) === picked);
+  if(!s){ picked = null; pop.hidden = true; pop.innerHTML = ''; return; }
+  const stage = $('#stage');
+  pop.innerHTML = '';
+  const c = card(s, now);
+  const x = document.createElement('button');
+  x.className = 'pick-x';
+  x.innerHTML = svg('cross');
+  x.onclick = () => { picked = null; renderPicked(Date.now()); };
+  c.appendChild(x);
+  pop.appendChild(c);
+  pop.hidden = false;
+  // sahnenin dışına taşmasın
+  const maxX = Math.max(6, stage.clientWidth - pop.offsetWidth - 6);
+  const maxY = Math.max(6, stage.clientHeight - pop.offsetHeight - 6);
+  pop.style.left = Math.min(Math.max(6, pickAt.x), maxX) + 'px';
+  pop.style.top = Math.min(Math.max(6, pickAt.y), maxY) + 'px';
+}
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && picked){ picked = null; renderPicked(Date.now()); }
+});
+document.addEventListener('pointerdown', (e) => {
+  if(picked && !e.target.closest('#pick') && !e.target.closest('#office, #office3d')){
+    picked = null; renderPicked(Date.now());
+  }
+}, true);
+Office.onPick = onPick;
+window.addEventListener('office3d-ready', () => { Office3D.onPick = onPick; });
 
 // --- kolon sayisi ---
 let cols = localStorage.getItem('cc.cols') || 'auto';
@@ -286,6 +392,7 @@ function applyLang(){
   $('#appTitle').textContent = T('appTitle');
   $('#notifyLabel').textContent = T('notifyLabel');
   $('#hideEmptyLabel').textContent = T('hideEmptyLabel');
+  $('#soundLabel').textContent = T('soundLabel');
   $('#colsLabel').textContent = T('columns');
   $('#endedLabel').textContent = T('recentlyClosed');
   const c = (x) => `<code>${x}</code>`;
@@ -302,19 +409,28 @@ function applyLang(){
   if(es && es.readyState === 1) setConn(true, T('live'));
 }
 
-// --- görünüm anahtarı: kartlar <-> ofis ---
-let view = localStorage.getItem('cc.view') === 'office' ? 'office' : 'cards';
-const viewBtn = $('#viewBtn');
+// --- görünüm anahtarı: kartlar | ofis (2D) | ofis (3D) yan yana ---
+// 3D yalnızca WebGL2 varsa listede; yoksa office3d.js window.Office3D'yi hiç kurmuyor.
+const VIEWS = ['cards','office','office3d'];
+const has3d = () => !!window.Office3D;
+let view = VIEWS.includes(localStorage.getItem('cc.view')) ? localStorage.getItem('cc.view') : 'cards';
+const VIEW_ICON = { cards:'grid', office:'people', office3d:'cube' };
+const VIEW_TITLE = { cards:'cardView', office:'officeView', office3d:'office3dView' };
 function applyViewBtn(){
-  viewBtn.innerHTML = svg(view === 'cards' ? 'people' : 'grid');
-  viewBtn.title = view === 'cards' ? T('officeView') : T('cardView');
+  const avail = VIEWS.filter(v => v !== 'office3d' || has3d());
+  $('#viewSw').innerHTML = avail.map(v =>
+    `<button data-v="${v}" class="${v === view ? 'on' : ''}" title="${T(VIEW_TITLE[v])}">${svg(VIEW_ICON[v])}</button>`
+  ).join('');
+  $('#viewSw').querySelectorAll('button').forEach(b => b.onclick = () => {
+    if(b.dataset.v === view) return;
+    view = b.dataset.v;
+    localStorage.setItem('cc.view', view);
+    applyViewBtn(); render();
+  });
   $('#fs').title = T('fullscreen');
 }
-viewBtn.onclick = () => {
-  view = view === 'cards' ? 'office' : 'cards';
-  localStorage.setItem('cc.view', view);
-  applyViewBtn(); render();
-};
+// modül geç yüklenir: hazır olunca düğmeyi ve (3D'de kaldıysak) sahneyi tazele
+window.addEventListener('office3d-ready', () => { applyViewBtn(); render(); });
 applyLang();
 applyViewBtn();
 
@@ -490,16 +606,24 @@ function render(){
   if(filter === 'ready') list = list.filter(s => disp(s) === 'ready');
   if(filter === 'idle') list = list.filter(s => disp(s) === 'idle' || disp(s) === 'unknown');
 
-  const office = view === 'office';
-  $('#office').hidden = !office;
+  // 3D seçiliyken modül henüz gelmediyse 2D ofise düş
+  const v = (view === 'office3d' && !has3d()) ? 'office' : view;
+  const office = v !== 'cards';
+  $('#stage').hidden = !office;
+  $('#office').hidden = v !== 'office';
+  $('#office3d').hidden = v !== 'office3d';
   $('#live').hidden = office;
   $('#endedHead').hidden = office;
   $('#colsWrap').hidden = office;
 
   if(office){
-    Office.render(list, $('#office'), T, lang);
+    if(v === 'office3d') Office3D.render(list, $('#office3d'), T, lang);
+    else Office.render(list, $('#office'), T, lang);
+    renderPicked(now);
     $('#ended').hidden = true;
   } else {
+    picked = null;
+    $('#pick').hidden = true;
     const live = $('#live');
     live.innerHTML = '';
     if(!list.length) live.innerHTML = `<div class="empty" style="grid-column:1/-1">${T('noneInFilter')}</div>`;
@@ -514,12 +638,29 @@ function render(){
 
   const w = n(s => disp(s) === 'waiting');
   document.title = (w ? `(${w}) ` : '') + `ccwatch — ${base.length} session`;
+  // kurulu PWA'da dock ikonunun uzerindeki sayi
+  if(navigator.setAppBadge){
+    if(w) navigator.setAppBadge(w).catch(()=>{});
+    else navigator.clearAppBadge().catch(()=>{});
+  }
   $('#host').textContent = state.host ? '· ' + state.host : '';
   restoreFocus(focus);
 }
 
+let prevDisp = new Map();
 function checkNotify(){
   const nowWaiting = new Set(state.live.filter(s => s.status === 'waiting').map(s => s.sessionId || s.pid));
+
+  // ses: yeni input beklemeye geçen ve turunu yeni bitiren session'lar
+  const nextDisp = new Map();
+  for(const s of state.live){
+    const key = String(s.sessionId || s.pid), d = disp(s), was = prevDisp.get(key);
+    nextDisp.set(key, d);
+    if(was === undefined) continue;
+    if(d === 'waiting' && was !== 'waiting') ping('waiting');
+    else if(d === 'ready' && was === 'busy') ping('done');
+  }
+  prevDisp = nextDisp;
   if(notifyBox.checked && Notification.permission === 'granted'){
     for(const s of state.live){
       const key = s.sessionId || s.pid;
@@ -538,17 +679,36 @@ function setConn(ok, text){
   $('#connText').textContent = text;
 }
 
+// Dock ikonundan acilip sunucunun kapali oldugu durum artik sik: ne yapmasi
+// gerektigini soylemezsek kullanici bos bir pencereye bakiyor.
+function showDown(){
+  $('#stage').hidden = true;
+  $('#live').hidden = false;
+  $('#live').innerHTML =
+    `<div class="empty" style="grid-column:1/-1">
+       <div style="font-weight:600;color:var(--text);margin-bottom:6px">${T('serverDown')}</div>
+       <div style="margin-bottom:10px">${T('serverDownHint')}</div>
+       <code>npx ccwatch</code>
+     </div>`;
+}
+
 function connect(){
   es = new EventSource('/events');
   es.onopen = () => setConn(true, T('live'));
   es.onmessage = (e) => { state = JSON.parse(e.data); checkNotify(); render(); setConn(true, T('live')); };
   es.onerror = () => {
     setConn(false, T('disconnected'));
+    if(!state) showDown();
     es.close();
     setTimeout(connect, 2500);
   };
 }
 connect();
+
+// PWA: kendi penceresinde kurulabilsin, sunucu kapaliyken duzgun bir sayfa gosterebilsin
+if('serviceWorker' in navigator && location.protocol !== 'file:'){
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+}
 // goreli zamanlari tazele; mesaj yazilirken kozmetik render'i atla
 setInterval(() => {
   if(!state) return;

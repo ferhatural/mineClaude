@@ -6,6 +6,8 @@
  *   node server.js            -> http://localhost:7788 panelini acar
  *   node server.js --once     -> terminale bir kerelik tablo basar
  *   node server.js --json     -> ham JSON basar (script'lemek icin)
+ *   node server.js --install  -> macOS'ta acilista otomatik baslat (launchd)
+ *   node server.js --uninstall/--status -> servisi kaldir / durumunu goster
  *
  * Bagimlilik yok, sadece Node stdlib.
  */
@@ -621,18 +623,34 @@ function serve() {
       });
       return;
     }
+    const JS = 'application/javascript; charset=utf-8';
+    const PNG = 'image/png';
     const STATIC = {
-      '/office.js': 'application/javascript; charset=utf-8',
+      '/office.js': JS,
+      '/office3d.js': JS,
+      '/sw.js': JS,
+      '/vendor/three.module.min.js': JS,
+      '/vendor/three.core.min.js': JS,
       '/office.css': 'text/css; charset=utf-8',
+      '/offline.html': 'text/html; charset=utf-8',
+      '/manifest.webmanifest': 'application/manifest+json; charset=utf-8',
+      '/icons/icon-192.png': PNG,
+      '/icons/icon-512.png': PNG,
+      '/icons/icon-maskable-512.png': PNG,
+      '/icons/apple-touch-icon.png': PNG,
+      '/favicon.ico': PNG,
     };
     if (STATIC[url]) {
-      fs.readFile(path.join(__dirname, path.basename(url)), (err, buf) => {
+      const rel = url === '/favicon.ico' ? 'icons/icon-192.png' : url.slice(1);
+      fs.readFile(path.join(__dirname, ...rel.split('/')), (err, buf) => {
         if (err) {
           res.writeHead(404, { 'content-type': 'text/plain' });
           res.end('yok');
           return;
         }
-        res.writeHead(200, { 'content-type': STATIC[url], 'cache-control': 'no-cache' });
+        const head = { 'content-type': STATIC[url], 'cache-control': 'no-cache' };
+        if (url === '/sw.js') head['service-worker-allowed'] = '/';
+        res.writeHead(200, head);
         res.end(buf);
       });
       return;
@@ -738,9 +756,109 @@ function serve() {
   }, 2000).unref?.();
 }
 
+
+// ---------------------------------------------------------------- launchd (macOS)
+// Panel bir dock ikonu haline gelince "sunucuyu da ayrica baslat" adimi sirittigi icin:
+// acilista kendiliginden kalksin, cokerse geri gelsin.
+
+const AGENT_LABEL = 'com.github.ferhatural.ccwatch';
+const AGENT_PLIST = path.join(HOME, 'Library', 'LaunchAgents', AGENT_LABEL + '.plist');
+const AGENT_LOG = path.join(HOME, 'Library', 'Logs', 'ccwatch.log');
+
+const sh = (cmd, args) => {
+  try {
+    return { ok: true, out: execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+  } catch (e) {
+    return { ok: false, out: String((e.stderr || e.stdout || e.message) || '').trim() };
+  }
+};
+
+function agentPlist() {
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const args = [process.execPath, __filename, '--port', String(PORT), '--no-open'];
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${AGENT_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+${args.map((a) => '    <string>' + esc(a) + '</string>').join('\n')}
+  </array>
+  <key>WorkingDirectory</key><string>${esc(__dirname)}</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin</string>
+  </dict>
+  <key>StandardOutPath</key><string>${esc(AGENT_LOG)}</string>
+  <key>StandardErrorPath</key><string>${esc(AGENT_LOG)}</string>
+</dict>
+</plist>
+`;
+}
+
+function installAgent() {
+  if (process.platform !== 'darwin') {
+    console.error('\n  --install yalnizca macOS icin (launchd). Linux icin systemd --user birimi gerekiyor.\n');
+    process.exit(1);
+  }
+  // npx onbelleginden kurulursa yol bir sure sonra silinip agent kirilir
+  if (/[\/\\]_npx[\/\\]/.test(__dirname)) {
+    console.error('\n  ccwatch su an npx gecici onbelleginden calisiyor:');
+    console.error('    ' + __dirname);
+    console.error('  Bu klasor temizlenince acilistaki servis kirilir. Once kalici kur:\n');
+    console.error('    npm i -g ccwatch && ccwatch --install\n');
+    process.exit(1);
+  }
+
+  fs.mkdirSync(path.dirname(AGENT_PLIST), { recursive: true });
+  fs.mkdirSync(path.dirname(AGENT_LOG), { recursive: true });
+  fs.writeFileSync(AGENT_PLIST, agentPlist());
+
+  const target = 'gui/' + process.getuid();
+  sh('launchctl', ['bootout', target + '/' + AGENT_LABEL]);      // varsa eskisini indir
+  let r = sh('launchctl', ['bootstrap', target, AGENT_PLIST]);
+  if (!r.ok) r = sh('launchctl', ['load', '-w', AGENT_PLIST]);   // eski macOS
+  if (!r.ok) {
+    console.error('\n  launchctl yuklenemedi:\n  ' + r.out + '\n');
+    process.exit(1);
+  }
+  console.log('\n  ccwatch acilista otomatik baslayacak.');
+  console.log('  plist : ' + AGENT_PLIST);
+  console.log('  log   : ' + AGENT_LOG);
+  console.log('  panel : http://localhost:' + PORT);
+  console.log('\n  kaldirmak icin: ccwatch --uninstall\n');
+}
+
+function uninstallAgent() {
+  const target = 'gui/' + process.getuid();
+  const r = sh('launchctl', ['bootout', target + '/' + AGENT_LABEL]);
+  if (!r.ok) sh('launchctl', ['unload', '-w', AGENT_PLIST]);
+  try { fs.unlinkSync(AGENT_PLIST); } catch { /* zaten yok */ }
+  console.log('\n  ccwatch acilis servisi kaldirildi.\n');
+}
+
+function agentStatus() {
+  const installed = fs.existsSync(AGENT_PLIST);
+  const r = sh('launchctl', ['print', 'gui/' + process.getuid() + '/' + AGENT_LABEL]);
+  const pid = (r.out.match(/\bpid = (\d+)/) || [])[1];
+  console.log('\n  plist    : ' + (installed ? AGENT_PLIST : 'kurulu degil'));
+  console.log('  launchd  : ' + (r.ok ? (pid ? 'calisiyor (pid ' + pid + ')' : 'yuklu, calismyor') : 'yuklu degil'));
+  console.log('  panel    : http://localhost:' + PORT);
+  console.log('  log      : ' + AGENT_LOG + '\n');
+}
+
 // ---------------------------------------------------------------- giris
 
-if (hasFlag('--json')) {
+if (hasFlag('--install')) {
+  installAgent();
+} else if (hasFlag('--uninstall')) {
+  uninstallAgent();
+} else if (hasFlag('--status')) {
+  agentStatus();
+} else if (hasFlag('--json')) {
   console.log(JSON.stringify(collect(), null, 2));
 } else if (hasFlag('--once')) {
   printTable(collect());
