@@ -81,17 +81,38 @@
   .iconbtn.err{color:#d0524a;border-color:#d0524a}
   .iconbtn svg{width:15px;height:15px;display:block}
 
-  /* ofis sahnesi + sahnedeki birine tıklayınca açılan kart */
+  /* ofis sahnesi + sahnedeki birine tıklayınca sağda açılan kolon */
   #stage{position:relative}
-  #pick{position:absolute;z-index:5;width:330px;max-width:calc(100% - 20px)}
-  #pick .card{border-color:var(--faint);box-shadow:0 12px 34px rgba(0,0,0,.5)}
-  #pick .pick-x{
-    position:absolute;top:-9px;right:-9px;width:22px;height:22px;border-radius:50%;
+  /* Panel sabit bir kolon: sahnenin içinde yüzen küçük bir kart, uzun mesajı
+     gösteremiyordu. Tam boy olunca son iki mesaj olduğu gibi sığıyor. */
+  #pick{
+    position:fixed;top:0;right:0;bottom:0;z-index:30;width:min(520px,100%);
+    display:flex;flex-direction:column;background:var(--panel);
+    border-left:1px solid var(--line);box-shadow:-16px 0 44px rgba(0,0,0,.34)
+  }
+  #pick.waiting{--c:var(--wait)} #pick.busy{--c:var(--busy)} #pick.ready{--c:var(--idle)}
+  #pick.idle{--c:var(--ended)} #pick.unknown{--c:var(--unknown)}
+  #pick::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+  .pk-head{display:flex;align-items:center;gap:10px;padding:16px 16px 8px}
+  .pk-head .proj{font-size:16px}
+  .pk-sub{padding:0 16px 12px;border-bottom:1px solid var(--line)}
+  .pk-body{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+  .pk-msg{border-left:2px solid var(--line);padding-left:11px}
+  .pk-msg.you{border-left-color:var(--idle)}
+  .pk-who{font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--faint);margin-bottom:3px}
+  .pk-text{font-size:13px;line-height:1.55;color:var(--dim);white-space:pre-wrap;word-break:break-word}
+  .pk-msg:last-child .pk-text{color:var(--text)}
+  .pk-empty{color:var(--faint);font-size:12.5px}
+  .pk-foot{border-top:1px solid var(--line);padding:12px 16px 14px}
+  .pk-foot .meta{border-top:0;padding-top:0;margin-bottom:10px}
+  .pick-x{
+    margin-left:auto;flex:none;width:26px;height:26px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;padding:0;
     background:var(--panel2);border:1px solid var(--line);color:var(--dim);cursor:pointer
   }
-  #pick .pick-x:hover{color:var(--text);border-color:var(--faint)}
-  #pick .pick-x svg{width:11px;height:11px;display:block}
+  .pick-x:hover{color:var(--text);border-color:var(--faint)}
+  .pick-x svg{width:11px;height:11px;display:block}
+  @media (max-width:720px){ #pick{width:100%} }
 
   .grid{display:grid;grid-template-columns:var(--gtc);gap:12px;align-items:start}
   @media (max-width:720px){
@@ -231,6 +252,7 @@ const I18N = {
     copyTranscript:'transcript yolunu kopyala',
     focusTty:(t)=>`terminal sekmesine git (${t})`,
     focusTtyNone:'sekme bulunamadı — terminal kapanmış olabilir',
+    close:'kapat', loading:'yükleniyor…', noMessages:'mesaj bulunamadı', you:'Sen',
     asked:'soru sordu',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
@@ -260,6 +282,7 @@ const I18N = {
     copyTranscript:'copy transcript path',
     focusTty:(t)=>`go to the terminal tab (${t})`,
     focusTtyNone:'tab not found — the terminal may have been closed',
+    close:'close', loading:'loading…', noMessages:'no messages found', you:'You',
     asked:'asked you something',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
@@ -347,34 +370,87 @@ function ping(kind){
   }catch{}
 }
 
-// --- sahnedeki birine tıklayınca açılan kart ---
-let picked = null, pickAt = { x: 0, y: 0 };
-function onPick(key, clientX, clientY){
-  if(!key){ picked = null; renderPicked(Date.now()); return; }
-  const r = $('#stage').getBoundingClientRect();
-  picked = (picked === key) ? null : key;
-  pickAt = { x: clientX - r.left + 14, y: clientY - r.top + 10 };
+// --- sahnedeki birine tıklayınca sağda açılan kolon ---
+//
+// Panel iki saniyede bir baştan çizilmiyor. Çizilseydi içindeki mesaj kutusu her
+// tick'te yeni bir element olurdu: geri alma geçmişi, IME/ölü tuş bileşimi ve imleç
+// uçardı. Onun yerine kurulum bir kez (buildPick), sonrası yerinde güncelleme
+// (updatePick) — input elementine bir daha dokunulmuyor.
+let picked = null;
+let pickFor = null;      // panel hangi session için kuruldu
+let pickMsgKey = null;   // mesajları en son hangi aktivite anı için çektik
+
+function onPick(key){
+  picked = (!key || picked === key) ? null : key;
   renderPicked(Date.now());
 }
+function closePick(){ picked = null; renderPicked(Date.now()); }
+
+function buildPick(pop, s){
+  pop.innerHTML = `
+    <div class="pk-head">
+      <div class="proj"></div>
+      <div class="pill"><span class="d"></span><span class="t"></span></div>
+      <button class="pick-x" title="${T('close')}">${svg('cross')}</button>
+    </div>
+    <div class="pk-sub"><div class="path"></div></div>
+    <div class="pk-body"><div class="pk-empty">${T('loading')}</div></div>
+    <div class="pk-foot">
+      <div class="meta"></div>
+      <div class="bottom">${actionBtns(s).join('')}${msgBoxHtml(s)}</div>
+    </div>`;
+  pop.querySelector('.pick-x').onclick = closePick;
+  wireActions(pop);
+  wireMsgForm(pop, s.pid);
+}
+
+function fillMessages(pop, msgs){
+  const body = pop.querySelector('.pk-body');
+  if(!msgs || !msgs.length){ body.innerHTML = `<div class="pk-empty">${T('noMessages')}</div>`; return; }
+  body.innerHTML = msgs.map(m =>
+    `<div class="pk-msg ${m.role === 'user' ? 'you' : 'claude'}">
+       <div class="pk-who">${m.role === 'user' ? T('you') : 'Claude'}</div>
+       <div class="pk-text">${esc(m.text)}</div>
+     </div>`).join('');
+  body.scrollTop = body.scrollHeight;
+}
+
+function updatePick(pop, s, now){
+  const st = disp(s);
+  pop.className = st;
+  pop.querySelector('.proj').textContent = s.project || '?';
+  pop.querySelector('.proj').title = s.name || s.project || '';
+  const pill = pop.querySelector('.pill');
+  pill.querySelector('.t').textContent = asked(s) ? T('asked') : T(st);
+  pill.title = asked(s) ? T('askedWhy') : '';
+  const path = pop.querySelector('.path');
+  path.textContent = s.cwdShort || s.cwd || '';
+  path.title = s.cwd || '';
+  pop.querySelector('.meta').innerHTML = metaBits(s, now);
+
+  // Mesajları /api/state ile taşımıyoruz (her session için kilobaytlarca metin
+  // olurdu); panel açıkken ve konuşma ilerlediğinde ayrıca istiyoruz.
+  const key = String(s.sessionId) + ':' + (s.lastActivityAt || 0);
+  if(s.sessionId && key !== pickMsgKey){
+    pickMsgKey = key;
+    fetch('/api/messages?session=' + encodeURIComponent(s.sessionId))
+      .then(r => r.json())
+      .then(d => {
+        if(picked !== pickFor) return;                 // bu arada baska birine geçilmiş
+        if(d && d.sessionId === s.sessionId) fillMessages(pop, d.messages);
+        else fillMessages(pop, null);                  // transcript yok: "yükleniyor"da asılı kalmasın
+      })
+      .catch(() => fillMessages(pop, null));
+  }
+}
+
 function renderPicked(now){
   const pop = $('#pick');
   const s = picked && state && state.live.find(x => String(x.sessionId || x.pid) === picked);
-  if(!s){ picked = null; pop.hidden = true; pop.innerHTML = ''; return; }
-  const stage = $('#stage');
-  pop.innerHTML = '';
-  const c = card(s, now);
-  const x = document.createElement('button');
-  x.className = 'pick-x';
-  x.innerHTML = svg('cross');
-  x.onclick = () => { picked = null; renderPicked(Date.now()); };
-  c.appendChild(x);
-  pop.appendChild(c);
+  if(!s){ picked = null; pickFor = null; pickMsgKey = null; pop.hidden = true; pop.innerHTML = ''; return; }
+  if(pickFor !== picked){ buildPick(pop, s); pickFor = picked; pickMsgKey = null; }
   pop.hidden = false;
-  // sahnenin dışına taşmasın
-  const maxX = Math.max(6, stage.clientWidth - pop.offsetWidth - 6);
-  const maxY = Math.max(6, stage.clientHeight - pop.offsetHeight - 6);
-  pop.style.left = Math.min(Math.max(6, pickAt.x), maxX) + 'px';
-  pop.style.top = Math.min(Math.max(6, pickAt.y), maxY) + 'px';
+  updatePick(pop, s, now);
 }
 document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape' && picked){ picked = null; renderPicked(Date.now()); }
@@ -495,11 +571,8 @@ function copy(btn, text){
   }, ()=> flash(btn,'err'));
 }
 
-function card(s, now){
-  const st = disp(s);
-  const el = document.createElement('div');
-  el.className = 'card ' + st;
-
+// kart ve yan panel ayni parcalari kullaniyor
+function metaBits(s, now){
   const bits = [];
   if(s.pid) bits.push(`<span><b>pid</b> ${s.pid}</span>`);
   if(s.host) bits.push(`<span>${esc(s.host)}</span>`);
@@ -509,6 +582,68 @@ function card(s, now){
   if(s.startedAt) bits.push(`<span>${dur(now - s.startedAt)} ${T('openFor')}</span>`);
   if(s.permissionMode && s.permissionMode !== 'default') bits.push(`<span>${T('permission')}: ${esc(s.permissionMode)}</span>`);
   if(s.sizeMb) bits.push(`<span>${s.sizeMb} MB</span>`);
+  return `<span><b>${rel(s.lastActivityAt || s.startedAt, now)}</b></span>${bits.join('')}`;
+}
+
+function actionBtns(s){
+  const acts = [];
+  // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
+  if(window.ccwatchDesktop && s.kind === 'live' && s.tty)
+    acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
+  if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
+  if(s.cwd) acts.push(`<button class="iconbtn" title="${T('copyCd')}: ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
+  if(s.transcript) acts.push(`<button class="iconbtn" title="${T('copyTranscript')}: ${esc(s.transcript)}" data-copy="${esc(s.transcript)}">${svg('file')}</button>`);
+  return acts;
+}
+
+// Soket yoksa kutu yine dursun ama pasif olsun — yoksa "neden bazılarında yok?" sorusu doğuyor.
+function msgBoxHtml(s){
+  if(s.kind !== 'live') return '';
+  return `<form class="msg${s.socket ? '' : ' off'}" data-pid="${s.pid}"
+             title="${s.socket ? '' : T('msgClosedWhy')}">
+         <input type="text" placeholder="${s.socket ? T('msgPlaceholder') : T('msgClosed')}"
+                autocomplete="off" spellcheck="false" ${s.socket ? '' : 'disabled'}
+                value="${esc(drafts.get(s.pid) || '')}">
+         <button type="submit" class="iconbtn" title="${T('send')}" ${s.socket ? '' : 'disabled'}>${svg('send')}</button>
+       </form>`;
+}
+
+function wireActions(root){
+  root.querySelectorAll('button[data-copy]').forEach(b => b.onclick = () => copy(b, b.dataset.copy));
+  root.querySelectorAll('button[data-tty]').forEach(b => b.onclick = async () => {
+    const r = await window.ccwatchDesktop.focusTerminal({ tty: b.dataset.tty, host: b.dataset.host });
+    if(!r || !r.ok){ flash(b, 'err'); b.title = T('focusTtyNone'); }
+  });
+}
+
+function wireMsgForm(root, pid){
+  const form = root.querySelector('.msg:not(.off)');
+  if(!form) return;
+  const input = form.querySelector('input');
+  input.oninput = () => drafts.set(pid, input.value);
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if(!text) return;
+    input.disabled = true;
+    fetch('/api/send', {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({pid, text}),
+    })
+    .then(r => r.json())
+    .then(r => {
+      input.disabled = false;
+      if(r.ok){ input.value=''; drafts.delete(pid); flash(form,'ok'); input.focus(); }
+      else { flash(form,'err'); input.title = r.error || 'gönderilemedi'; }
+    })
+    .catch(() => { input.disabled = false; flash(form,'err'); });
+  };
+}
+
+function card(s, now){
+  const st = disp(s);
+  const el = document.createElement('div');
+  el.className = 'card ' + st;
 
   // waitingFor Claude Code'un kendi metni — çevrilmez, olduğu gibi gösterilir
   const why = [s.waitingFor, s.hintKey && T(s.hintKey)].filter(Boolean).join(' · ');
@@ -521,24 +656,8 @@ function card(s, now){
     banner = `<div class="banner"><b>·</b><div>${T('no-conversation')}</div></div>`;
   }
 
-  const acts = [];
-  // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
-  if(window.ccwatchDesktop && s.kind === 'live' && s.tty)
-    acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
-  if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
-  if(s.cwd) acts.push(`<button class="iconbtn" title="${T('copyCd')}: ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
-  if(s.transcript) acts.push(`<button class="iconbtn" title="${T('copyTranscript')}: ${esc(s.transcript)}" data-copy="${esc(s.transcript)}">${svg('file')}</button>`);
-
-  // Soket yoksa kutu yine dursun ama pasif olsun — yoksa "neden bazılarında yok?" sorusu doğuyor.
-  const msgBox = s.kind === 'live'
-    ? `<form class="msg${s.socket ? '' : ' off'}" data-pid="${s.pid}"
-             title="${s.socket ? '' : T('msgClosedWhy')}">
-         <input type="text" placeholder="${s.socket ? T('msgPlaceholder') : T('msgClosed')}"
-                autocomplete="off" spellcheck="false" ${s.socket ? '' : 'disabled'}
-                value="${esc(drafts.get(s.pid) || '')}">
-         <button type="submit" class="iconbtn" title="${T('send')}" ${s.socket ? '' : 'disabled'}>${svg('send')}</button>
-       </form>`
-    : '';
+  const acts = actionBtns(s);
+  const msgBox = msgBoxHtml(s);
 
   el.innerHTML = `
     <div class="row1">
@@ -551,53 +670,24 @@ function card(s, now){
            ${s.lastText ? `<b class="who">Claude</b> ` : ''}${esc(s.lastText || s.lastPrompt || s.title)}
          </div>` : ''}
     ${banner}
-    <div class="meta">
-      <span><b>${rel(s.lastActivityAt || s.startedAt, now)}</b></span>
-      ${bits.join('')}
-    </div>
+    <div class="meta">${metaBits(s, now)}</div>
     ${acts.length || msgBox ? `<div class="bottom">${acts.join('')}${msgBox}</div>` : ''}`;
 
-  el.querySelectorAll('button[data-copy]').forEach(b => b.onclick = () => copy(b, b.dataset.copy));
-  el.querySelectorAll('button[data-tty]').forEach(b => b.onclick = async () => {
-    const r = await window.ccwatchDesktop.focusTerminal({ tty: b.dataset.tty, host: b.dataset.host });
-    if(!r || !r.ok){ flash(b, 'err'); b.title = T('focusTtyNone'); }
-  });
-
-  const form = el.querySelector('.msg:not(.off)');
-  if(form){
-    const input = form.querySelector('input');
-    input.oninput = () => drafts.set(s.pid, input.value);
-    form.onsubmit = (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if(!text) return;
-      input.disabled = true;
-      fetch('/api/send', {
-        method:'POST', headers:{'content-type':'application/json'},
-        body: JSON.stringify({pid: s.pid, text}),
-      })
-      .then(r => r.json())
-      .then(r => {
-        input.disabled = false;
-        if(r.ok){ input.value=''; drafts.delete(s.pid); flash(form,'ok'); }
-        else { flash(form,'err'); input.title = r.error || 'gönderilemedi'; }
-      })
-      .catch(() => { input.disabled = false; flash(form,'err'); });
-    };
-  }
+  wireActions(el);
+  wireMsgForm(el, s.pid);
   return el;
 }
 
 // render sirasinda odakta olan mesaj kutusunu koru
 function snapshotFocus(){
   const a = document.activeElement;
-  if(a && a.tagName === 'INPUT' && a.closest('.msg'))
+  if(a && a.tagName === 'INPUT' && a.closest('.msg') && !a.closest('#pick'))
     return { pid: a.closest('.msg').dataset.pid, start: a.selectionStart, end: a.selectionEnd };
   return null;
 }
 function restoreFocus(f){
   if(!f) return;
-  const input = document.querySelector(`.msg[data-pid="${f.pid}"] input`);
+  const input = document.querySelector(`.grid .msg[data-pid="${f.pid}"] input`);
   if(!input) return;
   input.focus();
   try { input.setSelectionRange(f.start, f.end); } catch {}
@@ -644,8 +734,8 @@ function render(){
     renderPicked(now);
     $('#ended').hidden = true;
   } else {
-    picked = null;
-    $('#pick').hidden = true;
+    picked = null; pickFor = null; pickMsgKey = null;
+    $('#pick').hidden = true; $('#pick').innerHTML = '';
     const live = $('#live');
     live.innerHTML = '';
     if(!list.length) live.innerHTML = `<div class="empty" style="grid-column:1/-1">${T('noneInFilter')}</div>`;

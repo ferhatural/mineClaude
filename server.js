@@ -226,6 +226,56 @@ function asksQuestion(cleanText) {
   return /[?？]/.test(String(cleanText || '').slice(-200));
 }
 
+// Yan panelde son mesajlarin tamami gosteriliyor. Bunlari 2 saniyede bir herkese
+// akan /api/state'e koymuyoruz: her session icin kilobaytlarca metin demek olurdu.
+// Panel acildiginda tek session icin buradan isteniyor.
+const MSG_LIMIT = 6;
+const MSG_CHARS = 6000;
+
+// Dosyanin son TAIL_BYTES'i, yarim kalan ilk satir atilmis halde.
+// parseTail ayni isi kendi icin yapiyor ama sonucu ayristirilmis nesne olarak
+// donduruyor; burada ham satirlar lazim.
+function rawTail(file, size) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    const start = Math.max(0, size - TAIL_BYTES);
+    let buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    if (start > 0) {
+      const nl = buf.indexOf(0x0a);
+      buf = nl === -1 ? Buffer.alloc(0) : buf.slice(nl + 1);
+    }
+    return buf.toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+function lastMessages(file, size, limit = MSG_LIMIT) {
+  const out = [];
+  for (const line of rawTail(file, size).split('\n')) {
+    if (!line.startsWith('{')) continue;
+    let e;
+    try {
+      e = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const m = e.message;
+    if (!m || (m.role !== 'user' && m.role !== 'assistant')) continue;
+    // Tool sonuclari da "user" rolunde geliyor; konusma degil, atlanacak
+    let text = '';
+    if (typeof m.content === 'string') text = m.content;
+    else for (const c of m.content || []) if (c.type === 'text' && c.text) text += (text ? '\n\n' : '') + c.text;
+    text = text.trim();
+    if (!text) continue;
+    if (m.role === 'user' && /^<(command-name|local-command|system-reminder)/.test(text)) continue;
+    out.push({ role: m.role, text: text.slice(0, MSG_CHARS), at: e.timestamp ? Date.parse(e.timestamp) : null });
+  }
+  return out.slice(-limit);
+}
+
 function parseTail(file, size) {
   const info = {
     title: null,
@@ -689,6 +739,22 @@ function serve() {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       res.end(body);
       return;
+    }
+    if (url === '/api/messages') {
+      const id = new URL(req.url, 'http://x').searchParams.get('session') || '';
+      const reply = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      // sessionId dosya adina donusuyor: kalibina uymayani diske hic sormayalim
+      if (!/^[A-Za-z0-9-]{6,80}$/.test(id)) return reply(400, { error: 'gecersiz session' });
+      const rec = transcriptIndex().bySession.get(id);
+      if (!rec) return reply(404, { error: 'transcript yok' });
+      try {
+        return reply(200, { sessionId: id, messages: lastMessages(rec.file, rec.size) });
+      } catch (e) {
+        return reply(500, { error: String(e.message || e) });
+      }
     }
     if (url === '/api/send' && req.method === 'POST') {
       // baska bir sitenin tarayicidan localhost'a POST atmasini engelle

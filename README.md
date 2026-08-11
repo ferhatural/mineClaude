@@ -217,6 +217,13 @@ maps at Steve proportions (8×8 head, 4×12 arms), the scene from block patterns
 - **standing by** — still at the desk, not yet cold
 - **idle** — in the lounge: on the sofa, holding coffee, or gossiping in pairs
 
+Clicking someone opens a full-height column on the right. It shows the last few messages in
+full — the card can only fit a 400-character preview of Claude's last one — and carries the
+same actions and the message box. The column is built once and then updated in place: the
+input is never replaced, so undo history, dead-key composition and the caret survive the
+two-second refresh. The messages are not in `/api/state`; the column asks `/api/messages` for
+that one session, so the stream everyone gets stays small.
+
 When a session's status changes the character walks to its new spot: legs and arms swing in a
 two-frame step, the duration scales with distance, and crossing between the office and the lounge
 routes through the doorway. Slots are sticky, so one person leaving does not shuffle everyone else.

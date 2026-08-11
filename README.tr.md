@@ -163,6 +163,13 @@ sprite'lardan, sahne blok dokularından çiziliyor (`shape-rendering: crispEdges
 - **beklemedekiler** de masasında oturur (henüz soğumadılar)
 - **boştakiler** lounge'da takılıyor: kanepede oturanlar, kahve içenler, dedikodu yapanlar
 
+Birine tıklayınca sağda tam boy bir kolon açılıyor. Son birkaç mesajı **tam** gösteriyor —
+kartta Claude'un son mesajının ancak 400 karakterlik önizlemesi sığıyor — ve aynı düğmelerle
+mesaj kutusunu taşıyor. Kolon bir kez kurulup yerinde güncelleniyor: input elementi bir daha
+değiştirilmiyor, yani geri alma geçmişi, ölü tuş bileşimi ve imleç iki saniyelik tazelemeden
+sağ çıkıyor. Mesajlar `/api/state` içinde taşınmıyor; kolon yalnız o session için
+`/api/messages`'e soruyor, herkese akan yayın küçük kalsın diye.
+
 Durum değişince kişi hedefine **yürür**: bacaklar ve kollar 2 kareli Minecraft adımıyla oynar,
 süre mesafeye göre hesaplanır (~300 birim/sn) ve ofis ile lounge arasında geçerken duvardan
 değil kapıdan dolaşır. Slotlar kişiye yapışıktır — biri masasına geçtiğinde lounge'daki
