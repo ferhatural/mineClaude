@@ -1,4 +1,4 @@
-/* ccwatch — 3D ofis gorunumu (gercek izometri, voxel)
+/* mineClaude — 3D ofis gorunumu (gercek izometri, voxel)
    office.js ile ayni sozlesme:  Office3D.render(list, container, T, lang)
 
    busy    -> kendi masasinda, klavyede

@@ -1,4 +1,4 @@
-/* ccwatch — ofis görünümü (Minecraft/voxel stili)
+/* mineClaude — ofis görünümü (Minecraft/voxel stili)
    busy    -> kendi masasında, işe dalmış
    waiting -> masasının yanında, kameraya dönük, eli havada
    idle    -> lounge'da; kahve içen, ikişerli dedikodu yapanlar                     */

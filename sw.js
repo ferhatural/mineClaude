@@ -1,10 +1,10 @@
-/* ccwatch service worker — PWA olarak kurulabilmek ve sunucu kapaliyken
+/* mineClaude service worker — PWA olarak kurulabilmek ve sunucu kapaliyken
    "sunucu calismiyor" sayfasini gosterebilmek icin.
 
    Strateji bilerek network-first: veri her zaman canli olmali, onbellek yalnizca
    sunucu kapaliyken devreye giriyor. Boylece gelistirirken bayat dosya servis edilmiyor. */
 
-const CACHE = 'ccwatch-v1';
+const CACHE = 'mineclaude-v1';
 const SHELL = [
   '/', '/office.css', '/office.js', '/office3d.js',
   '/vendor/three.module.min.js', '/vendor/three.core.min.js',

@@ -1,13 +1,13 @@
 {
-  "name": "ccwatch",
-  "version": "1.0.1",
-  "description": "Local dashboard for every Claude Code CLI session on your machine: what is running, what is idle, and what is waiting for your input",
+  "name": "mineclaude",
+  "version": "1.1.0",
+  "description": "Local dashboard for every Claude Code CLI session on your machine, as a Minecraft-ish office: who is working, who is idle, and who is waiting for your input",
   "type": "commonjs",
   "license": "MIT",
   "author": "ferhatural",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ferhatural/ccwatch.git"
+    "url": "https://github.com/ferhatural/mineClaude.git"
   },
   "keywords": [
     "claude",
@@ -21,7 +21,7 @@
     "node": ">=18"
   },
   "bin": {
-    "ccwatch": "./server.js"
+    "mineclaude": "./server.js"
   },
   "main": "electron/main.js",
   "scripts": {
@@ -37,8 +37,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.github.ferhatural.ccwatch",
-    "productName": "ccwatch",
+    "appId": "com.github.ferhatural.mineclaude",
+    "productName": "mineClaude",
     "asar": false,
     "directories": {
       "output": "dist",
@@ -75,7 +75,7 @@
       "icon": "icons/icon-512.png",
       "extendInfo": {
         "LSUIElement": true,
-        "NSAppleEventsUsageDescription": "ccwatch, bir session'in calistigi terminal sekmesini one getirmek icin Terminal ve iTerm2'ye erisir."
+        "NSAppleEventsUsageDescription": "mineClaude, bir session'in calistigi terminal sekmesini one getirmek icin Terminal ve iTerm2'ye erisir."
       }
     }
   }

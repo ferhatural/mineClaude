@@ -1,8 +1,8 @@
 'use strict';
-// ccwatch'in macOS menu bar uygulamasi.
+// mineClaude'in macOS menu bar uygulamasi.
 //
 // Yaptigi is uc parca:
-//   1) server.js'i cocuk surec olarak ayakta tutar (zaten calisan bir ccwatch varsa onu benimser)
+//   1) server.js'i cocuk surec olarak ayakta tutar (zaten calisan bir mineClaude varsa onu benimser)
 //   2) menu barda bir ikon gosterir; input bekleyen session varsa amber olur ve sayiyi yazar
 //   3) ikona basinca ayni tek pencereyi acar/kapatir. Pencere kapatilinca uygulama olmez, gizlenir.
 //
@@ -18,7 +18,7 @@ const { spawn, execFile } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const SERVER_JS = path.join(ROOT, 'server.js');
 const ASSETS = path.join(__dirname, 'assets');
-const DEFAULT_PORT = parseInt(process.env.CCWATCH_PORT || '7788', 10);
+const DEFAULT_PORT = parseInt(process.env.MINECLAUDE_PORT || '7788', 10);
 
 let tray = null;
 let win = null;
@@ -51,8 +51,8 @@ function saveConfig() {
 
 // ---------------------------------------------------------------- sunucu
 
-// Portta bir sey var mi, varsa ccwatch mi? Sonuc: null | { version }
-function probeCcwatch(port) {
+// Portta bir sey var mi, varsa mineClaude mi? Sonuc: null | { version }
+function probeMineClaude(port) {
   return new Promise((resolve) => {
     const req = http.get({ host: '127.0.0.1', port, path: '/api/state', timeout: 1500 }, (res) => {
       let body = '';
@@ -93,10 +93,10 @@ function spawnServer(port) {
   // Paketlenmis uygulamada `node` olmayabilir; Electron'un kendi binary'sini
   // saf Node olarak calistiriyoruz.
   child = spawn(process.execPath, [SERVER_JS, '--port', String(port), '--no-open'], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', CCWATCH_SUPERVISED: '1' },
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', MINECLAUDE_SUPERVISED: '1' },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
-  child.stderr.on('data', (b) => process.stderr.write('[ccwatch server] ' + b));
+  child.stderr.on('data', (b) => process.stderr.write('[mineClaude server] ' + b));
   child.on('exit', (code) => {
     child = null;
     if (quitting) return;
@@ -112,7 +112,7 @@ function waitUntilUp(port, ms) {
   const deadline = Date.now() + ms;
   return new Promise((resolve) => {
     const tick = async () => {
-      if (await probeCcwatch(port)) return resolve(true);
+      if (await probeMineClaude(port)) return resolve(true);
       if (Date.now() > deadline) return resolve(false);
       setTimeout(tick, 250);
     };
@@ -121,16 +121,16 @@ function waitUntilUp(port, ms) {
 }
 
 async function ensureServer() {
-  // Once alisilmis port: orada calisan bir ccwatch varsa (launchd ile kurulmus olabilir)
+  // Once alisilmis port: orada calisan bir mineClaude varsa (launchd ile kurulmus olabilir)
   // ikinci bir sunucu acmanin anlami yok — ama yalniz surumu bizimkiyle ayniysa.
   // Gunlerdir ayakta duran bir servis, repo guncellenince eski index.html'i ve artik
   // var olan ama onun bilmedigi dosyalari servis etmeye devam ediyor; oyle bir sunucuyu
   // benimsemek "3D gorunum bazen var bazen yok" demek.
-  const found = await probeCcwatch(DEFAULT_PORT);
+  const found = await probeMineClaude(DEFAULT_PORT);
   if (found && found.version === app.getVersion()) return DEFAULT_PORT;
   if (found) {
     console.error(
-      `[ccwatch] ${DEFAULT_PORT} portunda eski bir ccwatch var (surum ${found.version || 'bilinmiyor'}), ` +
+      `[mineClaude] ${DEFAULT_PORT} portunda eski bir mineClaude var (surum ${found.version || 'bilinmiyor'}), ` +
       `bizimki ${app.getVersion()} — benimsemek yerine kendi sunucumuzu aciyoruz.`,
     );
   }
@@ -172,7 +172,7 @@ function createWindow() {
     minHeight: 400,
     ...(saved || {}),
     show: false,
-    title: 'ccwatch',
+    title: 'mineClaude',
     backgroundColor: '#0e1013',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -254,7 +254,7 @@ function createTray() {
   ICON_WAITING = icon('trayWaiting');
 
   tray = new Tray(ICON_IDLE);
-  tray.setToolTip('ccwatch');
+  tray.setToolTip('mineClaude');
   tray.on('click', toggleWindow);
   tray.on('right-click', () => tray.popUpContextMenu(buildMenu()));
 }
@@ -262,7 +262,7 @@ function createTray() {
 function buildMenu() {
   const open = !!(win && !win.isDestroyed() && win.isVisible());
   return Menu.buildFromTemplate([
-    { label: open ? 'Pencereyi gizle' : 'ccwatch’i ac', click: toggleWindow },
+    { label: open ? 'Pencereyi gizle' : 'mineClaude’i ac', click: toggleWindow },
     { label: 'Tarayicida ac', click: () => shell.openExternal(serverUrl) },
     { type: 'separator' },
     {
@@ -281,7 +281,7 @@ function buildMenu() {
       enabled: false,
     },
     { type: 'separator' },
-    { label: 'ccwatch’ten cik', accelerator: 'Command+Q', click: () => app.quit() },
+    { label: 'mineClaude’ten cik', accelerator: 'Command+Q', click: () => app.quit() },
   ]);
 }
 
@@ -291,7 +291,7 @@ function setTrayStatus(s) {
   if (s.down) {
     tray.setImage(ICON_IDLE);
     tray.setTitle('');
-    tray.setToolTip('ccwatch — sunucuya baglanilamiyor');
+    tray.setToolTip('mineClaude — sunucuya baglanilamiyor');
     return;
   }
   const waiting = s.waiting | 0;
@@ -300,8 +300,8 @@ function setTrayStatus(s) {
   tray.setTitle(waiting ? ' ' + waiting : '');
   tray.setToolTip(
     waiting
-      ? `ccwatch — ${waiting} session input bekliyor (${total} acik)`
-      : `ccwatch — ${total} session`,
+      ? `mineClaude — ${waiting} session input bekliyor (${total} acik)`
+      : `mineClaude — ${total} session`,
   );
 }
 
@@ -439,9 +439,9 @@ if (!app.requestSingleInstanceLock()) {
     showWindow(); // ilk acilista pencereyi goster; sonraki acilislar tray'den
   });
 
-  ipcMain.on('ccwatch:status', (_e, s) => setTrayStatus(s || {}));
-  ipcMain.on('ccwatch:show', showWindow);
-  ipcMain.handle('ccwatch:focus-terminal', (_e, s) => focusTerminal(s || {}));
+  ipcMain.on('mineclaude:status', (_e, s) => setTrayStatus(s || {}));
+  ipcMain.on('mineclaude:show', showWindow);
+  ipcMain.handle('mineclaude:focus-terminal', (_e, s) => focusTerminal(s || {}));
 
   app.on('activate', showWindow);
   app.on('window-all-closed', () => { /* menu bar uygulamasi: pencere yoksa da yasar */ });

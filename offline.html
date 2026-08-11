@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ccwatch</title>
+<title>mineClaude</title>
 <style>
   :root{ --bg:#0e1013; --panel:#16191e; --line:#272c34; --text:#e7eaef; --dim:#9aa3b0; --faint:#6b7482 }
   @media (prefers-color-scheme: light){
@@ -26,9 +26,9 @@
 <body>
   <div class="box">
     <img src="/icons/icon-192.png" alt="">
-    <h1 data-i18n="t">ccwatch sunucusuna ulaşılamıyor</h1>
+    <h1 data-i18n="t">mineClaude sunucusuna ulaşılamıyor</h1>
     <p data-i18n="d">Panel yerel sunucudan besleniyor. Terminalde başlat:</p>
-    <code>npx ccwatch</code>
+    <code>npx mineclaude</code>
     <small id="retry">Bağlantı bekleniyor…</small>
   </div>
 <script>
@@ -37,7 +37,7 @@
   });
   if(!tr){
     document.documentElement.lang = 'en';
-    document.querySelector('[data-i18n=t]').textContent = 'Cannot reach the ccwatch server';
+    document.querySelector('[data-i18n=t]').textContent = 'Cannot reach the mineClaude server';
     document.querySelector('[data-i18n=d]').textContent = 'The dashboard is served by the local server. Start it in your terminal:';
     document.getElementById('retry').textContent = 'Waiting for the connection…';
   }

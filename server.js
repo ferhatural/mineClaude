@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * ccwatch - bu makinedeki tum Claude Code (CLI) session'larini canli izler.
+ * mineClaude - bu makinedeki tum Claude Code (CLI) session'larini canli izler.
  *
  *   node server.js            -> http://localhost:7788 panelini acar
  *   node server.js --once     -> terminale bir kerelik tablo basar
@@ -30,7 +30,7 @@ const flagValue = (f, d) => {
   return i !== -1 && argv[i + 1] ? argv[i + 1] : d;
 };
 
-const PORT = parseInt(flagValue('--port', process.env.CCWATCH_PORT || '7788'), 10);
+const PORT = parseInt(flagValue('--port', process.env.MINECLAUDE_PORT || '7788'), 10);
 // Gunlerdir ayakta duran bir launchd sunucusu, repo guncellenince eski kodu servis
 // etmeye devam ediyor. Surumu disari veriyoruz ki Electron uygulamasi boyle bir
 // sunucuyu benimsemek yerine kendi taze kopyasini kaldirabilsin.
@@ -822,7 +822,7 @@ function serve() {
 
   server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;
-    console.log(`\n  ccwatch calisiyor -> ${url}`);
+    console.log(`\n  mineClaude calisiyor -> ${url}`);
     console.log(`  durdurmak icin Ctrl+C\n`);
     if (!hasFlag('--no-open')) {
       try {
@@ -836,7 +836,7 @@ function serve() {
   // Electron uygulamasi bizi cocuk surec olarak baslattiysa: o olurse biz de olelim.
   // Duzgun cikista zaten kill ediliyoruz, bu sadece cokme/SIGKILL icin. launchd ile
   // baslatilan sunucunun ppid'i bastan 1 oldugu icin bu yol yalniz env ile aciliyor.
-  if (process.env.CCWATCH_SUPERVISED === '1') {
+  if (process.env.MINECLAUDE_SUPERVISED === '1') {
     setInterval(() => {
       if (process.ppid === 1) process.exit(0);
     }, 4000).unref?.();
@@ -865,9 +865,9 @@ function serve() {
 // Panel bir dock ikonu haline gelince "sunucuyu da ayrica baslat" adimi sirittigi icin:
 // acilista kendiliginden kalksin, cokerse geri gelsin.
 
-const AGENT_LABEL = 'com.github.ferhatural.ccwatch';
+const AGENT_LABEL = 'com.github.ferhatural.mineclaude';
 const AGENT_PLIST = path.join(HOME, 'Library', 'LaunchAgents', AGENT_LABEL + '.plist');
-const AGENT_LOG = path.join(HOME, 'Library', 'Logs', 'ccwatch.log');
+const AGENT_LOG = path.join(HOME, 'Library', 'Logs', 'mineclaude.log');
 
 const sh = (cmd, args) => {
   try {
@@ -910,10 +910,10 @@ function installAgent() {
   }
   // npx onbelleginden kurulursa yol bir sure sonra silinip agent kirilir
   if (/[\/\\]_npx[\/\\]/.test(__dirname)) {
-    console.error('\n  ccwatch su an npx gecici onbelleginden calisiyor:');
+    console.error('\n  mineClaude su an npx gecici onbelleginden calisiyor:');
     console.error('    ' + __dirname);
     console.error('  Bu klasor temizlenince acilistaki servis kirilir. Once kalici kur:\n');
-    console.error('    npm i -g ccwatch && ccwatch --install\n');
+    console.error('    npm i -g mineclaude && mineclaude --install\n');
     process.exit(1);
   }
 
@@ -929,11 +929,11 @@ function installAgent() {
     console.error('\n  launchctl yuklenemedi:\n  ' + r.out + '\n');
     process.exit(1);
   }
-  console.log('\n  ccwatch acilista otomatik baslayacak.');
+  console.log('\n  mineClaude acilista otomatik baslayacak.');
   console.log('  plist : ' + AGENT_PLIST);
   console.log('  log   : ' + AGENT_LOG);
   console.log('  panel : http://localhost:' + PORT);
-  console.log('\n  kaldirmak icin: ccwatch --uninstall\n');
+  console.log('\n  kaldirmak icin: mineclaude --uninstall\n');
 }
 
 function uninstallAgent() {
@@ -941,7 +941,7 @@ function uninstallAgent() {
   const r = sh('launchctl', ['bootout', target + '/' + AGENT_LABEL]);
   if (!r.ok) sh('launchctl', ['unload', '-w', AGENT_PLIST]);
   try { fs.unlinkSync(AGENT_PLIST); } catch { /* zaten yok */ }
-  console.log('\n  ccwatch acilis servisi kaldirildi.\n');
+  console.log('\n  mineClaude acilis servisi kaldirildi.\n');
 }
 
 function agentStatus() {

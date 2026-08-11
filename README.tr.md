@@ -1,4 +1,4 @@
-# ccwatch
+# mineClaude
 
 > 🇬🇧 [English README](README.md)
 
@@ -11,8 +11,8 @@ Bağımlılık yok — sadece Node.js.
 ## Çalıştırma
 
 ```bash
-git clone https://github.com/ferhatural/ccwatch.git
-cd ccwatch
+git clone https://github.com/ferhatural/mineClaude.git
+cd mineClaude
 node server.js            # http://localhost:7788 panelini açar
 node server.js --watch    # terminalde canlı tablo (2 sn'de bir yenilenir)
 node server.js --once     # tek seferlik tablo bas ve çık
@@ -23,7 +23,7 @@ node server.js --port 7799 --no-open
 İstersen her yerden çağırmak için:
 
 ```bash
-ln -s "$PWD/server.js" /usr/local/bin/ccwatch
+ln -s "$PWD/server.js" /usr/local/bin/mineclaude
 ```
 
 ## Menü çubuğu uygulaması (macOS)
@@ -35,17 +35,17 @@ ikon amber olur ve yanına sayı gelir.
 Yeni bir makinede klonlanacak ya da derlenecek bir şey yok:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ferhatural/ccwatch/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ferhatural/mineClaude/main/install.sh | bash
 ```
 
 Son sürümden makinenin mimarisine uyan DMG'yi indirir, uygulamayı `/Applications`'a kopyalar
 ve açar. Uygulama kendi Node'unu taşıyor, başka bir şey gerekmiyor.
 
-Ya da [DMG'yi indirip](https://github.com/ferhatural/ccwatch/releases/latest) elle sürükle.
+Ya da [DMG'yi indirip](https://github.com/ferhatural/mineClaude/releases/latest) elle sürükle.
 O durumda bir kez şunu çalıştırman gerekiyor, yoksa macOS açmıyor:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/ccwatch.app
+xattr -dr com.apple.quarantine /Applications/mineClaude.app
 ```
 
 Uygulama imzalı değil — imzalamak ücretli Apple Developer hesabı istiyor — ve macOS
@@ -57,7 +57,7 @@ Kullanmak değil de üstünde çalışmak için:
 ```bash
 npm install            # sadece electron, dev bağımlılığı — `node server.js` hâlâ bağımlılıksız
 npm run app            # çalıştır
-npm run app:build      # dist/ccwatch-1.0.0-arm64.dmg
+npm run app:build      # dist/mineClaude-1.0.0-arm64.dmg
 ```
 
 Release'leri `.github/workflows/release.yml` bir sürüm etiketinde üretiyor:
@@ -67,7 +67,7 @@ npm version 1.1.0 && git push --follow-tags
 ```
 
 Uygulama `server.js`'i kendisi çocuk süreç olarak başlatır, ayrıca bir şey ayakta tutman
-gerekmez. 7788'de aynı sürümden bir ccwatch varsa (aşağıdaki `--install` ya da terminalden)
+gerekmez. 7788'de aynı sürümden bir mineClaude varsa (aşağıdaki `--install` ya da terminalden)
 ikincisini açmaz, onu benimser. *Farklı* sürümdekini benimsemez: günlerdir ayakta duran bir
 launchd servisi, başladığı andaki kodu servis etmeye devam ediyor ve bu panelde özelliklerin
 esrarengiz şekilde kaybolması olarak görünüyor. O durumda kendi sunucusunu bir sonraki boş
@@ -99,13 +99,13 @@ seni bekleyen session sayısı.
 Dock ikonu ancak sunucu ayaktaysa işe yarar; açılışta kendiliğinden kalksın diye:
 
 ```bash
-ccwatch --install      # açılışta başlat, çökerse geri getir
-ccwatch --status       # yüklü mü, pid'i ne, log nerede
-ccwatch --uninstall
+mineclaude --install      # açılışta başlat, çökerse geri getir
+mineclaude --status       # yüklü mü, pid'i ne, log nerede
+mineclaude --uninstall
 ```
 
-`--install`, `~/Library/LaunchAgents/com.github.ferhatural.ccwatch.plist` dosyasını yazar,
-log'u `~/Library/Logs/ccwatch.log`'a düşer. Önce paketi kalıcı kur (`npm i -g ccwatch`) —
+`--install`, `~/Library/LaunchAgents/com.github.ferhatural.mineclaude.plist` dosyasını yazar,
+log'u `~/Library/Logs/mineclaude.log`'a düşer. Önce paketi kalıcı kur (`npm i -g mineclaude`) —
 `npx` önbelleğindeki yol sonradan temizlenebilir ve servis kırılır.
 
 ## Durumlar

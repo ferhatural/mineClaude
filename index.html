@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ccwatch</title>
+<title>mineClaude</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
 <link rel="icon" href="/icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="ccwatch">
+<meta name="apple-mobile-web-app-title" content="mineClaude">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/office.css">
 <style>
@@ -237,7 +237,7 @@ const I18N = {
   tr: {
     appTitle:"Claude session'ları", live:'canlı', connecting:'bağlanıyor…',
     disconnected:'bağlantı koptu — yeniden deneniyor',
-    serverDown:'ccwatch sunucusu çalışmıyor', serverDownHint:'Terminalde başlat:',
+    serverDown:'mineClaude sunucusu çalışmıyor', serverDownHint:'Terminalde başlat:',
     officeView:'Ofis görünümü', office3dView:'3D ofis görünümü', cardView:'Kart görünümü',
     fullscreen:'Tam ekran', camHint:'tıkla: kart · sürükle: döndür · tekerlek: yakınlaş',
     all:'tümü', waiting:'input bekliyor', busy:'çalışıyor', ready:'beklemede', idle:'boşta',
@@ -267,7 +267,7 @@ const I18N = {
   en: {
     appTitle:'Claude sessions', live:'live', connecting:'connecting…',
     disconnected:'connection lost — retrying',
-    serverDown:'The ccwatch server is not running', serverDownHint:'Start it in your terminal:',
+    serverDown:'The mineClaude server is not running', serverDownHint:'Start it in your terminal:',
     officeView:'Office view', office3dView:'3D office view', cardView:'Card view',
     fullscreen:'Fullscreen', camHint:'click: card · drag: rotate · wheel: zoom',
     all:'all', waiting:'waiting for input', busy:'working', ready:'standing by', idle:'idle',
@@ -588,7 +588,7 @@ function metaBits(s, now){
 function actionBtns(s){
   const acts = [];
   // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
-  if(window.ccwatchDesktop && s.kind === 'live' && s.tty)
+  if(window.mineClaudeDesktop && s.kind === 'live' && s.tty)
     acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
   if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
   if(s.cwd) acts.push(`<button class="iconbtn" title="${T('copyCd')}: ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
@@ -611,7 +611,7 @@ function msgBoxHtml(s){
 function wireActions(root){
   root.querySelectorAll('button[data-copy]').forEach(b => b.onclick = () => copy(b, b.dataset.copy));
   root.querySelectorAll('button[data-tty]').forEach(b => b.onclick = async () => {
-    const r = await window.ccwatchDesktop.focusTerminal({ tty: b.dataset.tty, host: b.dataset.host });
+    const r = await window.mineClaudeDesktop.focusTerminal({ tty: b.dataset.tty, host: b.dataset.host });
     if(!r || !r.ok){ flash(b, 'err'); b.title = T('focusTtyNone'); }
   });
 }
@@ -749,14 +749,14 @@ function render(){
   }
 
   const w = n(s => disp(s) === 'waiting');
-  document.title = (w ? `(${w}) ` : '') + `ccwatch — ${base.length} session`;
+  document.title = (w ? `(${w}) ` : '') + `mineClaude — ${base.length} session`;
   // kurulu PWA'da dock ikonunun uzerindeki sayi
   if(navigator.setAppBadge){
     if(w) navigator.setAppBadge(w).catch(()=>{});
     else navigator.clearAppBadge().catch(()=>{});
   }
   // Electron uygulamasinda menu bar ikonunun rengi ve yanindaki sayi
-  if(window.ccwatchDesktop) window.ccwatchDesktop.setStatus({ waiting: w, total: base.length });
+  if(window.mineClaudeDesktop) window.mineClaudeDesktop.setStatus({ waiting: w, total: base.length });
   $('#host').textContent = state.host ? '· ' + state.host : '';
   restoreFocus(focus);
 }
@@ -784,7 +784,7 @@ function checkNotify(){
         const note = new Notification(asked(s) ? T('notifAsked', s.project) : T('notifTitle', s.project), {
           body: body + (s.title ? '\n' + s.title : ''), tag: String(key),
         });
-        note.onclick = () => { if(window.ccwatchDesktop) window.ccwatchDesktop.show(); else window.focus(); };
+        note.onclick = () => { if(window.mineClaudeDesktop) window.mineClaudeDesktop.show(); else window.focus(); };
       }
     }
   }
@@ -794,7 +794,7 @@ function checkNotify(){
 function setConn(ok, text){
   $('#conn').classList.toggle('off', !ok);
   $('#connText').textContent = text;
-  if(!ok && window.ccwatchDesktop) window.ccwatchDesktop.setStatus({ down:true });
+  if(!ok && window.mineClaudeDesktop) window.mineClaudeDesktop.setStatus({ down:true });
 }
 
 // Dock ikonundan acilip sunucunun kapali oldugu durum artik sik: ne yapmasi
@@ -806,7 +806,7 @@ function showDown(){
     `<div class="empty" style="grid-column:1/-1">
        <div style="font-weight:600;color:var(--text);margin-bottom:6px">${T('serverDown')}</div>
        <div style="margin-bottom:10px">${T('serverDownHint')}</div>
-       <code>npx ccwatch</code>
+       <code>npx mineclaude</code>
      </div>`;
 }
 
@@ -825,7 +825,7 @@ connect();
 
 // PWA: kendi penceresinde kurulabilsin, sunucu kapaliyken duzgun bir sayfa gosterebilsin.
 // Electron uygulamasinda gereksiz: orada cache yerine her acilista taze sayfa istiyoruz.
-if('serviceWorker' in navigator && location.protocol !== 'file:' && !window.ccwatchDesktop){
+if('serviceWorker' in navigator && location.protocol !== 'file:' && !window.mineClaudeDesktop){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
 // goreli zamanlari tazele; mesaj yazilirken kozmetik render'i atla

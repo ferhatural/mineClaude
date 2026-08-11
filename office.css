@@ -1,4 +1,4 @@
-/* ccwatch — ofis görünümü (Minecraft/voxel stili) */
+/* mineClaude — ofis görünümü (Minecraft/voxel stili) */
 #office{
   background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
   overflow:hidden;line-height:0

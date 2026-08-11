@@ -1,6 +1,6 @@
 {
-  "name": "ccwatch",
-  "short_name": "ccwatch",
+  "name": "mineClaude",
+  "short_name": "mineClaude",
   "description": "Local dashboard for every Claude Code CLI session on your machine",
   "start_url": "/",
   "scope": "/",

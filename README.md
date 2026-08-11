@@ -1,4 +1,4 @@
-# ccwatch
+# mineClaude
 
 > 🇹🇷 [Türkçe README](README.tr.md)
 
@@ -23,8 +23,8 @@ sofa have been idle for a while. Status changes make them walk — through the d
 ## Install
 
 ```bash
-git clone https://github.com/ferhatural/ccwatch.git
-cd ccwatch
+git clone https://github.com/ferhatural/mineClaude.git
+cd mineClaude
 node server.js
 ```
 
@@ -41,7 +41,7 @@ node server.js --port 7799 --no-open
 To call it from anywhere:
 
 ```bash
-ln -s "$PWD/server.js" /usr/local/bin/ccwatch
+ln -s "$PWD/server.js" /usr/local/bin/mineclaude
 ```
 
 ## Menu bar app (macOS)
@@ -53,17 +53,17 @@ grows a number the moment a session starts waiting on you.
 On a new machine there is nothing to clone and nothing to build:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ferhatural/ccwatch/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ferhatural/mineClaude/main/install.sh | bash
 ```
 
 That picks the DMG for your architecture from the latest release, copies the app into
 `/Applications`, and opens it. The app bundles its own Node, so nothing else is needed.
 
-Or [download the DMG](https://github.com/ferhatural/ccwatch/releases/latest) and drag it across
+Or [download the DMG](https://github.com/ferhatural/mineClaude/releases/latest) and drag it across
 by hand. In that case run this once, or macOS will refuse to open it:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/ccwatch.app
+xattr -dr com.apple.quarantine /Applications/mineClaude.app
 ```
 
 The app is not signed — that needs a paid Apple Developer account — and macOS quarantines
@@ -75,7 +75,7 @@ To work on it instead of just using it:
 ```bash
 npm install            # electron, dev dependency only — `node server.js` still needs nothing
 npm run app            # run it
-npm run app:build      # dist/ccwatch-1.0.0-arm64.dmg
+npm run app:build      # dist/mineClaude-1.0.0-arm64.dmg
 ```
 
 Releases are built by `.github/workflows/release.yml` on a version tag:
@@ -85,7 +85,7 @@ npm version 1.1.0 && git push --follow-tags
 ```
 
 The app starts `server.js` itself as a child process, so there is nothing else to keep running.
-If a ccwatch server of the same version is already up on port 7788 — from `--install` below, or
+If a mineClaude server of the same version is already up on port 7788 — from `--install` below, or
 a terminal — it adopts that one instead of starting a second. A server of a *different* version
 is not adopted: a launchd agent that has been up for days keeps serving the code it started
 with, which shows up as features mysteriously missing from the dashboard. In that case the app
@@ -118,13 +118,13 @@ and a badge with the number of sessions waiting on you.
 A dock icon is only useful if the server is up, so let launchd keep it running:
 
 ```bash
-ccwatch --install      # start at login, restart on crash
-ccwatch --status       # is it loaded? which pid? where are the logs?
-ccwatch --uninstall
+mineclaude --install      # start at login, restart on crash
+mineclaude --status       # is it loaded? which pid? where are the logs?
+mineclaude --uninstall
 ```
 
-`--install` writes `~/Library/LaunchAgents/com.github.ferhatural.ccwatch.plist` and logs to
-`~/Library/Logs/ccwatch.log`. Install the package globally first (`npm i -g ccwatch`) — a path
+`--install` writes `~/Library/LaunchAgents/com.github.ferhatural.mineclaude.plist` and logs to
+`~/Library/Logs/mineclaude.log`. Install the package globally first (`npm i -g mineclaude`) — a path
 inside the `npx` cache can be cleaned up later and would break the agent.
 
 ## Statuses

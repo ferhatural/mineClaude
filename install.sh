@@ -1,7 +1,7 @@
 #!/bin/bash
-# ccwatch'i son surumden kurar.
+# mineClaude'i son surumden kurar.
 #
-#   curl -fsSL https://raw.githubusercontent.com/ferhatural/ccwatch/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ferhatural/mineClaude/main/install.sh | bash
 #
 # Yaptigi is: GitHub Releases'ten bu makinenin mimarisine uyan DMG'yi indirir,
 # baglar, /Applications'a kopyalar, karantina isaretini kaldirir, cikarir, acar.
@@ -13,8 +13,8 @@
 
 set -euo pipefail
 
-REPO="ferhatural/ccwatch"
-APP="ccwatch.app"
+REPO="ferhatural/mineClaude"
+APP="mineClaude.app"
 
 say()  { printf '  %s\n' "$*"; }
 die()  { printf '\n  hata: %s\n\n' "$*" >&2; exit 1; }
@@ -42,7 +42,7 @@ esac
 VERSION="${TAG#v}"
 say "surum     : $TAG"
 
-DMG_URL="https://github.com/$REPO/releases/download/$TAG/ccwatch-$VERSION-$ARCH.dmg"
+DMG_URL="https://github.com/$REPO/releases/download/$TAG/mineClaude-$VERSION-$ARCH.dmg"
 
 TMP="$(mktemp -d)"
 MOUNT=""
@@ -53,11 +53,11 @@ cleanup() {
 trap cleanup EXIT
 
 say "indiriliyor: $DMG_URL"
-curl -fL --progress-bar -o "$TMP/ccwatch.dmg" "$DMG_URL" || die "indirilemedi: $DMG_URL"
+curl -fL --progress-bar -o "$TMP/mineClaude.dmg" "$DMG_URL" || die "indirilemedi: $DMG_URL"
 
 MOUNT="$TMP/mnt"
 mkdir -p "$MOUNT"
-hdiutil attach "$TMP/ccwatch.dmg" -mountpoint "$MOUNT" -nobrowse -quiet || die "DMG baglanamadi"
+hdiutil attach "$TMP/mineClaude.dmg" -mountpoint "$MOUNT" -nobrowse -quiet || die "DMG baglanamadi"
 [ -d "$MOUNT/$APP" ] || die "DMG icinde $APP yok"
 
 # Nereye kuralim: /Applications yazilabiliyorsa oraya, degilse kullaniciya ozel klasore
@@ -69,15 +69,25 @@ if [ ! -w "$DEST" ]; then
 fi
 
 # Calisan bir kopya varsa kapat, yoksa uzerine kopyalama yarim kalir
-if pgrep -f "$DEST/$APP/Contents/MacOS/ccwatch" >/dev/null 2>&1; then
-  say "kapatiliyor: calisan ccwatch"
-  pkill -f "$DEST/$APP/Contents/MacOS/ccwatch" || true
+if pgrep -f "$DEST/$APP/Contents/MacOS/mineClaude" >/dev/null 2>&1; then
+  say "kapatiliyor: calisan mineClaude"
+  pkill -f "$DEST/$APP/Contents/MacOS/mineClaude" || true
   sleep 1
 fi
 
 if [ -e "$DEST/$APP" ]; then
   say "siliniyor : eski $DEST/$APP"
   rm -rf "${DEST:?}/$APP"
+fi
+
+# Proje 1.1.0'da ccwatch adindan mineClaude'a gecti. Eski kurulum baska bir isimde
+# durdugu icin ustune yazilmiyor, ayrica silinmesi gerekiyor — yoksa Applications'ta
+# ayni programin iki kopyasi kaliyor ve eskisi 7788'i kapabiliyor.
+if [ -e "$DEST/ccwatch.app" ]; then
+  say "siliniyor : eski adiyla kalan $DEST/ccwatch.app"
+  pkill -f "$DEST/ccwatch.app/Contents/MacOS/ccwatch" 2>/dev/null || true
+  sleep 1
+  rm -rf "${DEST:?}/ccwatch.app"
 fi
 
 say "kopyalaniyor -> $DEST/$APP"
