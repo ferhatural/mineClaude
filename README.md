@@ -132,6 +132,7 @@ inside the `npx` cache can be cleaned up later and would break the agent.
 | Status | Meaning |
 |---|---|
 | **waiting for input** (amber) | Claude asked you something or needs a permission decision — the keyboard is yours |
+| **asked you something** (amber) | The turn is over and Claude's last message ends in a question. Claude Code files that as `idle`, so this one is ours, not its |
 | **working** (green) | Thinking or running a tool; the card shows which tool and its argument |
 | **standing by** (blue) | Claude answered and it is your turn — there was activity in the last 15 minutes |
 | **idle** (grey) | Quiet for more than 15 minutes |

@@ -816,10 +816,11 @@ function ensureDesks(n) {
 
 // ---------------------------------------------------------------- yerlesim
 
+// s.asked: tur bitmis ama Claude soru sormus — 2D ofisle ayni, eli kaldirsin
 const stateOf = (s) =>
   s.status === 'busy' ? 'busy'
     : s.status === 'waiting' ? 'wait'
-      : (s.status === 'idle' && !s.cold) ? 'ready' : 'idle';
+      : (s.status === 'idle' && !s.cold) ? (s.asked ? 'wait' : 'ready') : 'idle';
 const atDesk = (s) => stateOf(s) !== 'idle';
 const keyOf = (s) => String(s.sessionId || s.pid);
 

@@ -205,15 +205,25 @@ function readTranscriptTail(file, mtime, size) {
 }
 
 // Kart tek satirda gosterildigi icin markdown gurultusunu ayikla
-function plainText(t) {
-  return String(t)
+function plainText(t, limit = 400) {
+  const s = String(t)
     .replace(/```[\s\S]*?(```|$)/g, ' ')     // kod bloklari
     .replace(/^\s{0,3}#{1,6}\s*/gm, '')      // basliklar
     .replace(/^\s{0,3}[-*]\s+/gm, '· ')      // madde imleri
     .replace(/\*\*|__|`/g, '')               // kalin / kod isaretleri
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 400);
+    .trim();
+  return limit === Infinity ? s : s.slice(0, limit);
+}
+
+// Claude turu bitirip duz metinle soru sordugunda Claude Code bunu "waiting" diye
+// yazmiyor — session dosyasinda sadece "idle" var, kart da "beklemede" gosteriyor.
+// Oysa klavye sende. Kod bloklari plainText'te zaten ayiklandigi icin koddaki '?'
+// sayilmiyor; sonda liste/secenek varsa diye son cumleye degil son 200 karaktere
+// bakiyoruz. Son 14 gunun 60 tur-sonu mesajinda 8'ini yakaladi, hepsi gercek soruydu.
+// Kelimeye bakan kural (mi/mu eki, "istersen") denendi: yarisi yanlis eslesti, girmedi.
+function asksQuestion(cleanText) {
+  return /[?？]/.test(String(cleanText || '').slice(-200));
 }
 
 function parseTail(file, size) {
@@ -226,6 +236,7 @@ function parseTail(file, size) {
     lastRole: null,
     lastStopReason: null,
     lastText: null,
+    asked: false,
     lastTool: null,
     model: null,
     contextTokens: null,
@@ -299,7 +310,11 @@ function parseTail(file, size) {
           if (ctx > 0) info.contextTokens = ctx;
         }
         for (const c of m.content || []) {
-          if (c.type === 'text' && c.text && c.text.trim()) info.lastText = plainText(c.text);
+          if (c.type === 'text' && c.text && c.text.trim()) {
+            const clean = plainText(c.text, Infinity);
+            info.lastText = clean.slice(0, 400);
+            info.asked = asksQuestion(clean);
+          }
           if (c.type === 'tool_use') {
             info.lastTool = {
               name: c.name,
@@ -425,6 +440,8 @@ function collect() {
       title: tr && tr.title,
       lastPrompt: tr && tr.lastPrompt,
       lastText: tr && tr.lastText,
+      // Claude duz metinle soru sordu mu: session dosyasi bunu bilmiyor, biz cikardik
+      asked: !!(tr && tr.asked),
       lastTool: tr && tr.lastTool,
       model: tr && tr.model,
       contextTokens: tr && tr.contextTokens,
@@ -569,7 +586,8 @@ const COLOR = {
   idle: C.blue, unknown: C.gray, ended: C.gray,
 };
 // idle + henuz sogumamis = "beklemede" (Claude cevabini verdi, sira sende)
-const dispStatus = (s) => (s.status === 'idle' && !s.cold ? 'ready' : s.status);
+// asked: tur bitmis ama Claude soru sormus — panelde oldugu gibi burada da input bekliyor sayilir
+const dispStatus = (s) => (s.status === 'idle' && !s.cold ? (s.asked ? 'waiting' : 'ready') : s.status);
 
 function printTable(state) {
   const { live, ended, counts, now } = state;

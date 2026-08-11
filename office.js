@@ -329,10 +329,12 @@
   }
 
   // busy/wait/ready masada oturur; yalnizca sogumus (cold) olanlar lounge'a iner
+  // s.asked: Claude turu bitirirken soru sormus. Session dosyasinda "idle" yaziyor
+  // ama klavye sende — kart tarafiyla ayni sayilsin, eli o da kaldirsin.
   const stateOf = (s) =>
     s.status === 'busy' ? 'busy'
       : s.status === 'waiting' ? 'wait'
-      : (s.status === 'idle' && !s.cold) ? 'ready' : 'idle';
+      : (s.status === 'idle' && !s.cold) ? (s.asked ? 'wait' : 'ready') : 'idle';
   const atDesk = (s) => stateOf(s) !== 'idle';
 
   const SPEED = 300;                                     // birim / saniye (yuruyus hizi)

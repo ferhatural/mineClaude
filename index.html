@@ -231,8 +231,11 @@ const I18N = {
     copyTranscript:'transcript yolunu kopyala',
     focusTty:(t)=>`terminal sekmesine git (${t})`,
     focusTtyNone:'sekme bulunamadı — terminal kapanmış olabilir',
+    asked:'soru sordu',
+    askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
+    notifAsked:(p)=>`${p} sana bir soru sordu`,
     justNow:'az önce', sec:'sn önce', min:'dk önce', hour:'sa önce', day:'gün önce',
     dMin:'dk', dHour:'sa', dDay:'g',
     desks:'MASALAR', lounge:'LOUNGE',
@@ -257,8 +260,11 @@ const I18N = {
     copyTranscript:'copy transcript path',
     focusTty:(t)=>`go to the terminal tab (${t})`,
     focusTtyNone:'tab not found — the terminal may have been closed',
+    asked:'asked you something',
+    askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
+    notifAsked:(p)=>`${p} asked you something`,
     justNow:'just now', sec:'s ago', min:'m ago', hour:'h ago', day:'d ago',
     dMin:'m', dHour:'h', dDay:'d',
     desks:'DESKS', lounge:'LOUNGE',
@@ -275,7 +281,11 @@ const prefersTr = (navigator.languages && navigator.languages.length
 let lang = (saved === 'tr' || saved === 'en') ? saved : (prefersTr ? 'tr' : 'en');
 const T = (k, ...a) => { const v = I18N[lang][k]; return typeof v === 'function' ? v(...a) : (v ?? k); };
 // Claude turu bitirince dosyaya hemen "idle" yaziyor; taze olani "beklemede" diye ayiriyoruz
-const disp = (s) => (s.status === 'idle' && !s.cold ? 'ready' : s.status);
+// Turu bitirmis ama duz metinle soru sormus session da klavyeyi sana birakmis
+// demektir: sayaci, ikonu, bildirimi "input bekliyor" ile ayni. Etiketi ayri
+// duruyor (bu bizim cikarimimiz, Claude Code'un kaydi degil) — bkz. askedTag.
+const asked = (s) => !!s.asked && s.status === 'idle' && !s.cold;
+const disp = (s) => (s.status === 'idle' && !s.cold ? (s.asked ? 'waiting' : 'ready') : s.status);
 const ICON = {
   resume:'<path d="M5.5 3.2v9.6L13 8z" fill="currentColor" stroke="none"/>',
   folder:'<path d="M1.8 12.8V3.4h4.1l1.3 1.7h7v7.7z"/>',
@@ -533,7 +543,7 @@ function card(s, now){
   el.innerHTML = `
     <div class="row1">
       <div class="proj" title="${esc(s.name || s.project)}">${esc(s.project || '?')}</div>
-      <div class="pill"><span class="d"></span>${T(st)}</div>
+      <div class="pill"${asked(s) ? ` title="${esc(T('askedWhy'))}"` : ''}><span class="d"></span>${asked(s) ? T('asked') : T(st)}</div>
     </div>
     <div class="path" title="${esc(s.cwd||'')}">${esc(s.cwdShort || s.cwd || '')}${s.gitBranch ? ` <span class="branch">@${esc(s.gitBranch)}</span>` : ''}</div>
     ${s.lastText || s.lastPrompt || s.title
@@ -663,7 +673,7 @@ function render(){
 
 let prevDisp = new Map();
 function checkNotify(){
-  const nowWaiting = new Set(state.live.filter(s => s.status === 'waiting').map(s => s.sessionId || s.pid));
+  const nowWaiting = new Set(state.live.filter(s => disp(s) === 'waiting').map(s => s.sessionId || s.pid));
 
   // ses: yeni input beklemeye geçen ve turunu yeni bitiren session'lar
   const nextDisp = new Map();
@@ -678,9 +688,11 @@ function checkNotify(){
   if(notifyBox.checked && Notification.permission === 'granted'){
     for(const s of state.live){
       const key = s.sessionId || s.pid;
-      if(s.status === 'waiting' && !prevWaiting.has(key)){
-        const note = new Notification(T('notifTitle', s.project), {
-          body: (s.waitingFor || '') + (s.title ? '\n' + s.title : ''), tag: String(key),
+      if(disp(s) === 'waiting' && !prevWaiting.has(key)){
+        // soru sorduysa waitingFor yok; bildirimin govdesi Claude'un sorusu olsun
+        const body = s.waitingFor || (asked(s) ? s.lastText : '') || '';
+        const note = new Notification(asked(s) ? T('notifAsked', s.project) : T('notifTitle', s.project), {
+          body: body + (s.title ? '\n' + s.title : ''), tag: String(key),
         });
         note.onclick = () => { if(window.ccwatchDesktop) window.ccwatchDesktop.show(); else window.focus(); };
       }

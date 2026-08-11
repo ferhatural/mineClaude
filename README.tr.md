@@ -113,6 +113,7 @@ log'u `~/Library/Logs/ccwatch.log`'a düşer. Önce paketi kalıcı kur (`npm i 
 | Durum | Anlamı |
 |---|---|
 | **input bekliyor** (sarı) | Claude sana soru sordu / izin bekliyor, klavye sende |
+| **soru sordu** (sarı) | Tur bitmiş ama Claude'un son mesajı soruyla bitiyor. Claude Code bunu `idle` diye yazıyor, yani bu durum onun değil bizim çıkarımımız |
 | **çalışıyor** (yeşil) | Şu an düşünüyor veya tool çalıştırıyor — kartta hangi tool olduğu yazar |
 | **beklemede** (mavi) | Claude cevabını verdi, sıra sende — son 15 dakika içinde konuşulmuş |
 | **boşta** (gri) | 15 dakikadan uzun süredir sessiz, soğumuş |
