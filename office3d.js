@@ -399,16 +399,32 @@ function buildPerson(s) {
   const shirt = pick(SHIRTS, n), skin = pick(SKINS, n >> 3);
   const hair = pick(HAIRS, n >> 6), pants = pick(PANTS, n >> 9);
   const shoe = pick(SHOES, n >> 12);
+  // Herkes tek kalipti (genis kol, kisa sac) ve ofis bastan asagi ayni tipten
+  // gorunuyordu. Minecraft'in Alex modeli gibi ince kollu + uzun sacli bir varyant
+  // ekledik. Session'in hash'inden secildigi icin ayni session hep ayni gorunur.
+  const femme = ((n >> 15) & 1) === 1;
+  const armW = femme ? 3 : 4;
 
   const g = new THREE.Group();
   const body = new THREE.Group();          // govde + kollar: yururken zipliyor
   g.add(body);
 
+  // Kafa kendi grubunda: sac kafayla birlikte donsun, kafa da govdeden bagimsiz
+  // saga sola bakabilsin (lounge'da sohbet edenler icin).
+  const headG = new THREE.Group();
+  headG.position.set(0, 28, 0);
+  body.add(headG);
+
   const head = new THREE.Mesh(BOX, headMaterials(skin, hair));
   head.scale.set(8, 8, 8);
-  head.position.set(0, 28, 0);
   head.castShadow = true;
-  body.add(head);
+  headG.add(head);
+
+  if (femme) {
+    box(headG, 8.6, 11, 2, 0, -7, -5, hair);        // ense — omuza kadar inen sac
+    box(headG, 1.4, 9, 8.4, -4.7, -5, 0, hair);     // yan tutamlar
+    box(headG, 1.4, 9, 8.4, 4.7, -5, 0, hair);
+  }
 
   box(body, 8, 12, 4, 0, 12, 0, shirt);    // govde
 
@@ -418,10 +434,11 @@ function buildPerson(s) {
     body.add(p);
     return p;
   };
-  const armL = limb(-6), armR = limb(6);
+  const ax = 4 + armW / 2;
+  const armL = limb(-ax), armR = limb(ax);
   for (const a of [armL, armR]) {
-    box(a, 4, 9, 4, 0, -9, 0, shirt);      // kol
-    box(a, 4, 3, 4, 0, -12, 0, skin);      // el
+    box(a, armW, 9, armW, 0, -9, 0, shirt);      // kol
+    box(a, armW, 3, armW, 0, -12, 0, skin);      // el
   }
 
   const leg = (px) => {
@@ -467,7 +484,118 @@ function buildPerson(s) {
   g.add(ring);
 
   g.userData.person = true;
-  return { g, parts: { body, head, armL, armR, legL, legR, mug, steamG, bubble, ring } };
+  return { g, parts: { body, head: headG, armL, armR, legL, legR, mug, steamG, bubble, ring } };
+}
+
+// ---------------------------------------------------------------- kedi
+
+// Ofis kedisi. Kimseye bagli degil, session sayisindan bagimsiz: lounge'da
+// duraklar arasinda dolasir, varinca bir sure oturup kuyrugunu sallar.
+// Duraklar elle secildi — rastgele nokta uretseydik kanepenin ya da sehpanin
+// icinden gecerdi.
+const CAT_SPOTS = [
+  { x: 62, z: 58 }, { x: 152, z: 58 }, { x: 152, z: 100 }, { x: 70, z: 100 },
+  { x: 158, z: 8 }, { x: 56, z: 16 }, { x: 108, z: 78 },
+];
+const CAT_SPEED = 26;          // birim/sn — insanlardan yavas, tirisla geziyor
+const CAT_FUR = 0xd08a3a, CAT_FUR2 = 0xb8722c, CAT_MUZZLE = 0xf2ddbe;
+
+let cat = null;
+
+function buildCat() {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  g.add(body);
+
+  box(body, 6, 5, 12, 0, 4, 0, CAT_FUR);              // govde (+Z one bakiyor)
+
+  const headG = new THREE.Group();
+  headG.position.set(0, 7.5, 6.5);
+  body.add(headG);
+  box(headG, 5, 5, 5, 0, -2.5, 0, CAT_FUR);
+  box(headG, 3, 2, 1, 0, -1.5, 2.6, CAT_MUZZLE);      // burun
+  box(headG, 1.4, 1.6, 1, -1.4, 2.5, 0, CAT_FUR2);    // kulaklar
+  box(headG, 1.4, 1.6, 1, 1.4, 2.5, 0, CAT_FUR2);
+
+  const leg = (px, pz) => {
+    const l = new THREE.Group();
+    l.position.set(px, 4, pz);
+    g.add(l);
+    box(l, 2, 4, 2, 0, -4, 0, CAT_FUR2);
+    return l;
+  };
+  const legFL = leg(-2, 4), legFR = leg(2, 4), legBL = leg(-2, -4), legBR = leg(2, -4);
+
+  const tail = new THREE.Group();
+  tail.position.set(0, 7, -6);
+  body.add(tail);
+  box(tail, 1.6, 1.6, 7, 0, -0.8, -3.5, CAT_FUR2);
+  tail.rotation.x = -0.5;
+
+  g.position.set(CAT_SPOTS[0].x, 0, CAT_SPOTS[0].z);
+  return {
+    g,
+    parts: { body, head: headG, legFL, legFR, legBL, legBR, tail },
+    at: { ...CAT_SPOTS[0] },
+    spot: 0,
+    state: 'sit',
+    wait: 2,
+    rot: 0,
+    rotGoal: 0,
+    t: 0,
+  };
+}
+
+function catStep(dt) {
+  if (!cat) return;
+  cat.t += dt;
+  const p = cat.parts;
+
+  if (cat.state === 'sit') {
+    cat.wait -= dt;
+    // otururken arka govde yere yakin, on ayaklar dik
+    p.body.position.y = -1.2;
+    p.body.rotation.x = 0.16;
+    p.legFL.rotation.x = 0; p.legFR.rotation.x = 0;
+    p.legBL.rotation.x = -1.2; p.legBR.rotation.x = -1.2;
+    p.tail.rotation.y = Math.sin(cat.t * 1.6) * 0.55;
+    p.head.rotation.y = Math.sin(cat.t * 0.5) * 0.5;
+    if (cat.wait <= 0) {
+      // siradaki durak: geri donup ayni yolu tekrarlamasin diye bir sonrakine gecer
+      cat.spot = (cat.spot + 1 + Math.floor(Math.random() * 2)) % CAT_SPOTS.length;
+      const d = CAT_SPOTS[cat.spot];
+      cat.rotGoal = Math.atan2(d.x - cat.at.x, d.z - cat.at.z);
+      cat.state = 'walk';
+    }
+    return;
+  }
+
+  const d = CAT_SPOTS[cat.spot];
+  const dx = d.x - cat.at.x, dz = d.z - cat.at.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 1.5) {
+    cat.state = 'sit';
+    cat.wait = 4 + Math.random() * 7;
+    return;
+  }
+  const step = Math.min(dist, CAT_SPEED * dt);
+  cat.at.x += (dx / dist) * step;
+  cat.at.z += (dz / dist) * step;
+  cat.g.position.set(cat.at.x, 0, cat.at.z);
+
+  let turn = cat.rotGoal - cat.rot;
+  while (turn > Math.PI) turn -= Math.PI * 2;
+  while (turn < -Math.PI) turn += Math.PI * 2;
+  cat.rot += turn * Math.min(1, dt * 6);
+  cat.g.rotation.y = cat.rot;
+
+  const k = Math.sin(cat.t * 11) * 0.6;
+  p.legFL.rotation.x = k; p.legFR.rotation.x = -k;
+  p.legBL.rotation.x = -k; p.legBR.rotation.x = k;
+  p.body.position.y = Math.abs(Math.sin(cat.t * 11)) * 0.5;
+  p.body.rotation.x = 0;
+  p.tail.rotation.y = Math.sin(cat.t * 5) * 0.3;
+  p.head.rotation.y = 0;
 }
 
 // ---------------------------------------------------------------- sahne parcalari
@@ -779,6 +907,8 @@ function init(container) {
   deskGroup = new THREE.Group();
   peopleGroup = new THREE.Group();
   scene.add(staticGroup, deskGroup, peopleGroup);
+  cat = buildCat();
+  scene.add(cat.g);
   deskCount = 0;
 
   raycaster = new THREE.Raycaster();
@@ -916,6 +1046,7 @@ function pose(node, dt) {
     p.mug.visible = false;
     p.bubble.visible = false;
     p.ring.visible = false;
+    p.head.rotation.set(0, 0, 0);
     node.g.position.y = 0;
     return;
   }
@@ -947,7 +1078,32 @@ function pose(node, dt) {
     p.armL.rotation.z = 0;
     p.armR.rotation.z = 0;
     p.body.rotation.x = sit ? 0.05 : 0;
-    if (prop === 'coffee') { p.armR.rotation.x = -1.35; p.armR.rotation.z = -0.25; }
+    if (prop === 'coffee') {
+      // Kupa elde asili duruyordu ama kimse icmiyordu. ~7 saniyede bir yudum:
+      // kol agza kalkar, kafa hafif geriye gider, sonra iner. node.t her kisi icin
+      // rastgele basladigi icin herkes ayni anda icmiyor.
+      const cyc = (t % 7) / 7;
+      const sip = cyc > 0.72 ? Math.sin(((cyc - 0.72) / 0.28) * Math.PI) : 0;
+      p.armR.rotation.x = -1.35 - sip * 0.9;
+      p.armR.rotation.z = -0.25 + sip * 0.12;
+      p.head.rotation.x = -sip * 0.22;
+    }
+  }
+
+  // Lounge'daki herkes tas gibi duruyordu. Sohbet edenler karsilikli kafa cevirir,
+  // digerleri arada etrafa bakar; yururken ve klavyedeyken kafa duz.
+  if (!node.walking && st !== 'busy') {
+    if (prop === 'gossip') {
+      p.head.rotation.y = Math.sin(t * 0.75) * 0.45 + Math.sin(t * 2.3) * 0.06;
+      p.head.rotation.x = Math.sin(t * 1.9) * 0.05;              // konusurken hafif bas sallama
+    } else if (prop !== 'coffee') {
+      p.head.rotation.y = Math.sin(t * 0.32) * 0.3;
+      p.head.rotation.x = 0;
+    } else {
+      p.head.rotation.y = Math.sin(t * 0.4) * 0.15;
+    }
+  } else {
+    p.head.rotation.set(0, 0, 0);
   }
 
   p.mug.visible = prop === 'coffee';
@@ -1035,6 +1191,7 @@ function tick(now) {
   ringMat.opacity = 0.15 + 0.35 * ((Math.sin(now / 320) + 1) / 2);
 
   if (pong) pongStep(dt);
+  catStep(dt);
   for (const node of nodes.values()) advance(node, dt);
   updateLabels();
   renderer.render(scene, camera);
