@@ -198,8 +198,14 @@ the conversation) before they get one.
 - Live updates over SSE every 2 seconds; the browser tab title shows how many sessions want you
 - Optional desktop notification the moment a session starts waiting for input
 - Click a status tile to filter
+- Notifications, hiding empty sessions, sounds and the column count live behind the gear button;
+  they used to sit in a row under the header, which was height the office view could not spare
 - Column count is selectable (auto, 1–6) and remembered; single column on narrow screens;
   fullscreen button in the corner
+- The office views fit the window: the scene takes whatever height is left and the page itself
+  does not scroll. The card grid still scrolls, being a list
+- The message box is a textarea. Enter sends, Shift+Enter starts a new line, and it grows with
+  the text up to six lines
 - Icon buttons on every card copy `claude --resume <id>`, `cd <folder>`, or the transcript path
 - Sessions an editor started but never used are hidden by default
 - **TR / EN switch** in the top right. It changes the interface only — Claude's messages, project

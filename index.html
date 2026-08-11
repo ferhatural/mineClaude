@@ -114,6 +114,31 @@
   .pick-x svg{width:11px;height:11px;display:block}
   @media (max-width:720px){ #pick{width:100%} }
 
+  /* Ofis gorunumlerinde sayfa viewport'a sigar: sahne kalan yuksekligi alir ve
+     disarida scroll cikmaz. Onceden sahne 1600x860 en-boy oraniyla tam genislikte
+     ciziliyordu, ekrandan tasip sayfayi kaydiriyordu. Kart gorunumu eskisi gibi akar. */
+  body.office{overflow:hidden}
+  body.office .wrap{height:100vh;display:flex;flex-direction:column;padding-bottom:16px}
+  body.office .counts{margin-bottom:12px}
+  body.office footer{display:none}
+  body.office #stage{flex:1;min-height:0;display:flex}
+  body.office #office,body.office #office3d{flex:1;min-height:0}
+  body.office #office{display:flex}
+  body.office #office svg{width:100%;height:100%}
+  body.office #office3d{aspect-ratio:auto}
+
+  /* ayarlar modali */
+  .modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);
+    display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px}
+  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    width:min(400px,100%);padding:16px 18px 18px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+  .sheet-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .sheet-head b{font-size:15px}
+  .sheet .row{display:flex;flex-direction:column;gap:12px;color:var(--dim);font-size:13px}
+  .sheet label{display:flex;gap:8px;align-items:center;cursor:pointer;user-select:none}
+  .sheet input[type=checkbox]{accent-color:var(--idle)}
+  .sheet .seg{margin-left:0;margin-top:4px}
+
   .grid{display:grid;grid-template-columns:var(--gtc);gap:12px;align-items:start}
   @media (max-width:720px){
     :root{--gtc:minmax(0,1fr) !important}
@@ -165,16 +190,19 @@
   .meta b{color:var(--dim);font-weight:500}
 
   .bottom{display:flex;gap:6px;align-items:center;margin-top:9px}
-  .msg{display:flex;gap:6px;flex:1;min-width:0}
-  .msg input{
-    flex:1;min-width:0;font:inherit;font-size:12.5px;color:var(--text);background:var(--panel2);
-    border:1px solid var(--line);border-radius:8px;padding:4px 10px;height:28px;outline:none;transition:.12s
+  .msg{display:flex;gap:6px;flex:1;min-width:0;align-items:flex-end}
+  /* textarea: tek satir yuksekliginde baslar, yazdikca buyur (JS), 6 satirda durur */
+  .msg textarea{
+    flex:1;min-width:0;font:inherit;font-size:12.5px;line-height:18px;color:var(--text);
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:4px 10px;height:28px;max-height:130px;outline:none;transition:border-color .12s;
+    resize:none;overflow-y:auto
   }
-  .msg input:focus{border-color:var(--idle)}
-  .msg input::placeholder{color:var(--faint)}
-  .msg.ok input{border-color:var(--busy)} .msg.err input{border-color:#d0524a}
+  .msg textarea:focus{border-color:var(--idle)}
+  .msg textarea::placeholder{color:var(--faint)}
+  .msg.ok textarea{border-color:var(--busy)} .msg.err textarea{border-color:#d0524a}
   .msg.off{opacity:.4}
-  .msg.off input,.msg.off .iconbtn{cursor:not-allowed;background:transparent;border-style:dashed}
+  .msg.off textarea,.msg.off .iconbtn{cursor:not-allowed;background:transparent;border-style:dashed}
 
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);
     margin:28px 0 12px;font-weight:600;display:flex;align-items:center;gap:8px;cursor:pointer}
@@ -194,6 +222,7 @@
       <div class="conn" id="conn"><span class="dot"></span><span id="connText"></span></div>
       <div class="opts" id="langSw"></div>
       <div class="opts icons" id="viewSw"></div>
+      <button class="iconbtn" id="setBtn"></button>
       <button class="iconbtn" id="fs">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/>
@@ -204,13 +233,19 @@
 
   <div class="counts" id="counts"></div>
 
-  <div class="toolbar">
-    <label><input type="checkbox" id="notify"> <span id="notifyLabel"></span></label>
-    <label><input type="checkbox" id="hideEmpty" checked> <span id="hideEmptyLabel"></span></label>
-    <label><input type="checkbox" id="sound"> <span id="soundLabel"></span></label>
-    <div class="seg" id="colsWrap">
-      <span id="colsLabel"></span>
-      <div class="opts" id="cols"></div>
+
+  <div id="settings" class="modal" hidden>
+    <div class="sheet">
+      <div class="sheet-head"><b id="settingsTitle"></b><button class="pick-x" id="setClose"></button></div>
+      <div class="row">
+        <label><input type="checkbox" id="notify"> <span id="notifyLabel"></span></label>
+        <label><input type="checkbox" id="hideEmpty" checked> <span id="hideEmptyLabel"></span></label>
+        <label><input type="checkbox" id="sound"> <span id="soundLabel"></span></label>
+        <div class="seg" id="colsWrap">
+          <span id="colsLabel"></span>
+          <div class="opts" id="cols"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -253,6 +288,7 @@ const I18N = {
     focusTty:(t)=>`terminal sekmesine git (${t})`,
     focusTtyNone:'sekme bulunamadı — terminal kapanmış olabilir',
     close:'kapat', loading:'yükleniyor…', noMessages:'mesaj bulunamadı', you:'Sen',
+    settings:'Ayarlar',
     asked:'soru sordu',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
@@ -283,6 +319,7 @@ const I18N = {
     focusTty:(t)=>`go to the terminal tab (${t})`,
     focusTtyNone:'tab not found — the terminal may have been closed',
     close:'close', loading:'loading…', noMessages:'no messages found', you:'You',
+    settings:'Settings',
     asked:'asked you something',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
@@ -320,6 +357,7 @@ const ICON = {
   grid:'<rect x="2" y="2" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1.2"/><rect x="2" y="8.8" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1.2"/>',
   cube:'<path d="M8 1.6l5.6 3.2v6.4L8 14.4 2.4 11.2V4.8z"/><path d="M2.4 4.8L8 8l5.6-3.2M8 8v6.4"/>',
   terminal:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M4.4 6.4L6.6 8.4 4.4 10.4M8.4 10.6h3"/>',
+  gear:'<circle cx="8" cy="8" r="2.3"/><path d="M8 1.6l1 1.7 1.9-.5.5 1.9 1.7 1-1 1.7 1 1.7-1.7 1-.5 1.9-1.9-.5-1 1.7-1-1.7-1.9.5-.5-1.9-1.7-1 1-1.7-1-1.7 1.7-1 .5-1.9 1.9.5z"/>',
 };
 const svg = (k) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 
@@ -369,6 +407,16 @@ function ping(kind){
     });
   }catch{}
 }
+
+// --- ayarlar modali ---
+// Checkbox'lar basligin altinda bir satir kapliyordu; ofis gorunumu viewport'a
+// sigacaksa o satir dogrudan sahneden calinan yukseklik demekti.
+const setModal = $('#settings');
+const openSettings = () => { setModal.hidden = false; };
+const closeSettings = () => { setModal.hidden = true; };
+$('#setBtn').onclick = openSettings;
+$('#setClose').onclick = closeSettings;
+setModal.onpointerdown = (e) => { if(e.target === setModal) closeSettings(); };
 
 // --- sahnedeki birine tıklayınca sağda açılan kolon ---
 //
@@ -433,14 +481,17 @@ function updatePick(pop, s, now){
   const key = String(s.sessionId) + ':' + (s.lastActivityAt || 0);
   if(s.sessionId && key !== pickMsgKey){
     pickMsgKey = key;
+    // Yanıt geldiğinde hâlâ bunu mu bekliyoruz? Hızlı hızlı iki kişiye tıklayınca
+    // ilk isteğin yanıtı ikincinin paneline düşebiliyordu; `picked === pickFor`
+    // bunu yakalamıyor çünkü ikisi birlikte güncelleniyor. Ölçüt istek anahtarı.
     fetch('/api/messages?session=' + encodeURIComponent(s.sessionId))
       .then(r => r.json())
       .then(d => {
-        if(picked !== pickFor) return;                 // bu arada baska birine geçilmiş
+        if(pickMsgKey !== key) return;                 // bu arada başka bir istek başlamış
         if(d && d.sessionId === s.sessionId) fillMessages(pop, d.messages);
         else fillMessages(pop, null);                  // transcript yok: "yükleniyor"da asılı kalmasın
       })
-      .catch(() => fillMessages(pop, null));
+      .catch(() => { if(pickMsgKey === key) fillMessages(pop, null); });
   }
 }
 
@@ -453,7 +504,9 @@ function renderPicked(now){
   updatePick(pop, s, now);
 }
 document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && picked){ picked = null; renderPicked(Date.now()); }
+  if(e.key !== 'Escape') return;
+  if(!setModal.hidden){ closeSettings(); return; }
+  if(picked){ picked = null; renderPicked(Date.now()); }
 });
 document.addEventListener('pointerdown', (e) => {
   if(picked && !e.target.closest('#pick') && !e.target.closest('#office, #office3d')){
@@ -519,6 +572,11 @@ function applyViewBtn(){
     applyViewBtn(); render();
   });
   $('#fs').title = T('fullscreen');
+  $('#setBtn').title = T('settings');
+  $('#setBtn').innerHTML = svg('gear');
+  $('#setClose').title = T('close');
+  $('#setClose').innerHTML = svg('cross');
+  $('#settingsTitle').textContent = T('settings');
 }
 // modül geç yüklenir: hazır olunca düğmeyi ve (3D'de kaldıysak) sahneyi tazele
 window.addEventListener('office3d-ready', () => { applyViewBtn(); render(); });
@@ -601,9 +659,9 @@ function msgBoxHtml(s){
   if(s.kind !== 'live') return '';
   return `<form class="msg${s.socket ? '' : ' off'}" data-pid="${s.pid}"
              title="${s.socket ? '' : T('msgClosedWhy')}">
-         <input type="text" placeholder="${s.socket ? T('msgPlaceholder') : T('msgClosed')}"
+         <textarea rows="1" placeholder="${s.socket ? T('msgPlaceholder') : T('msgClosed')}"
                 autocomplete="off" spellcheck="false" ${s.socket ? '' : 'disabled'}
-                value="${esc(drafts.get(s.pid) || '')}">
+         >${esc(drafts.get(s.pid) || '')}</textarea>
          <button type="submit" class="iconbtn" title="${T('send')}" ${s.socket ? '' : 'disabled'}>${svg('send')}</button>
        </form>`;
 }
@@ -619,8 +677,23 @@ function wireActions(root){
 function wireMsgForm(root, pid){
   const form = root.querySelector('.msg:not(.off)');
   if(!form) return;
-  const input = form.querySelector('input');
-  input.oninput = () => drafts.set(pid, input.value);
+  const input = form.querySelector('textarea');
+  // tek satirdan basla, icerik buyudukce uzat (CSS max-height'te durur)
+  const grow = () => {
+    input.style.height = 'auto';
+    // alt sinir 28px: tek satirken yanindaki gonder dugmesiyle ayni yukseklikte dursun
+    input.style.height = Math.max(28, Math.min(input.scrollHeight, 130)) + 'px';
+  };
+  input.oninput = () => { drafts.set(pid, input.value); grow(); };
+  if(input.value) grow();
+  // textarea'da Enter varsayilan olarak yeni satir yazar; gondermeyi ona baglayip
+  // yeni satiri Shift+Enter'a aliyoruz — sohbet kutularinin alisilmis davranisi.
+  input.onkeydown = (e) => {
+    if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){
+      e.preventDefault();
+      form.requestSubmit ? form.requestSubmit() : form.onsubmit(new Event('submit'));
+    }
+  };
   form.onsubmit = (e) => {
     e.preventDefault();
     const text = input.value.trim();
@@ -633,7 +706,7 @@ function wireMsgForm(root, pid){
     .then(r => r.json())
     .then(r => {
       input.disabled = false;
-      if(r.ok){ input.value=''; drafts.delete(pid); flash(form,'ok'); input.focus(); }
+      if(r.ok){ input.value=''; drafts.delete(pid); grow(); flash(form,'ok'); input.focus(); }
       else { flash(form,'err'); input.title = r.error || 'gönderilemedi'; }
     })
     .catch(() => { input.disabled = false; flash(form,'err'); });
@@ -681,13 +754,13 @@ function card(s, now){
 // render sirasinda odakta olan mesaj kutusunu koru
 function snapshotFocus(){
   const a = document.activeElement;
-  if(a && a.tagName === 'INPUT' && a.closest('.msg') && !a.closest('#pick'))
+  if(a && a.tagName === 'TEXTAREA' && a.closest('.msg') && !a.closest('#pick'))
     return { pid: a.closest('.msg').dataset.pid, start: a.selectionStart, end: a.selectionEnd };
   return null;
 }
 function restoreFocus(f){
   if(!f) return;
-  const input = document.querySelector(`.grid .msg[data-pid="${f.pid}"] input`);
+  const input = document.querySelector(`.grid .msg[data-pid="${f.pid}"] textarea`);
   if(!input) return;
   input.focus();
   try { input.setSelectionRange(f.start, f.end); } catch {}
@@ -721,6 +794,7 @@ function render(){
   // 3D seçiliyken modül henüz gelmediyse 2D ofise düş
   const v = (view === 'office3d' && !has3d()) ? 'office' : view;
   const office = v !== 'cards';
+  document.body.classList.toggle('office', office);
   $('#stage').hidden = !office;
   $('#office').hidden = v !== 'office';
   $('#office3d').hidden = v !== 'office3d';
@@ -832,7 +906,7 @@ if('serviceWorker' in navigator && location.protocol !== 'file:' && !window.mine
 setInterval(() => {
   if(!state) return;
   const a = document.activeElement;
-  if(a && a.tagName === 'INPUT' && a.closest('.msg')) return;
+  if(a && a.tagName === 'TEXTAREA' && a.closest('.msg')) return;
   render();
 }, 1000);
 </script>

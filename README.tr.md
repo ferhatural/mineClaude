@@ -184,7 +184,13 @@ diğerleri yerinden oynamaz. `prefers-reduced-motion` açıksa tüm animasyonlar
 - 2 saniyede bir SSE ile canlı güncellenir, sekme başlığında bekleyen session sayısı görünür
 - Bir session input beklemeye geçince masaüstü bildirimi (opsiyonel, kutucuktan aç)
 - Durum kutucuklarına tıklayarak filtre
+- Bildirim, boş session'ları gizleme, ses ve kolon sayısı dişli düğmesinin arkasında; eskiden
+  başlığın altında bir satır kaplıyordu, o satır ofis görünümünün ayıramayacağı bir yükseklikti
 - Kolon sayısı seçilebilir (auto / 1–6, tercih saklanır), mobilde tek kolon, sağ üstte tam ekran
+- Ofis görünümleri pencereye sığar: sahne kalan yüksekliği alır, sayfanın kendisi kaymaz. Kart
+  görünümü liste olduğu için kaymaya devam eder
+- Mesaj kutusu bir textarea. Enter gönderir, Shift+Enter yeni satır açar, yazdıkça altı satıra
+  kadar büyür
 - Her kartta ikon butonlar: ▶ `claude --resume <id>`, 📁 `cd <klasör>`, 📄 transcript yolu (panoya kopyalar)
 - Açılışta VS Code'un başlattığı, hiç konuşma geçmemiş boş süreçler varsayılan gizli
 - Sağ üstte **TR / EN anahtarı**. Yalnızca arayüzü çevirir; Claude'un mesajları, proje adları, tool
