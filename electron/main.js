@@ -13,7 +13,7 @@ const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const http = require('http');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const SERVER_JS = path.join(ROOT, 'server.js');
@@ -305,6 +305,95 @@ function setTrayStatus(s) {
   );
 }
 
+// ---------------------------------------------------------------- terminal sekmesine gitme
+
+// Session'in tty'sini bilen bir terminal uygulamasi varsa o sekmeyi one getiriyoruz.
+// Yeni sekme acmiyoruz: amac zaten acik olani bulmak.
+//
+// Terminal.app ve iTerm2'nin AppleScript sozluklerinde sekme/oturum basina `tty`
+// var, eslestirme birebir. VS Code, Cursor, Ghostty, Warp gibi gomulu terminallerde
+// sekme sectirecek bir arayuz yok; orada yapabilecegimiz en fazlasi uygulamayi one
+// almak, cagiran taraf da bunu kullaniciya soyluyor.
+
+const run = (cmd, args) => new Promise((resolve) => {
+  execFile(cmd, args, { timeout: 10000 }, (err, stdout) => {
+    resolve({ ok: !err, out: String(stdout || '').trim() });
+  });
+});
+
+// Uygulama calismiyorsa `tell application` onu baslatiyor. Sadece sekme aramak icin
+// terminal acmayalim: once gercekten ayakta mi diye bakiyoruz.
+async function appRunning(bundleFragment) {
+  const { out } = await run('ps', ['-axo', 'comm=']);
+  return out.split('\n').some((l) => l.includes(bundleFragment));
+}
+
+const TERMINAL_AS = (dev) => `
+tell application "Terminal"
+  repeat with w in windows
+    repeat with t in tabs of w
+      if tty of t is ${JSON.stringify(dev)} then
+        set selected of t to true
+        set index of w to 1
+        activate
+        return "ok"
+      end if
+    end repeat
+  end repeat
+end tell
+return "yok"`;
+
+const ITERM_AS = (dev) => `
+tell application "iTerm2"
+  repeat with w in windows
+    repeat with t in tabs of w
+      repeat with s in sessions of t
+        if tty of s is ${JSON.stringify(dev)} then
+          select w
+          select t
+          select s
+          activate
+          return "ok"
+        end if
+      end repeat
+    end repeat
+  end repeat
+end tell
+return "yok"`;
+
+// host metni bir uygulama adina benziyorsa: sekmeyi bulamasak da uygulamayi one alalim
+const HOST_APP = [
+  [/VS ?Code|Visual Studio Code/i, 'Visual Studio Code'],
+  [/Cursor/i, 'Cursor'],
+  [/iTerm/i, 'iTerm'],
+  [/Warp/i, 'Warp'],
+  [/Ghostty/i, 'Ghostty'],
+  [/Terminal/i, 'Terminal'],
+];
+
+async function focusTerminal({ tty, host }) {
+  // tty renderer'dan geliyor ve AppleScript metnine giriyor: kaliba uymayani hic denemeyelim
+  const dev = /^tty[a-z0-9]+$/.test(String(tty || '')) ? '/dev/' + tty : null;
+
+  if (dev) {
+    if (await appRunning('/Terminal.app/Contents/MacOS/Terminal')) {
+      const r = await run('osascript', ['-e', TERMINAL_AS(dev)]);
+      if (r.ok && r.out === 'ok') return { ok: true, app: 'Terminal' };
+    }
+    if (await appRunning('/iTerm.app/Contents/MacOS/iTerm2')) {
+      const r = await run('osascript', ['-e', ITERM_AS(dev)]);
+      if (r.ok && r.out === 'ok') return { ok: true, app: 'iTerm2' };
+    }
+  }
+
+  const hit = HOST_APP.find(([re]) => re.test(String(host || '')));
+  if (hit) {
+    const r = await run('open', ['-a', hit[1]]);
+    if (r.ok) return { ok: true, app: hit[1], tabless: true };
+  }
+  return { ok: false };
+}
+
 // ---------------------------------------------------------------- uygulama menusu
 
 function setAppMenu() {
@@ -352,6 +441,7 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.on('ccwatch:status', (_e, s) => setTrayStatus(s || {}));
   ipcMain.on('ccwatch:show', showWindow);
+  ipcMain.handle('ccwatch:focus-terminal', (_e, s) => focusTerminal(s || {}));
 
   app.on('activate', showWindow);
   app.on('window-all-closed', () => { /* menu bar uygulamasi: pencere yoksa da yasar */ });

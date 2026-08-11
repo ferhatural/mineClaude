@@ -81,6 +81,13 @@ Pencereyi kapatmak (⌘W ya da kırmızı düğme) sadece gizler; ⌘Q çıkar.
 Menü çubuğu ikonu ofis görünümündeki karakterin kafası — ikon zorunlu olarak tek renk
 "template" olduğu için gözler ve ağız kendi renkleriyle değil, delik olarak duruyor.
 
+Uygulamada kartlara bir düğme daha geliyor: terminal sekmesine git. Terminal.app da iTerm2 de
+AppleScript'te sekme başına `tty` veriyor, bu da panelin zaten gösterdiği tty ile aynı; o
+session'ın çalıştığı sekme öne geliyor — yeni sekme yok, yeni shell yok. Gömülü terminali olan
+editörlerde (VS Code, Cursor) sekme seçtiren bir arayüz olmadığı için düğme yalnız uygulamayı
+öne alıyor. macOS ilk kullanımda terminali kontrol etme izni soruyor; uygulama imzasız olduğu
+için bu izin binary'ye bağlı, yani her yeni DMG'den sonra bir kez daha soruyor.
+
 `.dmg` imzasız, ilk açılışta sağ tık → Aç gerekiyor.
 
 ## PWA olarak kurmak (macOS)

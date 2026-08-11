@@ -48,7 +48,10 @@
       "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
       "category": "public.app-category.developer-tools",
       "icon": "icons/icon-512.png",
-      "extendInfo": { "LSUIElement": true }
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSAppleEventsUsageDescription": "ccwatch, bir session'in calistigi terminal sekmesini one getirmek icin Terminal ve iTerm2'ye erisir."
+      }
     }
   }
 }

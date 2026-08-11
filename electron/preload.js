@@ -7,4 +7,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ccwatchDesktop', {
   setStatus: (s) => ipcRenderer.send('ccwatch:status', s),
   show: () => ipcRenderer.send('ccwatch:show'),
+  // { tty, host } -> { ok, app?, tabless? }
+  focusTerminal: (s) => ipcRenderer.invoke('ccwatch:focus-terminal', s),
 });

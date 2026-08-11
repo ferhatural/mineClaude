@@ -99,6 +99,14 @@ and quit. Closing the window (⌘W or the red button) only hides it; ⌘Q quits.
 The icon is the head of the office-view character — a menu bar icon has to be a monochrome
 template image, so the eyes and mouth are holes rather than pixels of their own colour.
 
+Cards in the app get one extra button: go to the terminal tab. Terminal.app and iTerm2 both
+expose a `tty` per tab in AppleScript, which is the same tty the dashboard already shows, so the
+tab that session is running in comes to the front — no new tab, no new shell. Editors with a
+built-in terminal (VS Code, Cursor) offer no way to select a tab, so there the button only brings
+the app forward. macOS asks for permission to control the terminal the first time you use it;
+because the app is unsigned that permission is tied to the exact binary, so a new DMG means being
+asked once more.
+
 The `.dmg` is unsigned, so the first launch needs right-click → Open.
 
 ## Install as a PWA (macOS)
