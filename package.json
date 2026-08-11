@@ -1,14 +1,28 @@
 {
   "name": "ccwatch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local dashboard for every Claude Code CLI session on your machine: what is running, what is idle, and what is waiting for your input",
   "type": "commonjs",
   "license": "MIT",
   "author": "ferhatural",
-  "repository": { "type": "git", "url": "https://github.com/ferhatural/ccwatch.git" },
-  "keywords": ["claude", "claude-code", "dashboard", "monitor", "cli", "sessions"],
-  "engines": { "node": ">=18" },
-  "bin": { "ccwatch": "./server.js" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ferhatural/ccwatch.git"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "dashboard",
+    "monitor",
+    "cli",
+    "sessions"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "ccwatch": "./server.js"
+  },
   "main": "electron/main.js",
   "scripts": {
     "start": "node server.js",
@@ -26,7 +40,10 @@
     "appId": "com.github.ferhatural.ccwatch",
     "productName": "ccwatch",
     "asar": false,
-    "directories": { "output": "dist", "buildResources": "icons" },
+    "directories": {
+      "output": "dist",
+      "buildResources": "icons"
+    },
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "files": [
       "electron/main.js",
@@ -45,7 +62,15 @@
       "package.json"
     ],
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
       "category": "public.app-category.developer-tools",
       "icon": "icons/icon-512.png",
       "extendInfo": {
