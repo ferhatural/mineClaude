@@ -493,11 +493,33 @@ function buildPerson(s) {
 // duraklar arasinda dolasir, varinca bir sure oturup kuyrugunu sallar.
 // Duraklar elle secildi — rastgele nokta uretseydik kanepenin ya da sehpanin
 // icinden gecerdi.
-const CAT_SPOTS = [
-  { x: 62, z: 58 }, { x: 152, z: 58 }, { x: 152, z: 100 }, { x: 70, z: 100 },
-  { x: 158, z: 8 }, { x: 56, z: 16 }, { x: 108, z: 78 },
+// Rastgele nokta ureten bir gezinme kanepenin, masanin, sirasi gelince masalarin
+// icinden gecerdi; ustelik iki oda arasindaki duvari da delerdi. Onun yerine kapali
+// bir tur: her durak bir oncekine duz cizgiyle bagli ve o cizgi bos zeminden geciyor.
+// Ofis tarafindaki noktalar masa aralarindaki koridorlarda — x=25 / x=-41 / x=-99
+// dikey kogusler, z=72 ve z=-58 yatay koridorlar (masa oturma alani z-9..z+21).
+// Odalar arasi gecis her zaman kapinin (WALL_X, DOOR.z) uzerinden.
+const CAT_ROUTE = [
+  { x: 56, z: 16 },                    // lounge, kapinin yani
+  { x: DOOR.x, z: DOOR.z },            // kapi
+  { x: 25, z: 10 },                    // ofis: sag kogus
+  { x: 25, z: 72 },
+  { x: -41, z: 72 },                   // 3. ve 4. sira arasindaki koridor
+  { x: -99, z: 72 },
+  { x: -99, z: -58 },                  // sol kogus, pencere onu
+  { x: 25, z: -58 },
+  { x: 25, z: 10 },
+  { x: DOOR.x, z: DOOR.z },            // kapidan lounge'a
+  { x: 56, z: 16 },
+  { x: 60, z: 60 },                    // lounge turu — mobilyanin disindan
+  { x: 72, z: 100 },
+  { x: 140, z: 100 },
+  { x: 158, z: 60 },
+  { x: 158, z: 4 },
+  { x: 150, z: -24 },                  // saksinin (156,-46) ustunden degil, yanindan
+  { x: 100, z: -46 },                  // tv'nin onu
 ];
-const CAT_SPEED = 26;          // birim/sn — insanlardan yavas, tirisla geziyor
+const CAT_SPEED = 30;          // birim/sn — tur uzun, insanlardan biraz yavas
 const CAT_FUR = 0xd08a3a, CAT_FUR2 = 0xb8722c, CAT_MUZZLE = 0xf2ddbe;
 
 let cat = null;
@@ -532,11 +554,11 @@ function buildCat() {
   box(tail, 1.6, 1.6, 7, 0, -0.8, -3.5, CAT_FUR2);
   tail.rotation.x = -0.5;
 
-  g.position.set(CAT_SPOTS[0].x, 0, CAT_SPOTS[0].z);
+  g.position.set(CAT_ROUTE[0].x, 0, CAT_ROUTE[0].z);
   return {
     g,
     parts: { body, head: headG, legFL, legFR, legBL, legBR, tail },
-    at: { ...CAT_SPOTS[0] },
+    at: { ...CAT_ROUTE[0] },
     spot: 0,
     state: 'sit',
     wait: 2,
@@ -561,21 +583,23 @@ function catStep(dt) {
     p.tail.rotation.y = Math.sin(cat.t * 1.6) * 0.55;
     p.head.rotation.y = Math.sin(cat.t * 0.5) * 0.5;
     if (cat.wait <= 0) {
-      // siradaki durak: geri donup ayni yolu tekrarlamasin diye bir sonrakine gecer
-      cat.spot = (cat.spot + 1 + Math.floor(Math.random() * 2)) % CAT_SPOTS.length;
-      const d = CAT_SPOTS[cat.spot];
+      // Turda hep bir sonraki duraga: atlarsa aradaki cizgi mobilyanin ya da
+      // duvarin icinden gecer, tur bu sirayla guvenli.
+      cat.spot = (cat.spot + 1) % CAT_ROUTE.length;
+      const d = CAT_ROUTE[cat.spot];
       cat.rotGoal = Math.atan2(d.x - cat.at.x, d.z - cat.at.z);
       cat.state = 'walk';
     }
     return;
   }
 
-  const d = CAT_SPOTS[cat.spot];
+  const d = CAT_ROUTE[cat.spot];
   const dx = d.x - cat.at.x, dz = d.z - cat.at.z;
   const dist = Math.hypot(dx, dz);
   if (dist < 1.5) {
     cat.state = 'sit';
-    cat.wait = 4 + Math.random() * 7;
+    // Kapi ve ara noktalarda oyalanmasin, sadece duraklarda otursun
+    cat.wait = (d.x === DOOR.x && d.z === DOOR.z) ? 0 : 2 + Math.random() * 6;
     return;
   }
   const step = Math.min(dist, CAT_SPEED * dt);
