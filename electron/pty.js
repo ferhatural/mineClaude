@@ -38,6 +38,33 @@ function loginShell() {
   }
 }
 
+// Uygulama bir Claude oturumunun icinden baslatilmis olabilir (terminalden
+// `npm run app`, ya da uygulamayi bir session'dan acmak). O zaman ana surec
+// CLAUDE_CODE_SESSION_ID / CLAUDECODE gibi degiskenleri tasiyor ve gomulu
+// terminal onlari devraliyor: yeni claude kendini baska bir oturumun alt
+// oturumu saniyor, ~/.claude/sessions/<pid>.json dosyasini yazmiyor. Panel de
+// onu yalniz `ps` taramasindan goruyor — durumu "unknown", transcript'i yok,
+// ofiste masaya oturmuyor.
+//
+// Yalniz oturuma ozel olanlari siliyoruz. CLAUDE_CONFIG_DIR ya da
+// ANTHROPIC_API_KEY gibi kullanicinin kendi ayarlari duruyor.
+const SESSION_ENV = new Set([
+  'CLAUDECODE', 'CLAUDE_PID', 'CLAUDE_EFFORT',
+  'ELECTRON_RUN_AS_NODE', 'MINECLAUDE_SUPERVISED',
+]);
+
+function childEnv() {
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) {
+    // Nesneye `undefined` yazmak silmiyor: node-pty onu "undefined" metnine
+    // cevirip cocuga oyle veriyor. Gercekten silmek gerekiyor.
+    if (SESSION_ENV.has(k) || /^CLAUDE_CODE_/.test(k)) delete env[k];
+  }
+  env.TERM = 'xterm-256color';
+  env.COLORTERM = 'truecolor';
+  return env;
+}
+
 function create({ cwd, cols, rows, command } = {}) {
   if (!pty) throw new Error('node-pty yok: ' + (loadError || 'kurulu degil'));
   const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
@@ -53,14 +80,7 @@ function create({ cwd, cols, rows, command } = {}) {
     cwd: dir,
     cols: cols || 80,
     rows: rows || 24,
-    env: {
-      ...process.env,
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
-      // Electron kendi degiskenlerini cocuga birakmasin
-      ELECTRON_RUN_AS_NODE: undefined,
-      MINECLAUDE_SUPERVISED: undefined,
-    },
+    env: childEnv(),
   });
 
   const id = String(nextId++);
