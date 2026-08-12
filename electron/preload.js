@@ -9,4 +9,16 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   show: () => ipcRenderer.send('mineclaude:show'),
   // { tty, host } -> { ok, app?, tabless? }
   focusTerminal: (s) => ipcRenderer.invoke('mineclaude:focus-terminal', s),
+
+  // gomulu terminaller
+  term: {
+    available: () => ipcRenderer.invoke('mineclaude:term-available'),
+    create: (opt) => ipcRenderer.invoke('mineclaude:term-create', opt),
+    write: (id, data) => ipcRenderer.send('mineclaude:term-write', { id, data }),
+    resize: (id, cols, rows) => ipcRenderer.send('mineclaude:term-resize', { id, cols, rows }),
+    kill: (id) => ipcRenderer.send('mineclaude:term-kill', { id }),
+    pickFolder: () => ipcRenderer.invoke('mineclaude:pick-folder'),
+    onData: (fn) => ipcRenderer.on('mineclaude:term-data', (_e, m) => fn(m)),
+    onExit: (fn) => ipcRenderer.on('mineclaude:term-exit', (_e, m) => fn(m)),
+  },
 });

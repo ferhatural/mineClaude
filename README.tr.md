@@ -108,6 +108,24 @@ mineclaude --uninstall
 log'u `~/Library/Logs/mineclaude.log`'a düşer. Önce paketi kalıcı kur (`npm i -g mineclaude`) —
 `npx` önbelleğindeki yol sonradan temizlenebilir ve servis kırılır.
 
+## Uygulama içinde terminal
+
+Uygulama artık Claude session'larını kendisi çalıştırabiliyor, seni Terminal.app'e geri
+göndermiyor. **Terminaller** görünümünde her session bir sekme; karttaki terminal düğmesi o
+session'ın klasöründe bir tane açıyor, `+` ise klasör soruyor. Her sekme senin login kabuğunu
+çalıştırıyor — `PATH`, nvm, alias'lar hep alışık olduğun gibi — `claude`'u başlatıyor ve session
+bitince elinde bir kabuk bırakıyor. Böyle başlatılan session'lar panelde de görünüyor, çünkü
+Claude Code hangi yoldan açılırsa açılsın aynı dosyaları yazıyor.
+
+Bu gerçek bir pty, boru değil: Claude Code'un arayüzü ham mod, alternatif ekran ve fare bildirimi
+için tty istiyor. `node-pty` onu veriyor, `xterm.js` çiziyor. `node-pty` **isteğe bağlı** bir
+bağımlılık: N-API ile önceden derlenmiş ikili getirdiği için kurulumda hiçbir şey derlenmiyor ve
+aynı ikili hem Node'da hem Electron'da çalışıyor. Kurulu değilse Terminaller görünümü hiç
+çıkmıyor, `node server.js` eskisi gibi bağımlılıksız kalıyor.
+
+Terminaller uygulamanın sürecinde yaşıyor, yani uygulamayı kapatınca kapanıyorlar.
+`claude --resume` ile kaldığın yerden devam edilir.
+
 ## Durumlar
 
 | Durum | Anlamı |

@@ -127,6 +127,24 @@ mineclaude --uninstall
 `~/Library/Logs/mineclaude.log`. Install the package globally first (`npm i -g mineclaude`) — a path
 inside the `npx` cache can be cleaned up later and would break the agent.
 
+## Terminals inside the app
+
+The app can run Claude sessions itself instead of sending you back to Terminal.app. The
+**Terminals** view holds a tab per session; the terminal button on a card opens one in that
+session's folder, and the `+` asks for a folder. Each tab runs your login shell, so `PATH`, nvm
+and your aliases are the ones you already have; it starts `claude` and drops you back to a shell
+when the session ends. Sessions started this way show up in the dashboard like any other, because
+Claude Code writes the same files either way.
+
+This is a real pty, not a pipe — Claude Code's interface needs a tty for raw mode, the alternate
+screen and mouse reporting. `node-pty` provides it and `xterm.js` draws it. `node-pty` is an
+**optional** dependency: it ships prebuilt N-API binaries, so nothing is compiled at install time
+and the same binary works under both Node and Electron. If it is missing the Terminals view
+simply does not appear, and `node server.js` stays dependency-free as before.
+
+Terminals live in the app process, so quitting the app closes them. `claude --resume` picks a
+session back up.
+
 ## Statuses
 
 | Status | Meaning |

@@ -707,6 +707,10 @@ function serve() {
     const STATIC = {
       '/office.js': JS,
       '/office3d.js': JS,
+      '/term.js': JS,
+      '/vendor/xterm.module.js': JS,
+      '/vendor/xterm-addon-fit.module.js': JS,
+      '/vendor/xterm.css': 'text/css; charset=utf-8',
       '/sw.js': JS,
       '/vendor/three.module.min.js': JS,
       '/vendor/three.core.min.js': JS,

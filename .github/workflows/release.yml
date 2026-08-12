@@ -40,6 +40,15 @@ jobs:
 
       - run: npm ci
 
+      # npm, native paketlerin kurulum betiklerini varsayilan olarak engelliyor.
+      # node-pty derlemeye ihtiyac duymuyor (N-API onceden derlenmis ikili getiriyor)
+      # ama izinleri ayarlayan post-install adimi da atlaniyor: spawn-helper
+      # calistirilabilir olmazsa PTY acilirken "posix_spawnp failed" veriyor.
+      - name: node-pty spawn-helper izni
+        run: |
+          chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper
+          ls -l node_modules/node-pty/prebuilds/darwin-*/spawn-helper
+
       # electron-builder'in kendi yayincisi her dosyayi ayri ayri yukluyor ve her biri
       # release'i yaratmayi deniyor: ayni etikete bagli iki release kaydi olusuyor,
       # GitHub da /releases/download/<tag>/<dosya> adresini cozemeyip 404 veriyor.

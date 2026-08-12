@@ -49,6 +49,8 @@
       "electron/main.js",
       "electron/preload.js",
       "electron/assets/tray*.png",
+      "term.js",
+      "electron/pty.js",
       "server.js",
       "index.html",
       "office.js",
@@ -78,5 +80,12 @@
         "NSAppleEventsUsageDescription": "mineClaude, bir session'in calistigi terminal sekmesini one getirmek icin Terminal ve iTerm2'ye erisir."
       }
     }
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true,
+    "electron-winstaller": false
   }
 }

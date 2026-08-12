@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="mineClaude">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/office.css">
+<link rel="stylesheet" href="/vendor/xterm.css">
 <style>
   :root{
     --bg:#0e1013; --panel:#16191e; --panel2:#1c2027; --line:#272c34;
@@ -122,10 +123,37 @@
   body.office .counts{margin-bottom:12px}
   body.office footer{display:none}
   body.office #stage{flex:1;min-height:0;display:flex}
-  body.office #office,body.office #office3d{flex:1;min-height:0}
+  body.office #office,body.office #office3d,body.office #terms{flex:1;min-height:0}
   body.office #office{display:flex}
   body.office #office svg{width:100%;height:100%}
   body.office #office3d{aspect-ratio:auto}
+
+  /* gomulu terminaller */
+  .tm-host{display:flex;flex-direction:column;height:100%;min-height:0;
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .tm-strip{display:flex;align-items:stretch;gap:2px;padding:6px 6px 0;flex-wrap:wrap;
+    border-bottom:1px solid var(--line);background:var(--panel2)}
+  .tm-tab{display:flex;align-items:center;gap:7px;font:inherit;font-size:12px;color:var(--faint);
+    background:none;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;
+    padding:6px 9px;cursor:pointer;max-width:210px;transition:.12s}
+  .tm-tab span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tm-tab:hover{color:var(--text)}
+  .tm-tab.on{color:var(--text);background:var(--panel);border-color:var(--line)}
+  .tm-tab.dead{opacity:.5}
+  .tm-x{flex:none;opacity:.5;font-size:14px;line-height:1}
+  .tm-x:hover{opacity:1;color:#d0524a}
+  .tm-plus{font:inherit;font-size:15px;line-height:1;color:var(--faint);background:none;border:0;
+    padding:4px 10px;cursor:pointer;align-self:center}
+  .tm-plus:hover{color:var(--text)}
+  .tm-panes{position:relative;flex:1;min-height:0}
+  .tm-pane{position:absolute;inset:0;padding:8px 10px;display:none}
+  .tm-pane.on{display:block}
+  .tm-pane .xterm{height:100%}
+  .tm-empty{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;
+    align-items:center;justify-content:center;color:var(--faint);font-size:13px}
+  .tm-empty button{font:inherit;font-size:13px;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line);border-radius:9px;padding:7px 14px;cursor:pointer}
+  .tm-empty button:hover{border-color:var(--faint)}
 
   /* ayarlar modali */
   .modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);
@@ -252,6 +280,7 @@
   <div id="stage" hidden>
     <div id="office" hidden></div>
     <div id="office3d" hidden></div>
+    <div id="terms" hidden></div>
     <div id="pick" hidden></div>
   </div>
   <div id="live" class="grid"></div>
@@ -264,6 +293,7 @@
 
 <script src="/office.js"></script>
 <script type="module" src="/office3d.js"></script>
+<script type="module" src="/term.js"></script>
 <script>
 // --- diller ---
 // SADECE arayüz metinleri çevrilir. Claude'un mesajları, proje adları, tool adları,
@@ -290,6 +320,8 @@ const I18N = {
     close:'kapat', loading:'yükleniyor…', noMessages:'mesaj bulunamadı', you:'Sen',
     settings:'Ayarlar',
     petCat:'kediyi sev', asked:'soru sordu',
+    termView:'Terminaller', termNew:'klasör seç ve terminal aç', termEmpty:'Açık terminal yok.',
+    termClosed:'kapandı', termHere:'burada terminal aç',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
@@ -321,6 +353,8 @@ const I18N = {
     close:'close', loading:'loading…', noMessages:'no messages found', you:'You',
     settings:'Settings',
     petCat:'pet the cat', asked:'asked you something',
+    termView:'Terminals', termNew:'pick a folder and open a terminal', termEmpty:'No terminals open.',
+    termClosed:'closed', termHere:'open a terminal here',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
@@ -357,6 +391,7 @@ const ICON = {
   grid:'<rect x="2" y="2" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1.2"/><rect x="2" y="8.8" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1.2"/>',
   cube:'<path d="M8 1.6l5.6 3.2v6.4L8 14.4 2.4 11.2V4.8z"/><path d="M2.4 4.8L8 8l5.6-3.2M8 8v6.4"/>',
   terminal:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M4.4 6.4L6.6 8.4 4.4 10.4M8.4 10.6h3"/>',
+  term:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M4.4 6.4L6.6 8.4 4.4 10.4M8.4 10.6h3"/>',
   gear:'<circle cx="8" cy="8" r="2.3"/><path d="M8 1.6l1 1.7 1.9-.5.5 1.9 1.7 1-1 1.7 1 1.7-1.7 1-.5 1.9-1.9-.5-1 1.7-1-1.7-1.9.5-.5-1.9-1.7-1 1-1.7-1-1.7 1.7-1 .5-1.9 1.9.5z"/>',
 };
 const svg = (k) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
@@ -555,13 +590,15 @@ function applyLang(){
 
 // --- görünüm anahtarı: kartlar | ofis (2D) | ofis (3D) yan yana ---
 // 3D yalnızca WebGL2 varsa listede; yoksa office3d.js window.Office3D'yi hiç kurmuyor.
-const VIEWS = ['cards','office','office3d'];
+const VIEWS = ['cards','office','office3d','term'];
 const has3d = () => !!window.Office3D;
+// Terminaller yalniz masaustu uygulamasinda ve node-pty varken: web'de PTY yok.
+const hasTerm = () => !!window.MTerm;
 let view = VIEWS.includes(localStorage.getItem('cc.view')) ? localStorage.getItem('cc.view') : 'cards';
-const VIEW_ICON = { cards:'grid', office:'people', office3d:'cube' };
-const VIEW_TITLE = { cards:'cardView', office:'officeView', office3d:'office3dView' };
+const VIEW_ICON = { cards:'grid', office:'people', office3d:'cube', term:'term' };
+const VIEW_TITLE = { cards:'cardView', office:'officeView', office3d:'office3dView', term:'termView' };
 function applyViewBtn(){
-  const avail = VIEWS.filter(v => v !== 'office3d' || has3d());
+  const avail = VIEWS.filter(v => (v !== 'office3d' || has3d()) && (v !== 'term' || hasTerm()));
   $('#viewSw').innerHTML = avail.map(v =>
     `<button data-v="${v}" class="${v === view ? 'on' : ''}" title="${T(VIEW_TITLE[v])}">${svg(VIEW_ICON[v])}</button>`
   ).join('');
@@ -580,6 +617,7 @@ function applyViewBtn(){
 }
 // modül geç yüklenir: hazır olunca düğmeyi ve (3D'de kaldıysak) sahneyi tazele
 window.addEventListener('office3d-ready', () => { applyViewBtn(); render(); });
+window.addEventListener('mterm-ready', () => { applyViewBtn(); render(); });
 applyLang();
 applyViewBtn();
 
@@ -648,6 +686,9 @@ function actionBtns(s){
   // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
   if(window.mineClaudeDesktop && s.kind === 'live' && s.tty)
     acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
+  // uygulamanin icinde, bu klasorde yeni bir terminal
+  if(hasTerm() && s.cwd)
+    acts.push(`<button class="iconbtn" title="${T('termHere')}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}">${svg('term')}</button>`);
   if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
   if(s.cwd) acts.push(`<button class="iconbtn" title="${T('copyCd')}: ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
   if(s.transcript) acts.push(`<button class="iconbtn" title="${T('copyTranscript')}: ${esc(s.transcript)}" data-copy="${esc(s.transcript)}">${svg('file')}</button>`);
@@ -667,6 +708,10 @@ function msgBoxHtml(s){
 }
 
 function wireActions(root){
+  root.querySelectorAll('button[data-term-cwd]').forEach(b => b.onclick = () => {
+    view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render();
+    MTerm.open(b.dataset.termCwd);
+  });
   root.querySelectorAll('button[data-copy]').forEach(b => b.onclick = () => copy(b, b.dataset.copy));
   root.querySelectorAll('button[data-tty]').forEach(b => b.onclick = async () => {
     const r = await window.mineClaudeDesktop.focusTerminal({ tty: b.dataset.tty, host: b.dataset.host });
@@ -792,20 +837,23 @@ function render(){
   if(filter === 'idle') list = list.filter(s => disp(s) === 'idle' || disp(s) === 'unknown');
 
   // 3D seçiliyken modül henüz gelmediyse 2D ofise düş
-  const v = (view === 'office3d' && !has3d()) ? 'office' : view;
+  let v = (view === 'office3d' && !has3d()) ? 'office' : view;
+  if (v === 'term' && !hasTerm()) v = 'cards';
   const office = v !== 'cards';
   document.body.classList.toggle('office', office);
   $('#stage').hidden = !office;
   $('#office').hidden = v !== 'office';
   $('#office3d').hidden = v !== 'office3d';
+  $('#terms').hidden = v !== 'term';
   $('#live').hidden = office;
   $('#endedHead').hidden = office;
   $('#colsWrap').hidden = office;
 
   if(office){
-    if(v === 'office3d') Office3D.render(list, $('#office3d'), T, lang);
+    if(v === 'term') MTerm.mount($('#terms'), T);
+    else if(v === 'office3d') Office3D.render(list, $('#office3d'), T, lang);
     else Office.render(list, $('#office'), T, lang);
-    renderPicked(now);
+    if(v !== 'term') renderPicked(now); else { picked = null; $('#pick').hidden = true; }
     $('#ended').hidden = true;
   } else {
     picked = null; pickFor = null; pickMsgKey = null;

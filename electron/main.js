@@ -8,12 +8,13 @@
 //
 // Dock'ta ikon yok (LSUIElement). Cikis tray menusunden ya da Cmd+Q ile.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const http = require('http');
 const { spawn, execFile } = require('child_process');
+const term = require('./pty');
 
 const ROOT = path.join(__dirname, '..');
 const SERVER_JS = path.join(ROOT, 'server.js');
@@ -443,10 +444,31 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('mineclaude:show', showWindow);
   ipcMain.handle('mineclaude:focus-terminal', (_e, s) => focusTerminal(s || {}));
 
+  // ---- gomulu terminaller
+  ipcMain.handle('mineclaude:term-available', () => ({ ok: term.available(), error: term.loadError() }));
+  ipcMain.handle('mineclaude:term-create', (e, opt) => {
+    const info = term.create(opt || {});
+    const wc = e.sender;
+    term.attach(
+      info.id,
+      (id, data) => { if (!wc.isDestroyed()) wc.send('mineclaude:term-data', { id, data }); },
+      (id, code) => { if (!wc.isDestroyed()) wc.send('mineclaude:term-exit', { id, code }); },
+    );
+    return info;
+  });
+  ipcMain.on('mineclaude:term-write', (_e, { id, data }) => term.write(id, data));
+  ipcMain.on('mineclaude:term-resize', (_e, { id, cols, rows }) => term.resize(id, cols, rows));
+  ipcMain.on('mineclaude:term-kill', (_e, { id }) => term.kill(id));
+  ipcMain.handle('mineclaude:pick-folder', async () => {
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: 'Terminal hangi klasorde acilsin?' });
+    return r.canceled ? null : r.filePaths[0];
+  });
+
   app.on('activate', showWindow);
   app.on('window-all-closed', () => { /* menu bar uygulamasi: pencere yoksa da yasar */ });
   app.on('before-quit', () => {
     quitting = true;
+    term.killAll();          // acik terminaller uygulamayla birlikte kapanir
     if (child) child.kill();
   });
 }
