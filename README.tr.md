@@ -123,6 +123,11 @@ bağımlılık: N-API ile önceden derlenmiş ikili getirdiği için kurulumda h
 aynı ikili hem Node'da hem Electron'da çalışıyor. Kurulu değilse Terminaller görünümü hiç
 çıkmıyor, `node server.js` eskisi gibi bağımlılıksız kalıyor.
 
+Sekme ya da ızgara: şeridin sağındaki düğme, tek terminalin ekranı doldurduğu görünüm ile
+hepsinin aynı anda kareye yakın bir ızgarada durduğu görünüm arasında geçiş yapıyor. ⌘T yeni
+açar, ⌘1–⌘9 arasında geçer, ⌘W ise pencereyi değil odaktaki terminali kapatır — sonuncusu da
+kapanınca ⌘W yine pencereyi gizlemeye döner, her yerdeki alışkanlık bozulmaz.
+
 Terminaller uygulamanın sürecinde yaşıyor, yani uygulamayı kapatınca kapanıyorlar.
 `claude --resume` ile kaldığın yerden devam edilir.
 

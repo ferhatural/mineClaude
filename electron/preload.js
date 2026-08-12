@@ -21,4 +21,10 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
     onData: (fn) => ipcRenderer.on('mineclaude:term-data', (_e, m) => fn(m)),
     onExit: (fn) => ipcRenderer.on('mineclaude:term-exit', (_e, m) => fn(m)),
   },
+
+  // ⌘W: sayfa "su an terminal kapatilmali" durumunu onceden bildiriyor, ana surec
+  // menude ona gore davraniyor. Sormak yerine bildirmek, iki dunyanin arasindaki
+  // ayrimi hic kurcalamamak demek.
+  setCloseIntercept: (on) => ipcRenderer.send('mineclaude:close-intercept', !!on),
+  onCloseTerminal: (fn) => ipcRenderer.on('mineclaude:close-terminal', () => fn()),
 });

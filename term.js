@@ -8,10 +8,12 @@ import { FitAddon } from './vendor/xterm-addon-fit.module.js';
 
 const D = window.mineClaudeDesktop;
 if (D && D.term) {
-  const tabs = [];              // { id, cwd, title, term, fit, el, tabEl, dead }
+  const tabs = [];              // { id, cwd, title, term, fit, el, dead }
   let active = null;
   let host = null, strip = null, panes = null;
   let T = (k) => k;
+  // 'tabs': tek terminal tam ekran · 'tiles': hepsi ayni anda, izgara
+  let layout = localStorage.getItem('cc.termLayout') === 'tiles' ? 'tiles' : 'tabs';
 
   const theme = () => {
     const cs = getComputedStyle(document.body);
@@ -26,7 +28,7 @@ if (D && D.term) {
 
   function mount(container, translate) {
     if (translate) T = translate;
-    if (host && host.isConnected) { fitActive(); return; }
+    if (host && host.isConnected) { fitAll(); return; }
     container.innerHTML = '';
     host = document.createElement('div');
     host.className = 'tm-host';
@@ -37,6 +39,7 @@ if (D && D.term) {
     host.append(strip, panes);
     container.appendChild(host);
     drawStrip();
+    applyLayout();
     if (!tabs.length) showEmpty();
   }
 
@@ -66,9 +69,44 @@ if (D && D.term) {
     const plus = document.createElement('button');
     plus.className = 'tm-plus';
     plus.textContent = '+';
-    plus.title = T('termNew');
+    plus.title = T('termNew') + '  (⌘T)';
     plus.onclick = () => openPicked();
     strip.appendChild(plus);
+
+    const lay = document.createElement('button');
+    lay.className = 'tm-lay';
+    lay.title = layout === 'tabs' ? T('termTiles') : T('termTabs');
+    lay.innerHTML = layout === 'tabs'
+      ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="9" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="1.8" y="9" width="5.2" height="5.2" rx="1"/><rect x="9" y="9" width="5.2" height="5.2" rx="1"/></svg>'
+      : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
+    lay.onclick = () => setLayout(layout === 'tabs' ? 'tiles' : 'tabs');
+    strip.appendChild(lay);
+  }
+
+  function setLayout(next) {
+    layout = next;
+    localStorage.setItem('cc.termLayout', layout);
+    applyLayout();
+    drawStrip();
+  }
+
+  // Izgarada kolon sayisi: kareye yakin bir duzen. 3 terminal -> 2x2'nin ucu dolu.
+  function applyLayout() {
+    if (!panes) return;
+    panes.classList.toggle('tiles', layout === 'tiles');
+    if (layout === 'tiles') {
+      const n = Math.max(1, tabs.length);
+      const cols = Math.ceil(Math.sqrt(n));
+      const rows = Math.ceil(n / cols);
+      panes.style.gridTemplateColumns = `repeat(${cols}, minmax(0,1fr))`;
+      panes.style.gridTemplateRows = `repeat(${rows}, minmax(0,1fr))`;
+      for (const t of tabs) t.el.classList.add('shown');
+    } else {
+      panes.style.gridTemplateColumns = '';
+      panes.style.gridTemplateRows = '';
+      for (const t of tabs) t.el.classList.remove('shown');
+    }
+    requestAnimationFrame(fitAll);
   }
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -107,9 +145,16 @@ if (D && D.term) {
     }
 
     const t = { ...info, term, fit, el, dead: false };
+    // Olcumu elle zamanlamak tutmuyordu: izgaraya gecince rAF, grid yerlesmeden
+    // once calisip her pane'i tam genislik saniyordu. Kutu ne zaman degisirse
+    // olcum o zaman yapilsin.
+    t.ro = new ResizeObserver(() => fitOne(t));
+    t.ro.observe(el);
+    el.addEventListener('mousedown', () => { if (active !== t) select(t); });
     term.onData((d) => D.term.write(t.id, d));
     term.onResize(({ cols, rows }) => D.term.resize(t.id, cols, rows));
     tabs.push(t);
+    applyLayout();
     select(t);
     term.focus();
   }
@@ -117,29 +162,41 @@ if (D && D.term) {
   function select(t) {
     active = t;
     for (const x of tabs) x.el.classList.toggle('on', x === t);
-    // bos ekran varsa kalksin
     const empty = panes.querySelector('.tm-empty');
     if (empty) empty.remove();
     drawStrip();
-    requestAnimationFrame(() => { fitActive(); t.term.focus(); });
+    requestAnimationFrame(() => { fitAll(); t.term.focus(); });
+  }
+
+  function selectIndex(i) {
+    const t = tabs[i];
+    if (t) select(t);
   }
 
   function close(t) {
+    if (t.ro) t.ro.disconnect();
     D.term.kill(t.id);
     t.term.dispose();
     t.el.remove();
     const i = tabs.indexOf(t);
     if (i >= 0) tabs.splice(i, 1);
-    if (active === t) active = tabs[tabs.length - 1] || null;
+    if (active === t) active = tabs[Math.min(i, tabs.length - 1)] || null;
+    applyLayout();
     if (active) select(active); else { drawStrip(); showEmpty(); }
   }
 
-  function fitActive() {
-    if (!active) return;
+  function fitOne(t) {
+    // Gizli pane'in olcusu 0: olcmeye calisirsak xterm anlamsiz bir boyuta duser
+    if (!t.el.isConnected || !t.el.clientWidth || !t.el.clientHeight) return;
     try {
-      active.fit.fit();
-      D.term.resize(active.id, active.term.cols, active.term.rows);
-    } catch { /* gorunmezken olcum tutmaz */ }
+      t.fit.fit();
+      D.term.resize(t.id, t.term.cols, t.term.rows);
+    } catch { /* pane henuz yerlesmemis olabilir */ }
+  }
+  // Sekme kipinde yalniz gorunen olculebilir; izgarada hepsi gorunuyor.
+  function fitAll() {
+    if (layout === 'tiles') { for (const t of tabs) fitOne(t); }
+    else if (active) fitOne(active);
   }
 
   D.term.onData(({ id, data }) => {
@@ -154,13 +211,18 @@ if (D && D.term) {
     drawStrip();
   });
 
-  window.addEventListener('resize', () => fitActive());
+  window.addEventListener('resize', () => fitAll());
 
   window.MTerm = {
     mount,
     open,                              // panel/kart "burada terminal ac" icin
+    openPicked,                        // ⌘T
+    closeActive: () => { if (active) { close(active); return true; } return false; },
+    selectIndex,                       // ⌘1-9
     count: () => tabs.length,
-    fit: fitActive,
+    layout: () => layout,
+    setLayout,
+    fit: fitAll,
     retheme: () => { for (const t of tabs) t.term.options.theme = theme(); },
   };
   window.dispatchEvent(new Event('mterm-ready'));

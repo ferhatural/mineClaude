@@ -148,6 +148,15 @@
   .tm-panes{position:relative;flex:1;min-height:0}
   .tm-pane{position:absolute;inset:0;padding:8px 10px;display:none}
   .tm-pane.on{display:block}
+  /* izgara kipi: hepsi ayni anda gorunur, etkin olanin cercevesi belli */
+  .tm-panes.tiles{display:grid;gap:6px;padding:6px}
+  .tm-panes.tiles .tm-pane{position:relative;inset:auto;display:block;min-width:0;min-height:0;
+    padding:6px 8px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .tm-panes.tiles .tm-pane.on{border-color:var(--idle)}
+  .tm-lay{display:flex;align-items:center;justify-content:center;font:inherit;color:var(--faint);
+    background:none;border:0;padding:4px 8px;cursor:pointer;align-self:center;margin-left:auto}
+  .tm-lay:hover{color:var(--text)}
+  .tm-lay svg{width:15px;height:15px;display:block}
   .tm-pane .xterm{height:100%}
   .tm-empty{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;
     align-items:center;justify-content:center;color:var(--faint);font-size:13px}
@@ -322,6 +331,7 @@ const I18N = {
     petCat:'kediyi sev', asked:'soru sordu',
     termView:'Terminaller', termNew:'klasör seç ve terminal aç', termEmpty:'Açık terminal yok.',
     termClosed:'kapandı', termHere:'burada terminal aç',
+    termTiles:'ızgara görünümü', termTabs:'sekme görünümü',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
@@ -355,6 +365,7 @@ const I18N = {
     petCat:'pet the cat', asked:'asked you something',
     termView:'Terminals', termNew:'pick a folder and open a terminal', termEmpty:'No terminals open.',
     termClosed:'closed', termHere:'open a terminal here',
+    termTiles:'tile view', termTabs:'tab view',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
@@ -538,6 +549,14 @@ function renderPicked(now){
   pop.hidden = false;
   updatePick(pop, s, now);
 }
+// Terminal kısayolları — yalnız terminal görünümü açıkken ve yazarken değilken.
+// ⌘W menüde "Kapat"a bağlı olduğu için burada değil, ana süreçten IPC ile geliyor.
+document.addEventListener('keydown', (e) => {
+  if(!e.metaKey || e.ctrlKey || e.altKey) return;
+  if(!hasTerm() || view !== 'term') return;
+  if(e.key === 't'){ e.preventDefault(); MTerm.openPicked().then(syncCloseIntercept); return; }
+  if(e.key >= '1' && e.key <= '9'){ e.preventDefault(); MTerm.selectIndex(+e.key - 1); return; }
+});
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!setModal.hidden){ closeSettings(); return; }
@@ -853,6 +872,7 @@ function render(){
     if(v === 'term') MTerm.mount($('#terms'), T);
     else if(v === 'office3d') Office3D.render(list, $('#office3d'), T, lang);
     else Office.render(list, $('#office'), T, lang);
+    syncCloseIntercept();
     if(v !== 'term') renderPicked(now); else { picked = null; $('#pick').hidden = true; }
     $('#ended').hidden = true;
   } else {
@@ -1011,6 +1031,15 @@ connect();
 
 // PWA: kendi penceresinde kurulabilsin, sunucu kapaliyken duzgun bir sayfa gosterebilsin.
 // Electron uygulamasinda gereksiz: orada cache yerine her acilista taze sayfa istiyoruz.
+// ⌘W: terminal görünümünde etkin terminali kapatır, başka yerde pencereyi gizler.
+if(window.mineClaudeDesktop && window.mineClaudeDesktop.onCloseTerminal){
+  window.mineClaudeDesktop.onCloseTerminal(() => { if(hasTerm()) MTerm.closeActive(); syncCloseIntercept(); });
+}
+function syncCloseIntercept(){
+  if(window.mineClaudeDesktop && window.mineClaudeDesktop.setCloseIntercept)
+    window.mineClaudeDesktop.setCloseIntercept(hasTerm() && view === 'term' && MTerm.count() > 0);
+}
+
 if('serviceWorker' in navigator && location.protocol !== 'file:' && !window.mineClaudeDesktop){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }

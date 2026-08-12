@@ -27,6 +27,7 @@ let child = null;         // bizim baslattigimiz server (baskasininkini benimsed
 let serverUrl = null;
 let quitting = false;
 let restarts = 0;
+let closeIntercept = false;   // sayfa: terminal gorunumunde ve acik terminal var
 
 // ---------------------------------------------------------------- ayarlar
 
@@ -415,7 +416,29 @@ function setAppMenu() {
         { role: 'togglefullscreen' },
       ],
     },
-    { role: 'windowMenu' },
+    {
+      label: 'Pencere',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        // ⌘W varsayilan olarak pencereyi kapatiyor (bizde: gizliyor). Terminal
+        // gorunumundeyken beklenen sey etkin terminali kapatmak. Karari sayfa
+        // veriyor: terminal kapattiysa 'true' donuyor, yoksa pencereyi gizliyoruz.
+        {
+          label: 'Kapat',
+          accelerator: 'Command+W',
+          click: () => {
+            if (!win || win.isDestroyed()) return;
+            // Sayfa "terminal gorunumundeyim ve acik terminalim var" diye onceden
+            // haber veriyor; burada sormuyoruz. executeJavaScript ile sormak
+            // calismiyordu: contextIsolation acikken preload'un window'u ile
+            // sayfanin window'u ayri dunyalar, kanca gorunmuyor.
+            if (closeIntercept) win.webContents.send('mineclaude:close-terminal');
+            else win.hide();
+          },
+        },
+      ],
+    },
   ]));
 }
 
@@ -459,6 +482,7 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('mineclaude:term-write', (_e, { id, data }) => term.write(id, data));
   ipcMain.on('mineclaude:term-resize', (_e, { id, cols, rows }) => term.resize(id, cols, rows));
   ipcMain.on('mineclaude:term-kill', (_e, { id }) => term.kill(id));
+  ipcMain.on('mineclaude:close-intercept', (_e, on) => { closeIntercept = !!on; });
   ipcMain.handle('mineclaude:pick-folder', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: 'Terminal hangi klasorde acilsin?' });
     return r.canceled ? null : r.filePaths[0];
