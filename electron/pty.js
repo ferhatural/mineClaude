@@ -84,8 +84,13 @@ function create({ cwd, cols, rows, command } = {}) {
   });
 
   const id = String(nextId++);
-  terms.set(id, { p, cwd: dir, title: path.basename(dir) || dir, dead: false });
-  return { id, cwd: dir, title: path.basename(dir) || dir };
+  // ptsName cocugun gordugu tty ile birebir ayni (/dev/ttysNNN). Panel de session'in
+  // tty'sini biliyor; ikisini eslestirince bir session'in bu uygulamanin icinde mi
+  // yoksa disarida bir terminalde mi kostugu kesin olarak anlasiliyor.
+  const tty = String(p.ptsName || '').replace('/dev/', '') || null;
+  const title = path.basename(dir) || dir;
+  terms.set(id, { p, cwd: dir, title, tty, dead: false });
+  return { id, cwd: dir, title, tty };
 }
 
 function attach(id, onData, onExit) {
@@ -122,6 +127,6 @@ function killAll() {
   for (const id of [...terms.keys()]) kill(id);
 }
 
-const list = () => [...terms.entries()].map(([id, t]) => ({ id, cwd: t.cwd, title: t.title, dead: t.dead }));
+const list = () => [...terms.entries()].map(([id, t]) => ({ id, cwd: t.cwd, title: t.title, tty: t.tty, dead: t.dead }));
 
 module.exports = { available, loadError: () => loadError, create, attach, write, resize, kill, killAll, list };

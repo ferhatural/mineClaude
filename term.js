@@ -219,6 +219,10 @@ if (D && D.term) {
     openPicked,                        // ⌘T
     closeActive: () => { if (active) { close(active); return true; } return false; },
     selectIndex,                       // ⌘1-9
+    // Panel bir session'in tty'sini biliyor: bu sekmelerden biri mi?
+    tabForTty: (tty) => (tty ? (tabs.find((t) => t.tty === tty) || null) : null),
+    list: () => tabs.map((t) => ({ id: t.id, cwd: t.cwd, title: t.title, tty: t.tty, dead: t.dead })),
+    selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
     count: () => tabs.length,
     layout: () => layout,
     setLayout,

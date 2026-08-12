@@ -341,6 +341,7 @@ const I18N = {
     termView:'Terminaller', termNew:'klasör seç ve terminal aç', termEmpty:'Açık terminal yok.',
     termClosed:'kapandı', termHere:'burada terminal aç',
     termTiles:'ızgara görünümü', termTabs:'sekme görünümü',
+    termGoTab:'sekmesine git', termInApp:'mineClaude terminali',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
@@ -375,6 +376,7 @@ const I18N = {
     termView:'Terminals', termNew:'pick a folder and open a terminal', termEmpty:'No terminals open.',
     termClosed:'closed', termHere:'open a terminal here',
     termTiles:'tile view', termTabs:'tab view',
+    termGoTab:'go to its tab', termInApp:'mineClaude terminal',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
@@ -699,7 +701,11 @@ function copy(btn, text){
 function metaBits(s, now){
   const bits = [];
   if(s.pid) bits.push(`<span><b>pid</b> ${s.pid}</span>`);
-  if(s.host) bits.push(`<span>${esc(s.host)}</span>`);
+  // Uygulama icinde kosanlar `ps`'e gore de "Terminal (ttysNNN)" gorunuyor; oysa
+  // ortada Terminal.app yok. Kullaniciya nerede oldugunu dogru soyleyelim.
+  const tab = inAppTab(s);
+  if(tab) bits.push(`<span>${T('termInApp')}</span>`);
+  else if(s.host) bits.push(`<span>${esc(s.host)}</span>`);
   if(shortModel(s.model)) bits.push(`<span>${esc(shortModel(s.model))}</span>`);
   if(s.contextTokens) bits.push(`<span><b>${Math.round(s.contextTokens/1000)}k</b> ${T('context')}</span>`);
   if(s.userTurns) bits.push(`<span>${s.userTurns}+ ${T('messages')}</span>`);
@@ -709,14 +715,25 @@ function metaBits(s, now){
   return `<span><b>${rel(s.lastActivityAt || s.startedAt, now)}</b></span>${bits.join('')}`;
 }
 
+// Bu session bu uygulamanin bir sekmesinde mi kosuyor? tty eslesmesi kesin cevap.
+const inAppTab = (s) => (hasTerm() && s.tty ? MTerm.tabForTty(s.tty) : null);
+
 function actionBtns(s){
   const acts = [];
-  // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
-  if(window.mineClaudeDesktop && s.kind === 'live' && s.tty)
-    acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
-  // uygulamanin icinde, bu klasorde yeni bir terminal
-  if(hasTerm() && s.cwd)
-    acts.push(`<button class="iconbtn" title="${T('termHere')}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}">${svg('term')}</button>`);
+  const tab = inAppTab(s);
+  if(tab){
+    // Zaten bizim sekmemizde. Eskiden buraya iki dugme geliyordu ve ikisi de
+    // yaniltiyordu: biri Terminal.app'i acmaya calisiyordu (o sekme orada yok),
+    // digeri ayni klasorde ikinci bir terminal aciyordu. Tek dogru eylem var.
+    acts.push(`<button class="iconbtn" title="${T('termGoTab')}: ${esc(tab.title)}" data-term-id="${esc(tab.id)}">${svg('term')}</button>`);
+  } else {
+    // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
+    if(window.mineClaudeDesktop && s.kind === 'live' && s.tty)
+      acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
+    // uygulamanin icinde, bu klasorde yeni bir terminal
+    if(hasTerm() && s.cwd)
+      acts.push(`<button class="iconbtn" title="${T('termHere')}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}">${svg('term')}</button>`);
+  }
   if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
   if(s.cwd) acts.push(`<button class="iconbtn" title="${T('copyCd')}: ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
   if(s.transcript) acts.push(`<button class="iconbtn" title="${T('copyTranscript')}: ${esc(s.transcript)}" data-copy="${esc(s.transcript)}">${svg('file')}</button>`);
@@ -736,6 +753,10 @@ function msgBoxHtml(s){
 }
 
 function wireActions(root){
+  root.querySelectorAll('button[data-term-id]').forEach(b => b.onclick = () => {
+    view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render();
+    MTerm.selectById(b.dataset.termId);
+  });
   root.querySelectorAll('button[data-term-cwd]').forEach(b => b.onclick = () => {
     view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render();
     MTerm.open(b.dataset.termCwd);

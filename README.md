@@ -142,6 +142,12 @@ screen and mouse reporting. `node-pty` provides it and `xterm.js` draws it. `nod
 and the same binary works under both Node and Electron. If it is missing the Terminals view
 simply does not appear, and `node server.js` stays dependency-free as before.
 
+A session already running in one of these tabs gets a single button on its card, which jumps to
+that tab. It used to get two, and both were wrong: one asked Terminal.app to focus a tab that
+only exists inside this app, the other opened a second terminal in a folder that already had one.
+Matching is by tty, which the pty reports and the dashboard already reads out of `ps`, so it is
+exact. Those cards say `mineClaude terminal` where the others name a terminal app.
+
 Tabs or tiles: the button at the right of the tab strip switches between one terminal filling
 the view and all of them at once in a near-square grid. ⌘T opens one, ⌘1–⌘9 switch, and ⌘W
 closes the focused terminal rather than the window — once the last one is gone ⌘W hides the

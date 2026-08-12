@@ -123,6 +123,12 @@ bağımlılık: N-API ile önceden derlenmiş ikili getirdiği için kurulumda h
 aynı ikili hem Node'da hem Electron'da çalışıyor. Kurulu değilse Terminaller görünümü hiç
 çıkmıyor, `node server.js` eskisi gibi bağımlılıksız kalıyor.
 
+Bu sekmelerden birinde çalışan bir session'ın kartında **tek** düğme oluyor ve o sekmeye
+götürüyor. Eskiden iki düğme vardı ve ikisi de yanlıştı: biri Terminal.app'ten yalnız bu
+uygulamanın içinde var olan bir sekmeyi öne getirmesini istiyordu, diğeri zaten terminali olan
+klasörde ikincisini açıyordu. Eşleştirme tty üzerinden — pty onu bildiriyor, panel de zaten
+`ps`'ten okuyor — yani kesin. O kartlarda terminal adı yerine `mineClaude terminal` yazıyor.
+
 Sekme ya da ızgara: şeridin sağındaki düğme, tek terminalin ekranı doldurduğu görünüm ile
 hepsinin aynı anda kareye yakın bir ızgarada durduğu görünüm arasında geçiş yapıyor. ⌘T yeni
 açar, ⌘1–⌘9 arasında geçer, ⌘W ise pencereyi değil odaktaki terminali kapatır — sonuncusu da
