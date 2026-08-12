@@ -555,6 +555,7 @@ function buildCat() {
   tail.rotation.x = -0.5;
 
   g.position.set(CAT_ROUTE[0].x, 0, CAT_ROUTE[0].z);
+  g.userData.cat = true;                 // isin testi bunu ariyor
   return {
     g,
     parts: { body, head: headG, legFL, legFR, legBL, legBR, tail },
@@ -565,13 +566,39 @@ function buildCat() {
     rot: 0,
     rotGoal: 0,
     t: 0,
+    pet: 0,                              // sevilme sayaci (saniye)
   };
+}
+
+// Kediye tiklandi: yurumeyi kesip oturur, kafasini kaldirir, kuyrugu diklenir.
+// Ses index.html'de sentezleniyor ve ses ayarina bagli; gorsel tepki her zaman var,
+// yoksa sesi kapali olan kullanici tiklaminin bir sey yaptigini hic anlamiyor.
+function petCat() {
+  if (!cat) return;
+  cat.pet = 2.2;
+  cat.state = 'sit';
+  cat.wait = Math.max(cat.wait, 2.4);
+  if (window.Office3D.onCatPet) window.Office3D.onCatPet();
 }
 
 function catStep(dt) {
   if (!cat) return;
   cat.t += dt;
   const p = cat.parts;
+
+  if (cat.pet > 0) {
+    cat.pet -= dt;
+    const k = Math.min(1, cat.pet / 0.25);          // sonunda yumusak cikis
+    p.body.position.y = -1.2;
+    p.body.rotation.x = 0.16 - 0.1 * k;             // hafif geriye yaslanir
+    p.legFL.rotation.x = 0; p.legFR.rotation.x = 0;
+    p.legBL.rotation.x = -1.2; p.legBR.rotation.x = -1.2;
+    p.head.rotation.x = -0.35 * k;                  // kafayi kaldirir
+    p.head.rotation.y = Math.sin(cat.t * 3.5) * 0.18 * k;
+    p.tail.rotation.x = -0.5 - 0.7 * k;             // kuyruk diklenir
+    p.tail.rotation.y = Math.sin(cat.t * 7) * 0.5 * k;
+    return;
+  }
 
   if (cat.state === 'sit') {
     cat.wait -= dt;
@@ -580,7 +607,9 @@ function catStep(dt) {
     p.body.rotation.x = 0.16;
     p.legFL.rotation.x = 0; p.legFR.rotation.x = 0;
     p.legBL.rotation.x = -1.2; p.legBR.rotation.x = -1.2;
+    p.tail.rotation.x = -0.5;
     p.tail.rotation.y = Math.sin(cat.t * 1.6) * 0.55;
+    p.head.rotation.x = 0;
     p.head.rotation.y = Math.sin(cat.t * 0.5) * 0.5;
     if (cat.wait <= 0) {
       // Turda hep bir sonraki duraga: atlarsa aradaki cizgi mobilyanin ya da
@@ -833,8 +862,11 @@ function attachControls() {
   canvas.addEventListener('pointerup', (e) => {
     const tap = drag && drag.moved < 5;      // surukleme degil, tiklama
     drag = null;
+    if (!tap) return;
+    // kediye tiklamak karti acmiyor: sadece onu seviyor
+    if (hitCat(e)) { petCat(); return; }
     // bos zemine tiklamak aciksa karti kapatiyor: onPick null ile de cagriliyor
-    if (tap && window.Office3D.onPick) window.Office3D.onPick(hit(e), e.clientX, e.clientY);
+    if (window.Office3D.onPick) window.Office3D.onPick(hit(e), e.clientX, e.clientY);
   });
   canvas.addEventListener('pointercancel', () => { drag = null; });
   canvas.addEventListener('pointermove', (e) => {
@@ -856,21 +888,28 @@ function attachControls() {
 }
 
 const ndc = new THREE.Vector2();
+// Kedi peopleGroup'ta degil, dogrudan sahnede duruyor; isin testine ayrica katiliyor.
+// Onunde bir karakter varsa o kazanir — kediye tiklarken yanlislikla kimsenin karti
+// acilmasin diye en yakin isabete bakiyoruz.
 function under(e) {
   const r = canvas.getBoundingClientRect();
   ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
   ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
   raycaster.setFromCamera(ndc, camera);
-  const hits = raycaster.intersectObjects(peopleGroup.children, true);
+  const targets = cat ? peopleGroup.children.concat(cat.g) : peopleGroup.children;
+  const hits = raycaster.intersectObjects(targets, true);
   if (!hits.length) return null;
   let o = hits[0].object;
-  while (o && !o.userData.key) o = o.parent;
+  while (o && !o.userData.key && !o.userData.cat) o = o.parent;
   return o || null;
 }
 const hit = (e) => { const o = under(e); return o ? o.userData.key : null; };
+const hitCat = (e) => { const o = under(e); return !!(o && o.userData.cat); };
 function hover(e) {
   const o = under(e);
-  const tip = o ? o.userData.tip : '';
+  // kedinin kendi ipucu yok: uzerine gelince ne oldugunu soyleyelim, yoksa
+  // tiklanabildigi yalnizca imlecin degismesinden anlasiliyor
+  const tip = o ? (o.userData.cat ? T('petCat') : (o.userData.tip || '')) : '';
   if (canvas.title !== tip) canvas.title = tip;
   canvas.style.cursor = o ? 'pointer' : '';
 }
@@ -1279,6 +1318,6 @@ try {
 } catch { supported = false; }
 
 if (supported) {
-  window.Office3D = { render, onPick: null };
+  window.Office3D = { render, onPick: null, onCatPet: null };
   window.dispatchEvent(new Event('office3d-ready'));
 }

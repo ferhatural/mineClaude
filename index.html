@@ -289,7 +289,7 @@ const I18N = {
     focusTtyNone:'sekme bulunamadı — terminal kapanmış olabilir',
     close:'kapat', loading:'yükleniyor…', noMessages:'mesaj bulunamadı', you:'Sen',
     settings:'Ayarlar',
-    asked:'soru sordu',
+    petCat:'kediyi sev', asked:'soru sordu',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
@@ -320,7 +320,7 @@ const I18N = {
     focusTtyNone:'tab not found — the terminal may have been closed',
     close:'close', loading:'loading…', noMessages:'no messages found', you:'You',
     settings:'Settings',
-    asked:'asked you something',
+    petCat:'pet the cat', asked:'asked you something',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
@@ -514,7 +514,7 @@ document.addEventListener('pointerdown', (e) => {
   }
 }, true);
 Office.onPick = onPick;
-window.addEventListener('office3d-ready', () => { Office3D.onPick = onPick; });
+window.addEventListener('office3d-ready', () => { Office3D.onPick = onPick; Office3D.onCatPet = purr; });
 
 // --- kolon sayisi ---
 let cols = localStorage.getItem('cc.cols') || 'auto';
@@ -863,6 +863,70 @@ function checkNotify(){
     }
   }
   prevWaiting = nowWaiting;
+}
+
+// Kediyi sevince: mirlama. Ses dosyasi yok — gercek bir mirilti ~25 Hz'lik bir
+// genlik titresimidir, o yuzden alcak geciren filtreden gecmis kahverengi gurultuyu
+// 25 Hz'lik bir LFO ile titretiyoruz. Basina kisa bir "mrrp" cikisi kediyi
+// vizildayan bir cihazdan ayiriyor.
+function purr(){
+  if(!soundBox.checked) return;
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if(actx.state === 'suspended') actx.resume();
+    const t0 = actx.currentTime, DUR = 1.9;
+
+    // kahverengi gurultu: beyaz gurultunun entegrali, alcak frekanslara agirlik verir
+    const len = Math.ceil(actx.sampleRate * DUR);
+    const buf = actx.createBuffer(1, len, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for(let i = 0; i < len; i++){
+      const w = Math.random() * 2 - 1;
+      last = (last + 0.02 * w) / 1.02;
+      d[i] = last * 3.5;
+    }
+    const src = actx.createBufferSource();
+    src.buffer = buf;
+
+    const lp = actx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 1.2;
+
+    // Titresim: LFO -> am.gain. Taban 0.62, salinim ±0.38 => 0.24..1 arasi.
+    // Tam 0'a inen bir modulasyon (taban 0.5) olculdugunde derinlik 1.00 cikiyor ve
+    // mirlamadan cok kesikli bir brrr gibi duyuluyor; kedi darbeler arasinda susmuyor.
+    const am = actx.createGain();
+    am.gain.value = 0.62;
+    const lfo = actx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(24, t0);
+    lfo.frequency.linearRampToValueAtTime(27, t0 + DUR);   // sonuna dogru hafif hizlanir
+    const lfoGain = actx.createGain();
+    lfoGain.gain.value = 0.38;
+    lfo.connect(lfoGain).connect(am.gain);
+
+    const out = actx.createGain();
+    out.gain.setValueAtTime(0.0001, t0);
+    out.gain.exponentialRampToValueAtTime(0.15, t0 + 0.18);
+    out.gain.setValueAtTime(0.15, t0 + DUR - 0.5);
+    out.gain.exponentialRampToValueAtTime(0.0001, t0 + DUR);
+
+    src.connect(lp).connect(am).connect(out).connect(actx.destination);
+    lfo.start(t0); lfo.stop(t0 + DUR);
+    src.start(t0); src.stop(t0 + DUR);
+
+    // kisa "mrrp": inen bir uculuk, mirlamanin uzerine biniyor
+    const o = actx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(700, t0);
+    o.frequency.exponentialRampToValueAtTime(410, t0 + 0.16);
+    const og = actx.createGain();
+    og.gain.setValueAtTime(0.0001, t0);
+    og.gain.exponentialRampToValueAtTime(0.05, t0 + 0.04);
+    og.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    o.connect(og).connect(actx.destination);
+    o.start(t0); o.stop(t0 + 0.24);
+  }catch{}
 }
 
 function setConn(ok, text){

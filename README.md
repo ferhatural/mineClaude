@@ -230,6 +230,12 @@ input is never replaced, so undo history, dead-key composition and the caret sur
 two-second refresh. The messages are not in `/api/state`; the column asks `/api/messages` for
 that one session, so the stream everyone gets stays small.
 
+There is a cat. It does a slow circuit of the lounge and the aisles between the desks,
+sitting down for a few seconds at each stop. Click it and it sits, looks up and puts its tail
+in the air; if sounds are on it purrs too. The purr is synthesised in the page like the other
+sounds — a real purr is an amplitude flutter around 25 Hz, which is filtered noise through a
+25 Hz tremolo, so there is still no audio file in the repository.
+
 When a session's status changes the character walks to its new spot: legs and arms swing in a
 two-frame step, the duration scales with distance, and crossing between the office and the lounge
 routes through the doorway. Slots are sticky, so one person leaving does not shuffle everyone else.

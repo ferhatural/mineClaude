@@ -170,6 +170,12 @@ değiştirilmiyor, yani geri alma geçmişi, ölü tuş bileşimi ve imleç iki 
 sağ çıkıyor. Mesajlar `/api/state` içinde taşınmıyor; kolon yalnız o session için
 `/api/messages`'e soruyor, herkese akan yayın küçük kalsın diye.
 
+Bir kedi var. Lounge ile masaların arasındaki koridorları kapsayan yavaş bir tur atıyor, her
+durakta birkaç saniye oturuyor. Tıklayınca oturup kafasını kaldırıyor ve kuyruğunu dikiyor;
+ses açıksa mırlıyor da. Mırıltı diğer sesler gibi sayfada sentezleniyor — gerçek bir mırıltı
+~25 Hz'lik bir genlik titremesi, yani alçak geçiren filtreden geçmiş gürültünün 25 Hz'de
+titretilmesi; repoda hâlâ tek bir ses dosyası yok.
+
 Durum değişince kişi hedefine **yürür**: bacaklar ve kollar 2 kareli Minecraft adımıyla oynar,
 süre mesafeye göre hesaplanır (~300 birim/sn) ve ofis ile lounge arasında geçerken duvardan
 değil kapıdan dolaşır. Slotlar kişiye yapışıktır — biri masasına geçtiğinde lounge'daki
