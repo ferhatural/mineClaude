@@ -28,8 +28,33 @@ let serverUrl = null;
 let quitting = false;
 let restarts = 0;
 let closeIntercept = false;   // sayfa: terminal gorunumunde ve acik terminal var
-let uiLang = 'tr';            // sayfa hangi dildeyse dialoglar da o dilde
 let quitConfirmed = false;    // "hepsi kapanacak" sorusu onaylandi mi
+
+// Menuler ve dialoglar isletim sisteminin diline uyuyor. Electron'un hazir menu
+// rolleri (Minimize, Zoom, Reload...) zaten oyle geliyor; kendi yazdiklarimiz da
+// onlarla ayni dilde olsun diye. Panelin TR/EN anahtari icerigi ilgilendiriyor,
+// pencere kromunu degil — cogu uygulamada boyle.
+const TR = /^tr/i.test(app.getLocale() || '');
+const L = {
+  show:      TR ? 'mineClaude’i aç'        : 'Open mineClaude',
+  hide:      TR ? 'Pencereyi gizle'        : 'Hide window',
+  browser:   TR ? 'Tarayıcıda aç'          : 'Open in browser',
+  reload:    TR ? 'Yenile'                 : 'Reload',
+  atLogin:   TR ? 'Açılışta başlat'        : 'Start at login',
+  server:    TR ? 'Sunucu'                 : 'Server',
+  external:  TR ? 'dışarıdan'              : 'external',
+  quit:      TR ? 'mineClaude’ten çık'     : 'Quit mineClaude',
+  viewMenu:  TR ? 'Görünüm'                : 'View',
+  winMenu:   TR ? 'Pencere'                : 'Window',
+  close:     TR ? 'Kapat'                  : 'Close',
+  pickDir:   TR ? 'Terminal hangi klasörde açılsın?' : 'Which folder should the terminal open in?',
+  qButtons:  TR ? ['Çık', 'Vazgeç']        : ['Quit', 'Cancel'],
+  qDetail:   TR ? 'İçlerinde çalışan Claude oturumları da kapanır.'
+                : 'The Claude sessions running in them close too.',
+  qMessage:  (n) => (TR
+    ? `${n} terminal açık — hepsi kapanacak`
+    : `${n} terminal${n > 1 ? 's are' : ' is'} open — all of them will close`),
+};
 
 // ---------------------------------------------------------------- ayarlar
 
@@ -266,26 +291,26 @@ function createTray() {
 function buildMenu() {
   const open = !!(win && !win.isDestroyed() && win.isVisible());
   return Menu.buildFromTemplate([
-    { label: open ? 'Pencereyi gizle' : 'mineClaude’i ac', click: toggleWindow },
-    { label: 'Tarayicida ac', click: () => shell.openExternal(serverUrl) },
+    { label: open ? L.hide : L.show, click: toggleWindow },
+    { label: L.browser, click: () => shell.openExternal(serverUrl) },
     { type: 'separator' },
     {
-      label: 'Yenile',
+      label: L.reload,
       click: () => win && !win.isDestroyed() && win.webContents.reload(),
     },
     {
-      label: 'Acilista baslat',
+      label: L.atLogin,
       type: 'checkbox',
       checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true }),
     },
     { type: 'separator' },
     {
-      label: child ? `Sunucu: localhost:${config.port}` : `Sunucu: localhost:${config.port} (disaridan)`,
+      label: `${L.server}: localhost:${config.port}` + (child ? '' : ` (${L.external})`),
       enabled: false,
     },
     { type: 'separator' },
-    { label: 'mineClaude’ten cik', accelerator: 'Command+Q', click: () => app.quit() },
+    { label: L.quit, accelerator: 'Command+Q', click: () => app.quit() },
   ]);
 }
 
@@ -405,7 +430,7 @@ function setAppMenu() {
     { role: 'appMenu' },
     { role: 'editMenu' },
     {
-      label: 'Gorunum',
+      label: L.viewMenu,
       submenu: [
         { role: 'reload' },
         { role: 'forceReload' },
@@ -419,7 +444,7 @@ function setAppMenu() {
       ],
     },
     {
-      label: 'Pencere',
+      label: L.winMenu,
       submenu: [
         { role: 'minimize' },
         { role: 'zoom' },
@@ -427,7 +452,7 @@ function setAppMenu() {
         // gorunumundeyken beklenen sey etkin terminali kapatmak. Karari sayfa
         // veriyor: terminal kapattiysa 'true' donuyor, yoksa pencereyi gizliyoruz.
         {
-          label: 'Kapat',
+          label: L.close,
           accelerator: 'Command+W',
           click: () => {
             if (!win || win.isDestroyed()) return;
@@ -485,9 +510,8 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('mineclaude:term-resize', (_e, { id, cols, rows }) => term.resize(id, cols, rows));
   ipcMain.on('mineclaude:term-kill', (_e, { id }) => term.kill(id));
   ipcMain.on('mineclaude:close-intercept', (_e, on) => { closeIntercept = !!on; });
-  ipcMain.on('mineclaude:lang', (_e, l) => { uiLang = l === 'en' ? 'en' : 'tr'; });
   ipcMain.handle('mineclaude:pick-folder', async () => {
-    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: 'Terminal hangi klasorde acilsin?' });
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: L.pickDir });
     return r.canceled ? null : r.filePaths[0];
   });
 
@@ -500,18 +524,13 @@ if (!app.requestSingleInstanceLock()) {
     const live = term.list().filter((t) => !t.dead);
     if (!quitConfirmed && live.length) {
       e.preventDefault();
-      const tr = uiLang !== 'en';
       const opts = {
         type: 'warning',
-        buttons: tr ? ['Çık', 'Vazgeç'] : ['Quit', 'Cancel'],
+        buttons: L.qButtons,
         defaultId: 1,           // varsayilan vazgecmek: yanlislikla ⌘Q'ya basmak ucuz olmasin
         cancelId: 1,
-        message: tr
-          ? `${live.length} terminal açık — hepsi kapanacak`
-          : `${live.length} terminal${live.length > 1 ? 's are' : ' is'} open — all of them will close`,
-        detail: (tr
-          ? 'İçlerinde çalışan Claude oturumları da kapanır.\n\n'
-          : 'The Claude sessions running in them close too.\n\n') + live.map((t) => '· ' + t.title).join('\n'),
+        message: L.qMessage(live.length),
+        detail: L.qDetail + '\n\n' + live.map((t) => '· ' + t.title).join('\n'),
       };
       const shown = win && !win.isDestroyed() && win.isVisible()
         ? dialog.showMessageBox(win, opts)

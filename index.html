@@ -613,7 +613,6 @@ function applyLang(){
     if(b.dataset.l === lang) return;
     lang = b.dataset.l;
     localStorage.setItem('cc.lang', lang);
-    syncLang();
     applyLang(); applyViewBtn(); render();
   });
   if(es && es.readyState === 1) setConn(true, T('live'));
@@ -1066,11 +1065,6 @@ connect();
 if(window.mineClaudeDesktop && window.mineClaudeDesktop.onCloseTerminal){
   window.mineClaudeDesktop.onCloseTerminal(() => { if(hasTerm()) MTerm.closeActive(); syncCloseIntercept(); });
 }
-function syncLang(){
-  if(window.mineClaudeDesktop && window.mineClaudeDesktop.setLang)
-    window.mineClaudeDesktop.setLang(lang);
-}
-syncLang();
 function syncCloseIntercept(){
   if(window.mineClaudeDesktop && window.mineClaudeDesktop.setCloseIntercept)
     window.mineClaudeDesktop.setCloseIntercept(hasTerm() && view === 'term' && MTerm.count() > 0);

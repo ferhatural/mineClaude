@@ -73,6 +73,10 @@ launchd servisi, başladığı andaki kodu servis etmeye devam ediyor ve bu pane
 esrarengiz şekilde kaybolması olarak görünüyor. O durumda kendi sunucusunu bir sonraki boş
 portta açar ve stderr'e yazar.
 
+Menüler, tray menüsü ve diyaloglar sistemin dilini izliyor — Electron'un hazır menü rolleri
+zaten öyle geliyor. Başlıktaki TR/EN anahtarı panelin kendi metinlerini ilgilendiriyor, pencere
+kromunu değil.
+
 Dock ikonu pencereyle birlikte gelip gidiyor: pencere açıkken uygulama normal bir uygulama,
 ⌘Tab ile ona geçebiliyorsun; pencereyi gizleyince dock'tan ve uygulama değiştiriciden düşüp
 yalnız menü çubuğunda kalıyor. İkona sağ tık: tarayıcıda aç, yenile, **açılışta başlat**, çık.

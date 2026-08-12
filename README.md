@@ -91,6 +91,10 @@ is not adopted: a launchd agent that has been up for days keeps serving the code
 with, which shows up as features mysteriously missing from the dashboard. In that case the app
 starts its own on the next free port and says so on stderr.
 
+Menus, the tray menu and the dialogs follow the system language, which is what the built-in
+menu roles do anyway; the TR/EN switch in the header is about the dashboard's own text, not the
+window chrome.
+
 The dock icon comes and goes with the window: while the window is open the app is a normal app
 and ⌘Tab reaches it; once you hide the window it drops out of the dock and the app switcher and
 lives only in the menu bar. Right-click the icon for open in browser, reload, **start at login**,
