@@ -216,7 +216,9 @@ diğerleri yerinden oynamaz. `prefers-reduced-motion` açıksa tüm animasyonlar
 
 - 2 saniyede bir SSE ile canlı güncellenir, sekme başlığında bekleyen session sayısı görünür
 - Bir session input beklemeye geçince masaüstü bildirimi (opsiyonel, kutucuktan aç)
-- Durum kutucuklarına tıklayarak filtre
+- Durum kutucuklarına tıklayarak filtre. Kart görünümünde alışılmış kutular; ofis, 3D ve
+  terminal görünümlerinde aynı satır tek sıra rozete iniyor — solda rakam, sağda etiket — ve
+  yaklaşık kırk piksel sahneye geri dönüyor
 - Bildirim, boş session'ları gizleme, ses ve kolon sayısı dişli düğmesinin arkasında; eskiden
   başlığın altında bir satır kaplıyordu, o satır ofis görünümünün ayıramayacağı bir yükseklikti
 - Kolon sayısı seçilebilir (auto / 1–6, tercih saklanır), mobilde tek kolon, sağ üstte tam ekran

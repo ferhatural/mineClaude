@@ -120,7 +120,16 @@
      ciziliyordu, ekrandan tasip sayfayi kaydiriyordu. Kart gorunumu eskisi gibi akar. */
   body.office{overflow:hidden}
   body.office .wrap{height:100vh;display:flex;flex-direction:column;padding-bottom:16px}
-  body.office .counts{margin-bottom:12px}
+  /* Kart gorunumunde sayilar buyuk kutular; ofis/3D/terminal gorunumlerinde ayni
+     bilgi tek satira iniyor — solda rakam, sagda ne oldugu. Kazanilan ~40 piksel
+     dogrudan sahneye/terminale gidiyor. */
+  body.office .counts{gap:8px;margin-bottom:10px;flex-wrap:nowrap;overflow-x:auto;
+    scrollbar-width:none}
+  body.office .counts::-webkit-scrollbar{display:none}
+  body.office .count{flex:0 0 auto;display:flex;align-items:baseline;gap:7px;
+    padding:6px 12px;border-radius:999px}
+  body.office .count .n{font-size:15px;line-height:1.3}
+  body.office .count .l{font-size:12px;margin-top:0;white-space:nowrap}
   body.office footer{display:none}
   body.office #stage{flex:1;min-height:0;display:flex}
   body.office #office,body.office #office3d,body.office #terms{flex:1;min-height:0}

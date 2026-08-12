@@ -220,7 +220,9 @@ the conversation) before they get one.
 
 - Live updates over SSE every 2 seconds; the browser tab title shows how many sessions want you
 - Optional desktop notification the moment a session starts waiting for input
-- Click a status tile to filter
+- Click a status tile to filter. In the card view they are the usual boxes; in the office, 3D
+  and terminal views the same row collapses to one line of pills, number then label, which hands
+  about forty pixels back to the scene
 - Notifications, hiding empty sessions, sounds and the column count live behind the gear button;
   they used to sit in a row under the header, which was height the office view could not spare
 - Column count is selectable (auto, 1–6) and remembered; single column on narrow screens;
