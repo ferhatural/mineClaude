@@ -153,7 +153,8 @@ the view and all of them at once in a near-square grid. ⌘T opens one, ⌘1–�
 closes the focused terminal rather than the window — once the last one is gone ⌘W hides the
 window again, the way it does everywhere else.
 
-Terminals live in the app process, so quitting the app closes them. `claude --resume` picks a
+Terminals live in the app process, so quitting the app closes them — it asks first, naming the
+folders that are about to go, and defaults to cancelling. `claude --resume` picks a
 session back up.
 
 ## Statuses

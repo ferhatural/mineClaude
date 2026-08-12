@@ -28,6 +28,8 @@ let serverUrl = null;
 let quitting = false;
 let restarts = 0;
 let closeIntercept = false;   // sayfa: terminal gorunumunde ve acik terminal var
+let uiLang = 'tr';            // sayfa hangi dildeyse dialoglar da o dilde
+let quitConfirmed = false;    // "hepsi kapanacak" sorusu onaylandi mi
 
 // ---------------------------------------------------------------- ayarlar
 
@@ -483,6 +485,7 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('mineclaude:term-resize', (_e, { id, cols, rows }) => term.resize(id, cols, rows));
   ipcMain.on('mineclaude:term-kill', (_e, { id }) => term.kill(id));
   ipcMain.on('mineclaude:close-intercept', (_e, on) => { closeIntercept = !!on; });
+  ipcMain.on('mineclaude:lang', (_e, l) => { uiLang = l === 'en' ? 'en' : 'tr'; });
   ipcMain.handle('mineclaude:pick-folder', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: 'Terminal hangi klasorde acilsin?' });
     return r.canceled ? null : r.filePaths[0];
@@ -490,7 +493,34 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('activate', showWindow);
   app.on('window-all-closed', () => { /* menu bar uygulamasi: pencere yoksa da yasar */ });
-  app.on('before-quit', () => {
+  // Cikista acik terminal varsa once sor. PTY'ler bu surecte yasadigi icin ⌘Q
+  // hepsini birden goturuyor — icindeki Claude oturumlariyla beraber. Mimariyi
+  // buyutup PTY'leri ayri bir surece tasimak yerine, once haber veriyoruz.
+  app.on('before-quit', (e) => {
+    const live = term.list().filter((t) => !t.dead);
+    if (!quitConfirmed && live.length) {
+      e.preventDefault();
+      const tr = uiLang !== 'en';
+      const opts = {
+        type: 'warning',
+        buttons: tr ? ['Çık', 'Vazgeç'] : ['Quit', 'Cancel'],
+        defaultId: 1,           // varsayilan vazgecmek: yanlislikla ⌘Q'ya basmak ucuz olmasin
+        cancelId: 1,
+        message: tr
+          ? `${live.length} terminal açık — hepsi kapanacak`
+          : `${live.length} terminal${live.length > 1 ? 's are' : ' is'} open — all of them will close`,
+        detail: (tr
+          ? 'İçlerinde çalışan Claude oturumları da kapanır.\n\n'
+          : 'The Claude sessions running in them close too.\n\n') + live.map((t) => '· ' + t.title).join('\n'),
+      };
+      const shown = win && !win.isDestroyed() && win.isVisible()
+        ? dialog.showMessageBox(win, opts)
+        : (app.focus({ steal: true }), dialog.showMessageBox(opts));
+      Promise.resolve(shown).then((r) => {
+        if (r && r.response === 0) { quitConfirmed = true; app.quit(); }
+      });
+      return;
+    }
     quitting = true;
     term.killAll();          // acik terminaller uygulamayla birlikte kapanir
     if (child) child.kill();

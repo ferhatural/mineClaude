@@ -26,5 +26,6 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   // menude ona gore davraniyor. Sormak yerine bildirmek, iki dunyanin arasindaki
   // ayrimi hic kurcalamamak demek.
   setCloseIntercept: (on) => ipcRenderer.send('mineclaude:close-intercept', !!on),
+  setLang: (l) => ipcRenderer.send('mineclaude:lang', l),
   onCloseTerminal: (fn) => ipcRenderer.on('mineclaude:close-terminal', () => fn()),
 });

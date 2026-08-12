@@ -134,7 +134,8 @@ hepsinin aynı anda kareye yakın bir ızgarada durduğu görünüm arasında ge
 açar, ⌘1–⌘9 arasında geçer, ⌘W ise pencereyi değil odaktaki terminali kapatır — sonuncusu da
 kapanınca ⌘W yine pencereyi gizlemeye döner, her yerdeki alışkanlık bozulmaz.
 
-Terminaller uygulamanın sürecinde yaşıyor, yani uygulamayı kapatınca kapanıyorlar.
+Terminaller uygulamanın sürecinde yaşıyor, yani uygulamayı kapatınca kapanıyorlar — ama önce
+soruyor, kapanacak klasörleri sayıyor ve varsayılan düğme vazgeçmek.
 `claude --resume` ile kaldığın yerden devam edilir.
 
 ## Durumlar
