@@ -230,6 +230,10 @@ input is never replaced, so undo history, dead-key composition and the caret sur
 two-second refresh. The messages are not in `/api/state`; the column asks `/api/messages` for
 that one session, so the stream everyone gets stays small.
 
+Drag rotates the room, the wheel zooms, holding space turns the drag into a pan so you can
+put the part you care about in the middle before zooming in, and a double-click puts the camera
+back. Space does nothing while the caret is in a message box.
+
 There is a cat. It does a slow circuit of the lounge and the aisles between the desks,
 sitting down for a few seconds at each stop. Click it and it sits, looks up and puts its tail
 in the air; if sounds are on it purrs too. The purr is synthesised in the page like the other

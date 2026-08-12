@@ -170,6 +170,10 @@ değiştirilmiyor, yani geri alma geçmişi, ölü tuş bileşimi ve imleç iki 
 sağ çıkıyor. Mesajlar `/api/state` içinde taşınmıyor; kolon yalnız o session için
 `/api/messages`'e soruyor, herkese akan yayın küçük kalsın diye.
 
+Sürükleme odayı döndürür, tekerlek yakınlaştırır, space basılıyken sürükleme kaydırmaya
+dönüşür — yakınlaşmadan önce ilgilendiğin yeri ortaya alabilirsin — çift tık kamerayı
+başa döndürür. İmleç bir mesaj kutusundayken space hiçbir şey yapmaz.
+
 Bir kedi var. Lounge ile masaların arasındaki koridorları kapsayan yavaş bir tur atıyor, her
 durakta birkaç saniye oturuyor. Tıklayınca oturup kafasını kaldırıyor ve kuyruğunu dikiyor;
 ses açıksa mırlıyor da. Mırıltı diğer sesler gibi sayfada sentezleniyor — gerçek bir mırıltı

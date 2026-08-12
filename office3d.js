@@ -821,20 +821,35 @@ const CENTER = new THREE.Vector3(0, 12, 24);
 const ELEV = Math.atan(1 / Math.SQRT2);     // 35.264° = gercek izometri
 let azimuth = Math.PI / 4;
 let zoom = 1;
+// Kamera hedefinin zemin duzlemindeki kaymasi. Yakinlastirinca ilgilendigin yer
+// cerceveden cikiyordu; space + surukleme ile sahneyi kaydirmak icin.
+const pan = { x: 0, z: 0 };
+const PAN_LIMIT = 260;                      // oda tamamen kadraj disina cikmasin
 
 function placeCamera() {
   const r = 600;
   const ch = Math.cos(ELEV) * r;
+  const tx = CENTER.x + pan.x, tz = CENTER.z + pan.z;
   camera.position.set(
+    tx + Math.sin(azimuth) * ch,
+    CENTER.y + Math.sin(ELEV) * r,
+    tz + Math.cos(azimuth) * ch,
+  );
+  camera.lookAt(tx, CENTER.y, tz);
+  camera.updateMatrixWorld(true);
+
+  // odayi cerceveye sigdir: 8 kosesi kamera uzayinda ne kadar yer kapliyor?
+  // Cerceve hep kaymamis kameraya gore olculuyor: pan ile birlikte cerceve de
+  // buyuseydi kaydirdikca sahne kucuk gorunurdu.
+  const framing = camera.clone();
+  framing.position.set(
     CENTER.x + Math.sin(azimuth) * ch,
     CENTER.y + Math.sin(ELEV) * r,
     CENTER.z + Math.cos(azimuth) * ch,
   );
-  camera.lookAt(CENTER);
-  camera.updateMatrixWorld(true);
-
-  // odayi cerceveye sigdir: 8 kosesi kamera uzayinda ne kadar yer kapliyor?
-  const inv = camera.matrixWorld.clone().invert();
+  framing.lookAt(CENTER);
+  framing.updateMatrixWorld(true);
+  const inv = framing.matrixWorld.clone().invert();
   const v = new THREE.Vector3();
   let hw = 0, hh = 0;
   for (const x of [ROOM.x0, ROOM.x1])
@@ -855,13 +870,38 @@ function placeCamera() {
 
 function attachControls() {
   let drag = null;
+  let space = false;
+
+  // Space basiliyken surukleme sahneyi kaydirir, dondurmez.
+  // Metin kutusundayken space normal bir karakter: orada hicbir sey yapmiyoruz.
+  // Hem olayin hedefine hem de o an odakta olana bakiyoruz: yalniz e.target'a
+  // guvenmek kirilgan — olay baska bir yerden gelirse (ornegin sentetik) metin
+  // kutusunda yaziyorken sahne kayiyor.
+  const isText = (el) => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+  const typing = (t) => isText(t) || isText(document.activeElement);
+  const setSpace = (on) => {
+    if (space === on) return;
+    space = on;
+    canvas.style.cursor = on ? 'grab' : '';
+  };
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.repeat) return;
+    if (typing(e.target) || !root || root.hidden || !root.isConnected) return;
+    setSpace(true);
+    e.preventDefault();          // sayfa asagi kaymasin
+  });
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space') setSpace(false); });
+  window.addEventListener('blur', () => setSpace(false));
+
   canvas.addEventListener('pointerdown', (e) => {
-    drag = { x: e.clientX, y: e.clientY, a: azimuth, moved: 0 };
+    drag = { x: e.clientX, y: e.clientY, a: azimuth, px: pan.x, pz: pan.z, moved: 0, pan: space };
+    if (space) canvas.style.cursor = 'grabbing';
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointerup', (e) => {
-    const tap = drag && drag.moved < 5;      // surukleme degil, tiklama
+    const tap = drag && drag.moved < 5 && !drag.pan;   // surukleme degil, tiklama
     drag = null;
+    canvas.style.cursor = space ? 'grab' : '';
     if (!tap) return;
     // kediye tiklamak karti acmiyor: sadece onu seviyor
     if (hitCat(e)) { petCat(); return; }
@@ -871,8 +911,24 @@ function attachControls() {
   canvas.addEventListener('pointercancel', () => { drag = null; });
   canvas.addEventListener('pointermove', (e) => {
     if (drag) {
-      drag.moved = Math.max(drag.moved, Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y));
-      azimuth = drag.a + (e.clientX - drag.x) * 0.006;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      drag.moved = Math.max(drag.moved, Math.abs(dx) + Math.abs(dy));
+      if (drag.pan) {
+        // Ekran pikselini dunya birimine cevir: ortografik kamerada gorunen
+        // genislik (right-left)/zoom, o da tuvalin piksel genisligine boluuyor.
+        const perPx = ((camera.right - camera.left) / camera.zoom) / (canvas.clientWidth || 1);
+        // Kameranin zemindeki sag vektoru ve ekran-yukari karsiligi
+        const rx = Math.cos(azimuth), rz = -Math.sin(azimuth);
+        const ux = -Math.sin(azimuth), uz = -Math.cos(azimuth);
+        // Dikey eksende zemin ELEV kadar yatik gorunuyor, o yuzden daha uzun adim
+        const vy = perPx / Math.sin(ELEV);
+        const nx = drag.px - rx * dx * perPx + ux * dy * vy;
+        const nz = drag.pz - rz * dx * perPx + uz * dy * vy;
+        pan.x = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, nx));
+        pan.z = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, nz));
+      } else {
+        azimuth = drag.a + dx * 0.006;
+      }
       placeCamera();
       return;
     }
@@ -884,7 +940,10 @@ function attachControls() {
     zoom = Math.min(4, Math.max(0.75, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
     placeCamera();
   }, { passive: false });
-  canvas.addEventListener('dblclick', () => { azimuth = Math.PI / 4; zoom = 1; placeCamera(); });
+  canvas.addEventListener('dblclick', () => {
+    azimuth = Math.PI / 4; zoom = 1; pan.x = 0; pan.z = 0;
+    placeCamera();
+  });
 }
 
 const ndc = new THREE.Vector2();
