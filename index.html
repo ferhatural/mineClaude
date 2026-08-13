@@ -183,6 +183,26 @@
     border:1px solid var(--line);border-radius:9px;padding:7px 14px;cursor:pointer}
   .tm-empty button:hover{border-color:var(--faint)}
 
+  /* tarayicidaki klasor secici — Electron'un yerlisi burada yok */
+  .tm-picker{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.5);
+    display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px}
+  .tm-picker-in{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    width:min(520px,100%);padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.45);
+    display:flex;flex-direction:column;gap:10px}
+  .tm-picker-head{font-size:14px;font-weight:600}
+  .tm-picker input{font:inherit;font-size:13px;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line);border-radius:9px;padding:8px 11px;outline:none}
+  .tm-picker input:focus{border-color:var(--idle)}
+  .tm-picker-list{display:flex;flex-direction:column;gap:2px;max-height:42vh;overflow:auto}
+  .tm-picker-list button{font:inherit;font-size:12px;text-align:left;color:var(--dim);
+    background:none;border:0;border-radius:7px;padding:6px 9px;cursor:pointer;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tm-picker-list button:hover{background:var(--panel2);color:var(--text)}
+  .tm-picker-foot{display:flex;gap:8px;justify-content:flex-end}
+  .tm-picker-foot button{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:6px 13px;cursor:pointer}
+  .tm-picker-go{border-color:var(--idle) !important;color:var(--idle) !important}
+
   /* ayarlar modali */
   .modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);
     display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px}
@@ -354,6 +374,7 @@ const I18N = {
     termGoTab:'sekmesine git', termInApp:'mineClaude terminali',
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'geri yükle', termRestoreNo:'yoksay',
+    termPick:'Terminal hangi klasörde açılsın?', termPickGo:'aç',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
@@ -391,6 +412,7 @@ const I18N = {
     termGoTab:'go to its tab', termInApp:'mineClaude terminal',
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'restore', termRestoreNo:'dismiss',
+    termPick:'Which folder should the terminal open in?', termPickGo:'open',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,

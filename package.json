@@ -50,7 +50,7 @@
       "electron/preload.js",
       "electron/assets/tray*.png",
       "term.js",
-      "electron/pty.js",
+      "pty.js",
       "server.js",
       "index.html",
       "office.js",
@@ -86,7 +86,8 @@
     }
   },
   "optionalDependencies": {
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0"
   },
   "allowScripts": {
     "node-pty@1.1.0": true,

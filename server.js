@@ -31,6 +31,9 @@ const flagValue = (f, d) => {
 };
 
 const PORT = parseInt(flagValue('--port', process.env.MINECLAUDE_PORT || '7788'), 10);
+// Terminaller acikca istenmeli. Panel zararsiz bir izleyici; ayni surece kabuk
+// dagitma yetenegi eklemek ayri bir karar, yanlislikla acik kalmasin.
+const TERMINALS = hasFlag('--terminals');
 // Gunlerdir ayakta duran bir launchd sunucusu, repo guncellenince eski kodu servis
 // etmeye devam ediyor. Surumu disari veriyoruz ki Electron uygulamasi boyle bir
 // sunucuyu benimsemek yerine kendi taze kopyasini kaldirabilsin.
@@ -681,6 +684,67 @@ function printTable(state) {
   console.log('');
 }
 
+// ---------------------------------------------------------------- terminaller (istege bagli)
+
+// Tarayicidan terminal: PTY bu surecte yasiyor, cizim tarayicida. Electron
+// yolundaki IPC'nin WebSocket karsiligi — mesaj sekli birebir ayni, term.js
+// hangi tasima varsa onu kullaniyor.
+//
+// Sunucu yalnizca 127.0.0.1 dinliyor; disaridan erisim SSH tuneli ya da benzeri
+// bir ozel ag uzerinden olmali. Burada kimlik dogrulamasi yok, oldugunu da
+// varsaymayin.
+function attachTerminals(server) {
+  if (!TERMINALS) return;
+  let WebSocketServer, term;
+  try {
+    ({ WebSocketServer } = require('ws'));
+    term = require('./pty');
+  } catch (e) {
+    console.error('  terminaller acilamadi: ' + String(e.message || e).split('\n')[0]);
+    console.error('  gerekli: npm i ws node-pty\n');
+    return;
+  }
+  if (!term.available()) {
+    console.error('  terminaller acilamadi: node-pty yok (' + (term.loadError() || '') + ')\n');
+    return;
+  }
+
+  const wss = new WebSocketServer({ server, path: '/terminals' });
+  wss.on('connection', (ws) => {
+    const mine = new Set();
+    const send = (m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
+
+    ws.on('message', (raw) => {
+      let m;
+      try { m = JSON.parse(raw); } catch { return; }
+      if (m.t === 'create') {
+        let info;
+        try {
+          info = term.create({ cwd: m.cwd, cols: m.cols, rows: m.rows, command: m.command });
+        } catch (e) {
+          return send({ t: 'error', ref: m.ref, error: String(e.message || e) });
+        }
+        mine.add(info.id);
+        term.attach(info.id, (id, data) => send({ t: 'data', id, data }), (id, code) => send({ t: 'exit', id, code }));
+        send({ t: 'created', ref: m.ref, ...info });
+      } else if (m.t === 'write' && mine.has(m.id)) {
+        term.write(m.id, m.data);
+      } else if (m.t === 'resize' && mine.has(m.id)) {
+        term.resize(m.id, m.cols, m.rows);
+      } else if (m.t === 'kill' && mine.has(m.id)) {
+        term.kill(m.id);
+        mine.delete(m.id);
+      }
+    });
+
+    // Baglanti kopunca PTY'leri birakmiyoruz: tablet uykuya daldi diye Claude
+    // oturumu olmesin. Sekmeler yeniden baglandiginda listeden geri bulunuyor.
+    ws.on('close', () => { /* PTY'ler yasamaya devam eder */ });
+  });
+
+  console.log('  terminaller acik  -> ws://127.0.0.1:' + PORT + '/terminals');
+}
+
 // ---------------------------------------------------------------- http sunucu
 
 const INDEX_FILE = path.join(__dirname, 'index.html');
@@ -742,6 +806,15 @@ function serve() {
       const body = JSON.stringify(collect());
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       res.end(body);
+      return;
+    }
+    if (url === '/api/terminals') {
+      let list = [];
+      if (TERMINALS) {
+        try { list = require('./pty').list(); } catch { list = []; }
+      }
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ enabled: TERMINALS, terminals: list }));
       return;
     }
     if (url === '/api/messages') {
@@ -823,6 +896,8 @@ function serve() {
     }
     throw e;
   });
+
+  attachTerminals(server);
 
   server.listen(PORT, '127.0.0.1', () => {
     const url = `http://localhost:${PORT}`;

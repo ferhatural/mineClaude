@@ -6,12 +6,64 @@
 import { Terminal } from './vendor/xterm.module.js';
 import { FitAddon } from './vendor/xterm-addon-fit.module.js';
 
+// Iki tasima, tek arayuz. Electron'da PTY'ler ana surecte ve IPC ile konusuluyor;
+// tarayicida ayni PTY'ler sunucunun icinde ve WebSocket ile. term.js ikisini de
+// ayni sekilli nesne olarak goruyor, geri kalan kod farki bilmiyor.
+function electronTransport(t) {
+  return { ...t, kind: 'electron', available: () => t.available().then((r) => !!(r && r.ok)) };
+}
+
+function webTransport() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  let ws = null, nextRef = 1;
+  const waiting = new Map();          // ref -> resolve
+  const dataFns = [], exitFns = [];
+
+  const connect = () => new Promise((resolve, reject) => {
+    if (ws && ws.readyState === 1) return resolve(ws);
+    ws = new WebSocket(`${proto}://${location.host}/terminals`);
+    ws.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.t === 'created' || m.t === 'error') {
+        const w = waiting.get(m.ref);
+        if (w) { waiting.delete(m.ref); m.t === 'error' ? w.reject(new Error(m.error)) : w.resolve(m); }
+      } else if (m.t === 'data') for (const f of dataFns) f({ id: m.id, data: m.data });
+      else if (m.t === 'exit') for (const f of exitFns) f({ id: m.id, code: m.code });
+    };
+    ws.onopen = () => resolve(ws);
+    ws.onerror = () => reject(new Error('terminal baglantisi kurulamadi'));
+  });
+
+  const send = (m) => connect().then((s) => s.send(JSON.stringify(m)));
+
+  return {
+    kind: 'web',
+    available: () => fetch('/api/terminals').then((r) => r.json()).then((d) => !!d.enabled).catch(() => false),
+    create: (opt) => new Promise((resolve, reject) => {
+      const ref = nextRef++;
+      waiting.set(ref, { resolve, reject });
+      send({ t: 'create', ref, ...opt }).catch(reject);
+      setTimeout(() => { if (waiting.delete(ref)) reject(new Error('sunucu yanit vermedi')); }, 15000);
+    }),
+    write: (id, data) => send({ t: 'write', id, data }),
+    resize: (id, cols, rows) => send({ t: 'resize', id, cols, rows }),
+    kill: (id) => send({ t: 'kill', id }),
+    pickFolder: null,                 // tarayicida yerel klasor secici yok
+    onData: (fn) => dataFns.push(fn),
+    onExit: (fn) => exitFns.push(fn),
+  };
+}
+
 const D = window.mineClaudeDesktop;
-if (D && D.term) {
+const T = D && D.term ? electronTransport(D.term) : webTransport();
+
+T.available().then((ok) => { if (ok) start(); }).catch(() => {});
+
+function start() {
   const tabs = [];              // { id, cwd, title, term, fit, el, dead }
   let active = null;
   let host = null, strip = null, panes = null;
-  let T = (k) => k;
+  let T2 = (k) => k;
   // 'tabs': tek terminal tam ekran · 'tiles': hepsi ayni anda, izgara
   let layout = localStorage.getItem('cc.termLayout') === 'tiles' ? 'tiles' : 'tabs';
 
@@ -40,7 +92,7 @@ if (D && D.term) {
   };
 
   function mount(container, translate) {
-    if (translate) T = translate;
+    if (translate) T2 = translate;
     if (host && host.isConnected) { fitAll(); return; }
     container.innerHTML = '';
     host = document.createElement('div');
@@ -59,16 +111,16 @@ if (D && D.term) {
   function showEmpty() {
     const teklif = pending.length
       ? `<div class="tm-restore">
-           <span>${T('termRestoreAsk', pending.length)}</span>
-           <button class="tm-yes">${T('termRestoreYes')}</button>
-           <button class="tm-no">${T('termRestoreNo')}</button>
+           <span>${T2('termRestoreAsk', pending.length)}</span>
+           <button class="tm-yes">${T2('termRestoreYes')}</button>
+           <button class="tm-no">${T2('termRestoreNo')}</button>
            <div class="tm-restore-list">${pending.map((r) => esc(r.title)).join(' · ')}</div>
          </div>`
       : '';
     panes.innerHTML = `<div class="tm-empty">
       ${teklif}
-      <div>${T('termEmpty')}</div>
-      <button class="tm-open">${T('termNew')}</button>
+      <div>${T2('termEmpty')}</div>
+      <button class="tm-open">${T2('termNew')}</button>
     </div>`;
     panes.querySelector('.tm-open').onclick = () => openPicked();
     const yes = panes.querySelector('.tm-yes');
@@ -111,13 +163,13 @@ if (D && D.term) {
     const plus = document.createElement('button');
     plus.className = 'tm-plus';
     plus.textContent = '+';
-    plus.title = T('termNew') + '  (⌘T)';
+    plus.title = T2('termNew') + '  (⌘T)';
     plus.onclick = () => openPicked();
     strip.appendChild(plus);
 
     const lay = document.createElement('button');
     lay.className = 'tm-lay';
-    lay.title = layout === 'tabs' ? T('termTiles') : T('termTabs');
+    lay.title = layout === 'tabs' ? T2('termTiles') : T2('termTabs');
     lay.innerHTML = layout === 'tabs'
       ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="9" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="1.8" y="9" width="5.2" height="5.2" rx="1"/><rect x="9" y="9" width="5.2" height="5.2" rx="1"/></svg>'
       : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
@@ -154,8 +206,44 @@ if (D && D.term) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   async function openPicked() {
-    const dir = await D.term.pickFolder();
-    if (dir) open(dir);
+    // Electron'da isletim sisteminin klasor secicisi var. Tarayicida yok: onun
+    // yerine panelin zaten bildigi klasorleri listeleyip bir de elle yol yazma
+    // imkani veriyoruz.
+    if (T.pickFolder) {
+      const dir = await T.pickFolder();
+      if (dir) open(dir);
+      return;
+    }
+    const known = await fetch('/api/state').then((r) => r.json())
+      .then((d) => [...new Set([...(d.live || []), ...(d.ended || [])].map((x) => x.cwd).filter(Boolean))])
+      .catch(() => []);
+    showPicker(known);
+  }
+
+  function showPicker(known) {
+    const box = document.createElement('div');
+    box.className = 'tm-picker';
+    box.innerHTML = `
+      <div class="tm-picker-in">
+        <div class="tm-picker-head">${T2('termPick')}</div>
+        <input type="text" placeholder="~/Projects/…" spellcheck="false" autocomplete="off">
+        <div class="tm-picker-list">${known.map((k) =>
+          `<button data-dir="${esc(k)}">${esc(k.replace(/^\/Users\/[^/]+/, '~'))}</button>`).join('')}</div>
+        <div class="tm-picker-foot">
+          <button class="tm-picker-go">${T2('termPickGo')}</button>
+          <button class="tm-picker-x">${T2('close')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(box);
+    const input = box.querySelector('input');
+    input.focus();
+    const kapat = () => box.remove();
+    const git = (d) => { if (d && d.trim()) { kapat(); open(d.trim()); } };
+    box.querySelector('.tm-picker-go').onclick = () => git(input.value);
+    box.querySelector('.tm-picker-x').onclick = kapat;
+    box.onpointerdown = (e) => { if (e.target === box) kapat(); };
+    input.onkeydown = (e) => { if (e.key === 'Enter') git(input.value); if (e.key === 'Escape') kapat(); };
+    box.querySelectorAll('[data-dir]').forEach((b) => { b.onclick = () => git(b.dataset.dir); });
   }
 
   async function open(cwd, command) {
@@ -180,7 +268,7 @@ if (D && D.term) {
 
     let info;
     try {
-      info = await D.term.create({ cwd, cols: term.cols, rows: term.rows, command });
+      info = await T.create({ cwd, cols: term.cols, rows: term.rows, command });
     } catch (e) {
       term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
       return;
@@ -193,8 +281,8 @@ if (D && D.term) {
     t.ro = new ResizeObserver(() => fitOne(t));
     t.ro.observe(el);
     el.addEventListener('mousedown', () => { if (active !== t) select(t); });
-    term.onData((d) => D.term.write(t.id, d));
-    term.onResize(({ cols, rows }) => D.term.resize(t.id, cols, rows));
+    term.onData((d) => T.write(t.id, d));
+    term.onResize(({ cols, rows }) => T.resize(t.id, cols, rows));
     tabs.push(t);
     saveRestore();
     applyLayout();
@@ -218,7 +306,7 @@ if (D && D.term) {
 
   function close(t) {
     if (t.ro) t.ro.disconnect();
-    D.term.kill(t.id);
+    T.kill(t.id);
     t.term.dispose();
     t.el.remove();
     const i = tabs.indexOf(t);
@@ -234,7 +322,7 @@ if (D && D.term) {
     if (!t.el.isConnected || !t.el.clientWidth || !t.el.clientHeight) return;
     try {
       t.fit.fit();
-      D.term.resize(t.id, t.term.cols, t.term.rows);
+      T.resize(t.id, t.term.cols, t.term.rows);
     } catch { /* pane henuz yerlesmemis olabilir */ }
   }
   // Sekme kipinde yalniz gorunen olculebilir; izgarada hepsi gorunuyor.
@@ -243,15 +331,15 @@ if (D && D.term) {
     else if (active) fitOne(active);
   }
 
-  D.term.onData(({ id, data }) => {
+  T.onData(({ id, data }) => {
     const t = tabs.find((x) => x.id === id);
     if (t) t.term.write(data);
   });
-  D.term.onExit(({ id, code }) => {
+  T.onExit(({ id, code }) => {
     const t = tabs.find((x) => x.id === id);
     if (!t) return;
     t.dead = true;
-    t.term.write(`\r\n\x1b[2m[${T('termClosed')} · ${code}]\x1b[0m\r\n`);
+    t.term.write(`\r\n\x1b[2m[${T2('termClosed')} · ${code}]\x1b[0m\r\n`);
     drawStrip();
   });
 

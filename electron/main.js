@@ -14,7 +14,7 @@ const fs = require('fs');
 const net = require('net');
 const http = require('http');
 const { spawn, execFile } = require('child_process');
-const term = require('./pty');
+const term = require('../pty');
 
 const ROOT = path.join(__dirname, '..');
 const SERVER_JS = path.join(ROOT, 'server.js');
