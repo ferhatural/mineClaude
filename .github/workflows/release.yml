@@ -84,6 +84,34 @@ jobs:
           fi
           echo "signed=true" >> "$GITHUB_OUTPUT" 
 
+      # electron-builder p12'yi okuyamazsa "0 identities found" deyip imzalamayi
+      # sessizce atliyor ve build yesil gorunuyor. Sorunun ne oldugunu (yanlis
+      # parola mi, iceride ozel anahtar yok mu) burada, en basta soyluyoruz.
+      - name: Sertifika okunabiliyor mu
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          printf '%s' "$CSC_LINK" | base64 --decode > /tmp/cert.p12 2>/dev/null \
+            || { echo "::error::MACOS_CERT_P12 gecerli base64 degil"; exit 1; }
+          security create-keychain -p tmp tmp.keychain
+          security unlock-keychain -p tmp tmp.keychain
+          if ! security import /tmp/cert.p12 -k tmp.keychain -P "$CSC_KEY_PASSWORD" \
+                 -T /usr/bin/codesign 2>/tmp/imp.err; then
+            echo "::error::p12 iceri alinamadi — parola yanlis olabilir. $(tr -d '\n' < /tmp/imp.err)"
+            exit 1
+          fi
+          n=$(security find-identity -v -p codesigning tmp.keychain | grep -c "Developer ID Application" || true)
+          echo "p12 icindeki Developer ID Application kimligi: $n"
+          if [ "$n" -lt 1 ]; then
+            echo "::error::p12 aciliyor ama icinde Developer ID Application *kimligi* yok."
+            echo "Muhtemelen yalniz sertifika disa aktarilmis, ozel anahtar olmadan."
+            echo "Keychain Access'te 'My Certificates' kategorisinden disa aktarmak gerekiyor."
+            exit 1
+          fi
+          rm -f /tmp/cert.p12
+
       - name: App Store Connect anahtarini yaz
         if: steps.mode.outputs.signed == 'true'
         run: |
