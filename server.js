@@ -727,6 +727,14 @@ function attachTerminals(server) {
         mine.add(info.id);
         term.attach(info.id, (id, data) => send({ t: 'data', id, data }), (id, code) => send({ t: 'exit', id, code }));
         send({ t: 'created', ref: m.ref, ...info });
+      } else if (m.t === 'attach') {
+        // Baglanti koptu, PTY yasiyor. Yeni baglantiya geri baglamak: tunel
+        // duserse ya da tablet uykuya dalarsa oturum kaybolmasin.
+        const live = term.list().find((x) => x.id === m.id && !x.dead);
+        if (!live) return send({ t: 'gone', id: m.id });
+        mine.add(m.id);
+        term.attach(m.id, (id, data) => send({ t: 'data', id, data }), (id, code) => send({ t: 'exit', id, code }));
+        send({ t: 'attached', ref: m.ref, ...live });
       } else if (m.t === 'write' && mine.has(m.id)) {
         term.write(m.id, m.data);
       } else if (m.t === 'resize' && mine.has(m.id)) {

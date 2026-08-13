@@ -19,20 +19,32 @@ function webTransport() {
   const waiting = new Map();          // ref -> resolve
   const dataFns = [], exitFns = [];
 
-  const connect = () => new Promise((resolve, reject) => {
-    if (ws && ws.readyState === 1) return resolve(ws);
-    ws = new WebSocket(`${proto}://${location.host}/terminals`);
-    ws.onmessage = (e) => {
-      let m; try { m = JSON.parse(e.data); } catch { return; }
-      if (m.t === 'created' || m.t === 'error') {
-        const w = waiting.get(m.ref);
-        if (w) { waiting.delete(m.ref); m.t === 'error' ? w.reject(new Error(m.error)) : w.resolve(m); }
-      } else if (m.t === 'data') for (const f of dataFns) f({ id: m.id, data: m.data });
-      else if (m.t === 'exit') for (const f of exitFns) f({ id: m.id, code: m.code });
-    };
-    ws.onopen = () => resolve(ws);
-    ws.onerror = () => reject(new Error('terminal baglantisi kurulamadi'));
-  });
+  const openFns = [];
+  let connecting = null;
+  let tries = 0;
+
+  const connect = () => {
+    if (ws && ws.readyState === 1) return Promise.resolve(ws);
+    if (connecting) return connecting;
+    connecting = new Promise((resolve, reject) => {
+      ws = new WebSocket(`${proto}://${location.host}/terminals`);
+      ws.onmessage = (e) => {
+        let m; try { m = JSON.parse(e.data); } catch { return; }
+        if (m.t === 'created' || m.t === 'attached' || m.t === 'error') {
+          const w = waiting.get(m.ref);
+          if (w) { waiting.delete(m.ref); m.t === 'error' ? w.reject(new Error(m.error)) : w.resolve(m); }
+        } else if (m.t === 'data') for (const f of dataFns) f({ id: m.id, data: m.data });
+        else if (m.t === 'exit') for (const f of exitFns) f({ id: m.id, code: m.code });
+        else if (m.t === 'gone') for (const f of exitFns) f({ id: m.id, code: null, gone: true });
+      };
+      ws.onopen = () => { connecting = null; tries++; resolve(ws); for (const f of openFns) f(); };
+      ws.onerror = () => { connecting = null; reject(new Error('terminal baglantisi kurulamadi')); };
+      // Tunel dusunce, tablet uyuyunca, ag degisince: PTY'ler sunucuda yasiyor,
+      // tek yapmamiz gereken geri baglanip sekmeleri yeniden eslestirmek.
+      ws.onclose = () => { connecting = null; setTimeout(() => connect().catch(() => {}), 1500); };
+    });
+    return connecting;
+  };
 
   const send = (m) => connect().then((s) => s.send(JSON.stringify(m)));
 
@@ -51,6 +63,15 @@ function webTransport() {
     pickFolder: null,                 // tarayicida yerel klasor secici yok
     onData: (fn) => dataFns.push(fn),
     onExit: (fn) => exitFns.push(fn),
+    onReconnect: (fn) => openFns.push(fn),
+    state: () => ({ ready: ws ? ws.readyState : -1, tries }),
+    kind: 'web',
+    reattach: (id) => new Promise((resolve, reject) => {
+      const ref = nextRef++;
+      waiting.set(ref, { resolve, reject });
+      send({ t: 'attach', ref, id }).catch(reject);
+      setTimeout(() => { if (waiting.delete(ref)) reject(new Error('yanit yok')); }, 8000);
+    }),
   };
 }
 
@@ -70,6 +91,15 @@ function start() {
   // Kapanista acik olan sekmeler. Uygulama PTY'leri surecinde tuttugu icin cikista
   // hepsi oluyor; burada ne oldugunu hatirlayip acilista geri yuklemeyi *oneriyoruz*.
   // Kendiliginden acmiyoruz: bes sekme, bes Claude oturumu demek.
+  const FONT_KEY = 'cc.termFont';
+  let fontSize = Math.min(22, Math.max(9, parseFloat(localStorage.getItem(FONT_KEY)) || 12.5));
+  function setFont(delta) {
+    fontSize = Math.min(22, Math.max(9, fontSize + delta));
+    localStorage.setItem(FONT_KEY, String(fontSize));
+    for (const t of tabs) t.term.options.fontSize = fontSize;
+    fitAll();
+  }
+
   const RESTORE_KEY = 'cc.termRestore';
   let pending = [];
   try { pending = JSON.parse(localStorage.getItem(RESTORE_KEY) || '[]'); } catch { pending = []; }
@@ -103,6 +133,9 @@ function start() {
     panes.className = 'tm-panes';
     host.append(strip, panes);
     container.appendChild(host);
+    // Serit host'a asili, panes'e degil: showEmpty() panes.innerHTML yazdiginda
+    // silinmesin. Konumu yine panes'in ustune denk geliyor (host position:relative).
+    host.appendChild(buildKeys());
     drawStrip();
     applyLayout();
     if (!tabs.length) showEmpty();
@@ -203,6 +236,62 @@ function start() {
     requestAnimationFrame(fitAll);
   }
 
+  // Dokunmatik cihazda Ctrl gibi tuslar tarayiciya ya da klavye katmanina takiliyor;
+  // Android'de Ctrl+C sayfaya hic ulasmayabiliyor. Bu serit klavyeden bagimsiz:
+  // dogrudan denetim dizisini PTY'ye yaziyor. Fare/trackpad varsa gizli duruyor.
+  const KEYS = [
+    ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'], ['^D', '\x04'], ['^Z', '\x1a'],
+    ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'], ['→', '\x1b[C'],
+  ];
+
+  let keyWrap = null;
+
+  function buildKeys() {
+    const wrap = document.createElement('div');
+    wrap.className = 'tm-keywrap' + (localStorage.getItem('cc.termKeys') === '0' ? ' off' : '');
+
+    const tog = document.createElement('button');
+    tog.className = 'tm-keytoggle';
+    tog.textContent = '⌨';
+    tog.title = T2('termKeys');
+    tog.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      wrap.classList.toggle('off');
+      localStorage.setItem('cc.termKeys', wrap.classList.contains('off') ? '0' : '1');
+    });
+
+    const bar = document.createElement('div');
+    bar.className = 'tm-keys';
+    const ekle = (ad, fn, cls) => {
+      const b = document.createElement('button');
+      b.textContent = ad;
+      if (cls) b.className = cls;
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); if (active) active.term.focus(); });
+      bar.appendChild(b);
+    };
+
+    for (const [ad, dizi] of KEYS) ekle(ad, () => { if (active) T.write(active.id, dizi); });
+
+    // Dokunmatikte metin secip kopyalamak zor; acik dugme daha guvenilir.
+    // Clipboard API guvenli baglam istiyor — localhost tunelinde saglaniyor.
+    ekle('kopyala', async () => {
+      if (!active) return;
+      const sel = active.term.getSelection();
+      if (sel) { try { await navigator.clipboard.writeText(sel); } catch {} }
+    }, 'wide');
+    ekle('yapıştır', async () => {
+      if (!active) return;
+      try { const t = await navigator.clipboard.readText(); if (t) T.write(active.id, t); } catch {}
+    }, 'wide');
+    // Tarayici yakinlastirmasi terminale gecmiyor; xterm'in kendi boyutu.
+    ekle('A−', () => setFont(-1));
+    ekle('A+', () => setFont(1));
+
+    wrap.append(tog, bar);
+    keyWrap = wrap;
+    return wrap;
+  }
+
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   async function openPicked() {
@@ -254,7 +343,7 @@ function start() {
 
     const term = new Terminal({
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: 12.5,
+      fontSize,
       lineHeight: 1.2,
       cursorBlink: true,
       scrollback: 10000,
@@ -275,6 +364,17 @@ function start() {
     }
 
     const t = { ...info, term, fit, el, dead: false };
+    // Bazi tarayicilar Ctrl+C'yi "kopyala" diye yorumlayip terminale hic vermiyor.
+    // Secim varken kopyalamak dogru davranis; secim yokken ^C gitmesi gerekiyor.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && e.ctrlKey && !e.metaKey && !e.altKey
+          && (e.key === 'c' || e.key === 'C') && !term.hasSelection()) {
+        T.write(t.id, '\x03');
+        e.preventDefault();
+        return false;
+      }
+      return true;
+    });
     // Olcumu elle zamanlamak tutmuyordu: izgaraya gecince rAF, grid yerlesmeden
     // once calisip her pane'i tam genislik saniyordu. Kutu ne zaman degisirse
     // olcum o zaman yapilsin.
@@ -335,12 +435,21 @@ function start() {
     const t = tabs.find((x) => x.id === id);
     if (t) t.term.write(data);
   });
-  T.onExit(({ id, code }) => {
+  T.onExit(({ id, code, gone }) => {
     const t = tabs.find((x) => x.id === id);
     if (!t) return;
     t.dead = true;
-    t.term.write(`\r\n\x1b[2m[${T2('termClosed')} · ${code}]\x1b[0m\r\n`);
+    t.term.write(`\r\n\x1b[2m[${gone ? T2('termGone') : T2('termClosed') + ' · ' + code}]\x1b[0m\r\n`);
     drawStrip();
+  });
+
+  // Baglanti geri gelince acik sekmeleri sunucudaki PTY'lere yeniden bagla.
+  if (T.onReconnect) T.onReconnect(async () => {
+    for (const t of tabs) {
+      if (t.dead) continue;
+      try { await T.reattach(t.id); T.resize(t.id, t.term.cols, t.term.rows); }
+      catch { /* PTY gitmisse 'gone' mesaji zaten geliyor */ }
+    }
   });
 
   window.addEventListener('resize', () => fitAll());
@@ -362,6 +471,8 @@ function start() {
     pendingCount: () => pending.length,
     list: () => tabs.map((t) => ({ id: t.id, cwd: t.cwd, title: t.title, tty: t.tty, dead: t.dead })),
     selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
+    showKeys: (on) => { if (keyWrap) keyWrap.classList.toggle('on', !!on); },
+    conn: () => (T.state ? T.state() : { kind: T.kind }),
     count: () => tabs.length,
     layout: () => layout,
     setLayout,

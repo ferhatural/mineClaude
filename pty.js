@@ -96,10 +96,17 @@ function create({ cwd, cols, rows, command } = {}) {
 function attach(id, onData, onExit) {
   const t = terms.get(id);
   if (!t) return;
-  t.p.onData((d) => onData(id, d));
+  // Yeniden baglanmada attach tekrar cagriliyor. node-pty dinleyicileri
+  // biriktirdigi icin cikti her seferinde bir fazla kopyalanirdi; guncel
+  // alicilari tek yerde tutup dinleyiciyi bir kez baglıyoruz.
+  t.onData = onData;
+  t.onExit = onExit;
+  if (t.wired) return;
+  t.wired = true;
+  t.p.onData((d) => { if (t.onData) t.onData(id, d); });
   t.p.onExit(({ exitCode, signal }) => {
     t.dead = true;
-    onExit(id, exitCode, signal);
+    if (t.onExit) t.onExit(id, exitCode, signal);
   });
 }
 

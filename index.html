@@ -138,7 +138,7 @@
   body.office #office3d{aspect-ratio:auto}
 
   /* gomulu terminaller */
-  .tm-host{display:flex;flex-direction:column;height:100%;min-height:0;
+  .tm-host{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;
     background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
   .tm-strip{display:flex;align-items:stretch;gap:2px;padding:6px 6px 0;flex-wrap:wrap;
     border-bottom:1px solid var(--line);background:var(--panel2)}
@@ -154,6 +154,30 @@
   .tm-plus{font:inherit;font-size:15px;line-height:1;color:var(--faint);background:none;border:0;
     padding:4px 10px;cursor:pointer;align-self:center}
   .tm-plus:hover{color:var(--text)}
+  /* Dokunmatik tuş şeridi. Terminalin üstüne biniyor: yerleşimden yükseklik
+     yemesin diye — tablette bir satır bile pahalı. Katlanınca sadece ⌨ kalıyor. */
+  /* Gorunurluk medya sorgusuna birakilmiyor: klavyeli tabletler cogu zaman
+     `pointer: fine` bildiriyor ve serit hic cikmiyor. JS dokunma yetenegine
+     bakip .on siniifini koyuyor, ayarlardan da elle acilip kapanabiliyor. */
+  .tm-keywrap{display:none;position:absolute;left:0;right:0;bottom:0;z-index:3;
+    align-items:flex-end;gap:6px;padding:6px 8px;pointer-events:none}
+  .tm-keywrap.on{display:flex}
+  .tm-keywrap > *{pointer-events:auto}
+  .tm-keytoggle{flex:0 0 auto;font:inherit;font-size:15px;line-height:1;
+    color:var(--dim);background:color-mix(in srgb,var(--panel) 88%,transparent);
+    border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer;
+    backdrop-filter:blur(6px);touch-action:manipulation}
+  .tm-keys{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
+    background:color-mix(in srgb,var(--panel) 88%,transparent);
+    border:1px solid var(--line);border-radius:10px;padding:5px;backdrop-filter:blur(6px)}
+  .tm-keys::-webkit-scrollbar{display:none}
+  .tm-keywrap.off .tm-keys{display:none}
+  .tm-keys button{flex:0 0 auto;font:inherit;font-size:13px;min-width:44px;
+    color:var(--text);background:var(--panel2);border:1px solid var(--line);
+    border-radius:7px;padding:7px 9px;cursor:pointer;touch-action:manipulation}
+  .tm-keys button.wide{min-width:auto;font-size:12px}
+  .tm-keys button:active{background:var(--panel);border-color:var(--idle)}
+
   .tm-panes{position:relative;flex:1;min-height:0}
   .tm-pane{position:absolute;inset:0;padding:8px 10px;display:none}
   .tm-pane.on{display:block}
@@ -317,6 +341,7 @@
         <label><input type="checkbox" id="notify"> <span id="notifyLabel"></span></label>
         <label><input type="checkbox" id="hideEmpty" checked> <span id="hideEmptyLabel"></span></label>
         <label><input type="checkbox" id="sound"> <span id="soundLabel"></span></label>
+        <label><input type="checkbox" id="keybar"> <span id="keybarLabel"></span></label>
         <div class="seg" id="colsWrap">
           <span id="colsLabel"></span>
           <div class="opts" id="cols"></div>
@@ -374,7 +399,7 @@ const I18N = {
     termGoTab:'sekmesine git', termInApp:'mineClaude terminali',
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'geri yükle', termRestoreNo:'yoksay',
-    termPick:'Terminal hangi klasörde açılsın?', termPickGo:'aç',
+    termPick:'Terminal hangi klasörde açılsın?', termPickGo:'aç', termGone:'oturum artık yok', termKeys:'tuş şeridi', termKeybar:'dokunmatik tuş şeridi',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
@@ -412,7 +437,7 @@ const I18N = {
     termGoTab:'go to its tab', termInApp:'mineClaude terminal',
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'restore', termRestoreNo:'dismiss',
-    termPick:'Which folder should the terminal open in?', termPickGo:'open',
+    termPick:'Which folder should the terminal open in?', termPickGo:'open', termGone:'session is gone', termKeys:'key bar', termKeybar:'on-screen key bar',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
@@ -471,6 +496,16 @@ hideEmptyBox.onchange = () => { localStorage.setItem('cc.hideEmpty', hideEmptyBo
 // --- ses: dosya yok, iki nota WebAudio ile sentezleniyor ---
 const soundBox = $('#sound');
 soundBox.checked = localStorage.getItem('cc.sound') === '1';
+// Tuş şeridi: varsayılan olarak dokunma yeteneği varsa açık. Elle değiştirilince
+// tercih saklanıyor ve otomatik algılamanın önüne geçiyor.
+const keybarBox = $('#keybar');
+const dokunmatik = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+const keybarKayit = localStorage.getItem('cc.termKeybar');
+keybarBox.checked = keybarKayit === null ? dokunmatik : keybarKayit === '1';
+keybarBox.onchange = () => {
+  localStorage.setItem('cc.termKeybar', keybarBox.checked ? '1' : '0');
+  if(hasTerm()) MTerm.showKeys(keybarBox.checked);
+};
 let actx = null;
 soundBox.onchange = () => {
   localStorage.setItem('cc.sound', soundBox.checked ? '1' : '0');
@@ -680,6 +715,7 @@ function applyViewBtn(){
   $('#setClose').title = T('close');
   $('#setClose').innerHTML = svg('cross');
   $('#settingsTitle').textContent = T('settings');
+  $('#keybarLabel').textContent = T('termKeybar');
 }
 // modül geç yüklenir: hazır olunca düğmeyi ve (3D'de kaldıysak) sahneyi tazele
 window.addEventListener('office3d-ready', () => { applyViewBtn(); render(); });
@@ -935,7 +971,7 @@ function render(){
   $('#colsWrap').hidden = office;
 
   if(office){
-    if(v === 'term') MTerm.mount($('#terms'), T);
+    if(v === 'term'){ MTerm.mount($('#terms'), T); MTerm.showKeys(keybarBox.checked); }
     else if(v === 'office3d') Office3D.render(list, $('#office3d'), T, lang);
     else Office.render(list, $('#office'), T, lang);
     syncCloseIntercept();
