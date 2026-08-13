@@ -79,8 +79,10 @@
         "LSUIElement": true,
         "NSAppleEventsUsageDescription": "mineClaude, bir session'in calistigi terminal sekmesini one getirmek icin Terminal ve iTerm2'ye erisir."
       },
-      "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "gatekeeperAssess": false
     }
   },
   "optionalDependencies": {

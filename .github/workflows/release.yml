@@ -53,22 +53,49 @@ jobs:
       # release'i yaratmayi deniyor: ayni etikete bagli iki release kaydi olusuyor,
       # GitHub da /releases/download/<tag>/<dosya> adresini cozemeyip 404 veriyor.
       # O yuzden once uret, sonra hepsini tek seferde biz ekliyoruz.
-      # CSC_IDENTITY_AUTO_DISCOVERY=false burada duruyordu ve imzalamayi tamamen
-      # atlatiyordu. Geriye Electron ikilisinin linker'dan gelen ad-hoc imzasi
-      # kaliyordu: bundle imzasiz, kaynaklar muhurlenmemis. macOS bunu "damaged"
-      # diye okuyup indiren kisiye sildiriyor. package.json'daki identity "-" ile
-      # bundle duzgun ad-hoc imzalaniyor; imza gecerli olunca hata "dogrulanamadi"
-      # olarak kaliyor, ki o asilabilir bir sey.
-      - name: DMG uret
-        run: npx electron-builder --mac --publish never
+      # Sertifika sirri var mi? Varsa Developer ID ile imzalayip notarize ediyoruz,
+      # yoksa ad-hoc imzayla devam. Ad-hoc imza da olsa imzalamak sart: hic
+      # imzalamamak bundle'i "damaged" gosteriyor ve indiren kisiye sildiriyor.
+      - name: Imzalama yolu secilsin
+        id: mode
+        run: |
+          if [ -n "${{ secrets.MACOS_CERT_P12 }}" ]; then echo "signed=true" >> "$GITHUB_OUTPUT"
+          else echo "signed=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: App Store Connect anahtarini yaz
+        if: steps.mode.outputs.signed == 'true'
+        run: |
+          mkdir -p ~/private_keys
+          echo "${{ secrets.APPLE_API_KEY_P8 }}" > ~/private_keys/AuthKey.p8
+
+      - name: DMG uret — Developer ID + notarize
+        if: steps.mode.outputs.signed == 'true'
+        run: npx electron-builder --mac --publish never -c.mac.notarize=true
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_API_KEY: ~/private_keys/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      - name: DMG uret — ad-hoc (sertifika yok)
+        if: steps.mode.outputs.signed != 'true'
+        run: npx electron-builder --mac --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false
 
       - name: Imza gecerli mi
         run: |
           for app in dist/mac-*/mineClaude.app; do
             echo "== $app"
-            codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Identifier=|Signature=|Sealed'
+            codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Identifier=|Signature=|Sealed|TeamIdentifier'
             codesign --verify --deep --strict "$app"
           done
+
+      # Notarize edildiyse Gatekeeper'in kendisi onaylamali. Ad-hoc yolda bu adim
+      # atlanir, cunku notarize olmayan bir uygulamayi reddetmesi zaten dogru.
+      - name: Gatekeeper onayliyor mu
+        if: steps.mode.outputs.signed == 'true'
+        run: |
+          for app in dist/mac-*/mineClaude.app; do spctl -a -vvv -t exec "$app"; done
 
       - name: Release olustur
         if: startsWith(github.ref, 'refs/tags/v')
