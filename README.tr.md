@@ -1,6 +1,8 @@
 # mineClaude
 
 > 🇬🇧 [English README](README.md)
+>
+> ☕ [Bir kahve ısmarla](https://buymeacoffee.com/ferhatural) — sekme aramaktan kurtardıysa.
 
 Bu makinede açık olan **tüm Claude Code CLI session'larını** tek ekranda gösterir:
 kaç tane var, hangisi hangi klasörde, hangisi çalışıyor, hangisi durmuş,
@@ -143,7 +145,10 @@ açar, ⌘1–⌘9 arasında geçer, ⌘W ise pencereyi değil odaktaki terminal
 kapanınca ⌘W yine pencereyi gizlemeye döner, her yerdeki alışkanlık bozulmaz.
 
 Terminaller uygulamanın sürecinde yaşıyor, yani uygulamayı kapatınca kapanıyorlar — ama önce
-soruyor, kapanacak klasörleri sayıyor ve varsayılan düğme vazgeçmek.
+soruyor, kapanacak klasörleri sayıyor ve varsayılan düğme vazgeçmek. Sonraki açılışta geri
+yüklemeyi öneriyor, tarayıcının sekmeleri geri açmayı önermesi gibi: klasörleri sayıp bekliyor,
+senin yerine beş Claude oturumu başlatmıyor. Geri yükleme o sekmede koşan oturum için
+`claude --resume` çalıştırıyor; oturum artık yoksa aynı klasörde taze bir `claude` açıyor.
 `claude --resume` ile kaldığın yerden devam edilir.
 
 ## Durumlar

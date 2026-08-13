@@ -1,6 +1,8 @@
 # mineClaude
 
 > 🇹🇷 [Türkçe README](README.tr.md)
+>
+> ☕ [Buy me a coffee](https://buymeacoffee.com/ferhatural) if this saved you some tab-hunting.
 
 A local dashboard for every Claude Code CLI session running on your machine: how many there are,
 which folder each one is in, which is working, which has gone quiet — and **which one is waiting
@@ -163,7 +165,11 @@ closes the focused terminal rather than the window — once the last one is gone
 window again, the way it does everywhere else.
 
 Terminals live in the app process, so quitting the app closes them — it asks first, naming the
-folders that are about to go, and defaults to cancelling. `claude --resume` picks a
+folders that are about to go, and defaults to cancelling. Next launch it offers to bring them
+back, the way a browser offers to reopen tabs: it names the folders and waits, rather than
+starting five Claude sessions on your behalf. Restoring runs `claude --resume` on the session
+that tab was running, falling back to a fresh `claude` in the same folder when that session no
+longer exists. `claude --resume` picks a
 session back up.
 
 ## Statuses

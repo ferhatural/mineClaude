@@ -15,6 +15,19 @@ if (D && D.term) {
   // 'tabs': tek terminal tam ekran · 'tiles': hepsi ayni anda, izgara
   let layout = localStorage.getItem('cc.termLayout') === 'tiles' ? 'tiles' : 'tabs';
 
+  // Kapanista acik olan sekmeler. Uygulama PTY'leri surecinde tuttugu icin cikista
+  // hepsi oluyor; burada ne oldugunu hatirlayip acilista geri yuklemeyi *oneriyoruz*.
+  // Kendiliginden acmiyoruz: bes sekme, bes Claude oturumu demek.
+  const RESTORE_KEY = 'cc.termRestore';
+  let pending = [];
+  try { pending = JSON.parse(localStorage.getItem(RESTORE_KEY) || '[]'); } catch { pending = []; }
+  if (!Array.isArray(pending)) pending = [];
+
+  function saveRestore() {
+    const snap = tabs.filter((t) => !t.dead).map((t) => ({ cwd: t.cwd, title: t.title, sessionId: t.sessionId || null }));
+    try { localStorage.setItem(RESTORE_KEY, JSON.stringify(snap)); } catch { /* dolu olabilir */ }
+  }
+
   const theme = () => {
     const cs = getComputedStyle(document.body);
     const v = (n, d) => (cs.getPropertyValue(n) || d).trim();
@@ -44,11 +57,40 @@ if (D && D.term) {
   }
 
   function showEmpty() {
+    const teklif = pending.length
+      ? `<div class="tm-restore">
+           <span>${T('termRestoreAsk', pending.length)}</span>
+           <button class="tm-yes">${T('termRestoreYes')}</button>
+           <button class="tm-no">${T('termRestoreNo')}</button>
+           <div class="tm-restore-list">${pending.map((r) => esc(r.title)).join(' · ')}</div>
+         </div>`
+      : '';
     panes.innerHTML = `<div class="tm-empty">
+      ${teklif}
       <div>${T('termEmpty')}</div>
       <button class="tm-open">${T('termNew')}</button>
     </div>`;
     panes.querySelector('.tm-open').onclick = () => openPicked();
+    const yes = panes.querySelector('.tm-yes');
+    if (yes) {
+      yes.onclick = () => restoreAll();
+      panes.querySelector('.tm-no').onclick = () => { pending = []; saveRestore(); showEmpty(); };
+    }
+  }
+
+  async function restoreAll() {
+    const list = pending;
+    pending = [];
+    for (const r of list) {
+      // Oturum kimligi biliniyorsa dogrudan ona don. `claude --resume` argumansiz
+      // calisirsa secim ekrani aciyor, otomatik geri yuklemede istedigimiz o degil.
+      // Oturum bulunamazsa (hic konusulmamis, silinmis, sikistirilmis) resume
+      // sifirdan farkli donuyor: o zaman ayni klasorde taze bir claude aciliyor.
+      // Boylece sekme her hâlukârda calisir bir Claude'la geliyor, hata satiri
+      // ve bos kabukla degil.
+      await open(r.cwd, r.sessionId ? `claude --resume ${r.sessionId} || claude` : undefined);
+    }
+    saveRestore();
   }
 
   function drawStrip() {
@@ -154,6 +196,7 @@ if (D && D.term) {
     term.onData((d) => D.term.write(t.id, d));
     term.onResize(({ cols, rows }) => D.term.resize(t.id, cols, rows));
     tabs.push(t);
+    saveRestore();
     applyLayout();
     select(t);
     term.focus();
@@ -180,6 +223,7 @@ if (D && D.term) {
     t.el.remove();
     const i = tabs.indexOf(t);
     if (i >= 0) tabs.splice(i, 1);
+    saveRestore();
     if (active === t) active = tabs[Math.min(i, tabs.length - 1)] || null;
     applyLayout();
     if (active) select(active); else { drawStrip(); showEmpty(); }
@@ -221,6 +265,13 @@ if (D && D.term) {
     selectIndex,                       // ⌘1-9
     // Panel bir session'in tty'sini biliyor: bu sekmelerden biri mi?
     tabForTty: (tty) => (tty ? (tabs.find((t) => t.tty === tty) || null) : null),
+    // Panel bir sekmede hangi oturumun kostugunu biliyor; geri yuklemede
+    // `--resume <id>` diyebilmek icin onu sekmeye yaziyoruz.
+    noteSession: (tty, sessionId) => {
+      const t = tabs.find((x) => x.tty === tty);
+      if (t && sessionId && t.sessionId !== sessionId) { t.sessionId = sessionId; saveRestore(); }
+    },
+    pendingCount: () => pending.length,
     list: () => tabs.map((t) => ({ id: t.id, cwd: t.cwd, title: t.title, tty: t.tty, dead: t.dead })),
     selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
     count: () => tabs.length,
