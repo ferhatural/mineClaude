@@ -56,11 +56,33 @@ jobs:
       # Sertifika sirri var mi? Varsa Developer ID ile imzalayip notarize ediyoruz,
       # yoksa ad-hoc imzayla devam. Ad-hoc imza da olsa imzalamak sart: hic
       # imzalamamak bundle'i "damaged" gosteriyor ve indiren kisiye sildiriyor.
+      # `gh secret set` bos stdin'e itiraz etmiyor: hatasiz, bos bir sir yaziyor.
+      # Yarim girilmis bir sertifika seti, build'in ortasinda "p12 cozulemedi"
+      # gibi anlasilmaz bir hataya donusuyor. Burada bastan ve acikca soyluyoruz.
       - name: Imzalama yolu secilsin
         id: mode
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12 }}
+          P12PASS: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEY: ${{ secrets.APPLE_API_KEY_P8 }}
+          KEYID: ${{ secrets.APPLE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          if [ -n "${{ secrets.MACOS_CERT_P12 }}" ]; then echo "signed=true" >> "$GITHUB_OUTPUT"
-          else echo "signed=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -z "$P12" ]; then
+            echo "sertifika yok — ad-hoc imzayla devam"
+            echo "signed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          eksik=""
+          [ -z "$P12PASS" ] && eksik="$eksik MACOS_CERT_PASSWORD"
+          [ -z "$KEY" ]     && eksik="$eksik APPLE_API_KEY_P8"
+          [ -z "$KEYID" ]   && eksik="$eksik APPLE_API_KEY_ID"
+          [ -z "$ISSUER" ]  && eksik="$eksik APPLE_API_ISSUER"
+          if [ -n "$eksik" ]; then
+            echo "::error::Sertifika var ama sunlar bos:$eksik" >&2
+            echo "Bos bir sir da 'tanimli' gorunuyor; degerini tekrar yazmak gerekiyor." >&2
+            exit 1
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT" 
 
       - name: App Store Connect anahtarini yaz
         if: steps.mode.outputs.signed == 'true'
