@@ -53,10 +53,22 @@ jobs:
       # release'i yaratmayi deniyor: ayni etikete bagli iki release kaydi olusuyor,
       # GitHub da /releases/download/<tag>/<dosya> adresini cozemeyip 404 veriyor.
       # O yuzden once uret, sonra hepsini tek seferde biz ekliyoruz.
+      # CSC_IDENTITY_AUTO_DISCOVERY=false burada duruyordu ve imzalamayi tamamen
+      # atlatiyordu. Geriye Electron ikilisinin linker'dan gelen ad-hoc imzasi
+      # kaliyordu: bundle imzasiz, kaynaklar muhurlenmemis. macOS bunu "damaged"
+      # diye okuyup indiren kisiye sildiriyor. package.json'daki identity "-" ile
+      # bundle duzgun ad-hoc imzalaniyor; imza gecerli olunca hata "dogrulanamadi"
+      # olarak kaliyor, ki o asilabilir bir sey.
       - name: DMG uret
         run: npx electron-builder --mac --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Imza gecerli mi
+        run: |
+          for app in dist/mac-*/mineClaude.app; do
+            echo "== $app"
+            codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Identifier=|Signature=|Sealed'
+            codesign --verify --deep --strict "$app"
+          done
 
       - name: Release olustur
         if: startsWith(github.ref, 'refs/tags/v')

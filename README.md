@@ -59,16 +59,23 @@ curl -fsSL https://raw.githubusercontent.com/ferhatural/mineClaude/main/install.
 That picks the DMG for your architecture from the latest release, copies the app into
 `/Applications`, and opens it. The app bundles its own Node, so nothing else is needed.
 
-Or [download the DMG](https://github.com/ferhatural/mineClaude/releases/latest) and drag it across
-by hand. In that case run this once, or macOS will refuse to open it:
+You can also [download the DMG](https://github.com/ferhatural/mineClaude/releases/latest) and drag
+it across by hand, but then macOS will not open it until you clear the quarantine flag a browser
+download carries:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/mineClaude.app
 ```
 
-The app is not signed — that needs a paid Apple Developer account — and macOS quarantines
-unsigned apps that arrive from a browser. `install.sh` clears the flag for you; a manual
-download needs the line above. If you have an account, build it signed yourself.
+The app carries an ad-hoc signature and is not notarized, which needs a paid Apple Developer
+account. Gatekeeper therefore refuses it on a machine that did not build it, with the "cannot
+check it for malicious software" message; the line above, or Open Anyway under Privacy &
+Security, gets past that. `install.sh` does it for you.
+
+Ad-hoc is not decoration. Skipping signing altogether leaves the bundle with only the linker's
+signature on the Electron binary and no sealed resources, and macOS reports *that* as "the
+application is damaged" and offers to move it to the Trash — which is what happened to the first
+releases here.
 
 To work on it instead of just using it:
 
@@ -110,8 +117,6 @@ built-in terminal (VS Code, Cursor) offer no way to select a tab, so there the b
 the app forward. macOS asks for permission to control the terminal the first time you use it;
 because the app is unsigned that permission is tied to the exact binary, so a new DMG means being
 asked once more.
-
-The `.dmg` is unsigned, so the first launch needs right-click → Open.
 
 ## Install as a PWA (macOS)
 

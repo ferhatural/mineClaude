@@ -41,16 +41,22 @@ curl -fsSL https://raw.githubusercontent.com/ferhatural/mineClaude/main/install.
 Son sürümden makinenin mimarisine uyan DMG'yi indirir, uygulamayı `/Applications`'a kopyalar
 ve açar. Uygulama kendi Node'unu taşıyor, başka bir şey gerekmiyor.
 
-Ya da [DMG'yi indirip](https://github.com/ferhatural/mineClaude/releases/latest) elle sürükle.
-O durumda bir kez şunu çalıştırman gerekiyor, yoksa macOS açmıyor:
+[DMG'yi indirip](https://github.com/ferhatural/mineClaude/releases/latest) elle de sürükleyebilirsin
+ama o zaman tarayıcı indirmesinin taşıdığı karantina işaretini temizlemen gerekiyor, yoksa macOS
+açmıyor:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/mineClaude.app
 ```
 
-Uygulama imzalı değil — imzalamak ücretli Apple Developer hesabı istiyor — ve macOS
-tarayıcıdan gelen imzasız uygulamaları karantinaya alıyor. `install.sh` bu işareti kendisi
-siliyor; elle indirdiğinde yukarıdaki satır gerekiyor. Hesabın varsa imzalı derleyebilirsin.
+Uygulama ad-hoc imzalı ama notarize değil; notarize etmek ücretli Apple Developer hesabı
+istiyor. Bu yüzden Gatekeeper, uygulamayı derlemeyen bir makinede "kötü amaçlı yazılım içerip
+içermediği denetlenemedi" diyerek reddediyor; yukarıdaki satır ya da Gizlilik ve Güvenlik
+altındaki "Yine de Aç" bunu aşıyor. `install.sh` zaten senin yerine yapıyor.
+
+Ad-hoc imza süs değil. İmzalamayı tamamen atlarsan bundle'da yalnız Electron ikilisinin
+linker'dan gelen imzası kalıyor, kaynaklar mühürlenmiyor ve macOS *bunu* "uygulama bozuk" diye
+okuyup çöpe atmayı öneriyor — buradaki ilk sürümlerin başına tam olarak bu geldi.
 
 Kullanmak değil de üstünde çalışmak için:
 
@@ -91,8 +97,6 @@ session'ın çalıştığı sekme öne geliyor — yeni sekme yok, yeni shell yo
 editörlerde (VS Code, Cursor) sekme seçtiren bir arayüz olmadığı için düğme yalnız uygulamayı
 öne alıyor. macOS ilk kullanımda terminali kontrol etme izni soruyor; uygulama imzasız olduğu
 için bu izin binary'ye bağlı, yani her yeni DMG'den sonra bir kez daha soruyor.
-
-`.dmg` imzasız, ilk açılışta sağ tık → Aç gerekiyor.
 
 ## PWA olarak kurmak (macOS)
 

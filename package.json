@@ -1,6 +1,6 @@
 {
   "name": "mineclaude",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Local dashboard for every Claude Code CLI session on your machine, as a Minecraft-ish office: who is working, who is idle, and who is waiting for your input",
   "type": "commonjs",
   "license": "MIT",
@@ -78,7 +78,9 @@
       "extendInfo": {
         "LSUIElement": true,
         "NSAppleEventsUsageDescription": "mineClaude, bir session'in calistigi terminal sekmesini one getirmek icin Terminal ve iTerm2'ye erisir."
-      }
+      },
+      "identity": "-",
+      "hardenedRuntime": false
     }
   },
   "optionalDependencies": {
