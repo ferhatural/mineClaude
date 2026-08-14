@@ -149,6 +149,11 @@
   .tm-tab:hover{color:var(--text)}
   .tm-tab.on{color:var(--text);background:var(--panel);border-color:var(--line)}
   .tm-tab.dead{opacity:.5}
+  /* Bu sekmedeki oturum input bekliyor — ofiste el kaldiranin karsiligi */
+  .tm-tab.waiting{color:var(--wait)}
+  .tm-tab.waiting.on{border-color:var(--wait)}
+  .tm-tab.waiting::before{content:"";width:6px;height:6px;border-radius:50%;
+    background:var(--wait);flex:none;animation:blink 1s steps(2,start) infinite}
   .tm-x{flex:none;opacity:.5;font-size:14px;line-height:1}
   .tm-x:hover{opacity:1;color:#d0524a}
   .tm-plus{font:inherit;font-size:15px;line-height:1;color:var(--faint);background:none;border:0;
@@ -1002,7 +1007,10 @@ function render(){
   // Electron uygulamasinda menu bar ikonunun rengi ve yanindaki sayi
   if(window.mineClaudeDesktop) window.mineClaudeDesktop.setStatus({ waiting: w, total: base.length });
   // Hangi sekmede hangi oturum kosuyor: geri yuklerken --resume <id> diyebilmek icin
-  if(hasTerm()) for(const s of state.live) if(s.tty && s.sessionId) MTerm.noteSession(s.tty, s.sessionId);
+  if(hasTerm()) for(const s of state.live){
+    if(s.tty && s.sessionId) MTerm.noteSession(s.tty, s.sessionId);
+    if(s.tty) MTerm.noteWaiting(s.tty, disp(s) === 'waiting');
+  }
   $('#host').textContent = state.host ? '· ' + state.host : '';
   restoreFocus(focus);
 }

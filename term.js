@@ -182,7 +182,8 @@ function start() {
     strip.innerHTML = '';
     for (const t of tabs) {
       const b = document.createElement('button');
-      b.className = 'tm-tab' + (t === active ? ' on' : '') + (t.dead ? ' dead' : '');
+      b.className = 'tm-tab' + (t === active ? ' on' : '') + (t.dead ? ' dead' : '')
+        + (t.waiting ? ' waiting' : '');
       b.title = t.cwd;
       b.innerHTML = `<span>${esc(t.title)}</span>`;
       b.onclick = () => select(t);
@@ -421,7 +422,13 @@ function start() {
     // Gizli pane'in olcusu 0: olcmeye calisirsak xterm anlamsiz bir boyuta duser
     if (!t.el.isConnected || !t.el.clientWidth || !t.el.clientHeight) return;
     try {
+      // Izgaradan tekliye gecerken terminal iki katina buyuyor; xterm tamponu
+      // yeniden akitirken gorunum penceresi icerigin disinda bir yere
+      // kalabiliyor ve ekran bos gorunuyor. Altta duruyorduysak altta kalalim.
+      const b = t.term.buffer.active;
+      const altta = b.viewportY >= b.baseY;
       t.fit.fit();
+      if (altta) t.term.scrollToBottom();
       T.resize(t.id, t.term.cols, t.term.rows);
     } catch { /* pane henuz yerlesmemis olabilir */ }
   }
@@ -464,6 +471,12 @@ function start() {
     tabForTty: (tty) => (tty ? (tabs.find((t) => t.tty === tty) || null) : null),
     // Panel bir sekmede hangi oturumun kostugunu biliyor; geri yuklemede
     // `--resume <id>` diyebilmek icin onu sekmeye yaziyoruz.
+    // Ofiste el kaldiran kisi neyse, sekmede amber baslik o: bu sekmedeki
+    // oturum senden input bekliyor.
+    noteWaiting: (tty, waiting) => {
+      const t = tabs.find((x) => x.tty === tty);
+      if (t && !!t.waiting !== !!waiting) { t.waiting = !!waiting; drawStrip(); }
+    },
     noteSession: (tty, sessionId) => {
       const t = tabs.find((x) => x.tty === tty);
       if (t && sessionId && t.sessionId !== sessionId) { t.sessionId = sessionId; saveRestore(); }
