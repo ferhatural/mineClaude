@@ -966,7 +966,10 @@ const sh = (cmd, args) => {
 
 function agentPlist() {
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // --install --terminals ile kurulduysa bayrak servise de islensin: disaridan
+  // baglanan bir tablet icin terminallerin acilista hazir olmasi gerekiyor.
   const args = [process.execPath, __filename, '--port', String(PORT), '--no-open'];
+  if (TERMINALS) args.push('--terminals');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -1020,6 +1023,7 @@ function installAgent() {
   console.log('  plist : ' + AGENT_PLIST);
   console.log('  log   : ' + AGENT_LOG);
   console.log('  panel : http://localhost:' + PORT);
+  console.log('  terminaller : ' + (TERMINALS ? 'acik' : 'kapali (--install --terminals ile acilir)'));
   console.log('\n  kaldirmak icin: mineclaude --uninstall\n');
 }
 
