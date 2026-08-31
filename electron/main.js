@@ -221,7 +221,6 @@ function createWindow() {
   };
   win.on('resize', remember);
   win.on('move', remember);
-  win.on('hide', () => syncDock(false));
 
   // Kirmizi dugme / Cmd+W uygulamayi kapatmaz: menu bar uygulamasi, arka planda kalir.
   win.on('close', (e) => {
@@ -243,21 +242,12 @@ function createWindow() {
   });
 }
 
-// Dock ikonu pencere acikken var, kapaliyken yok. Boylece uygulama arka planda
-// dururken yolda durmuyor ama pencere ortadayken Cmd+Tab ile ona gecebiliyorsun —
-// LSUIElement acikken uygulama switcher'da hic gorunmuyordu.
-function syncDock(visible) {
-  if (!app.dock) return;
-  if (visible) app.dock.show();
-  else app.dock.hide();
-}
-
+// Dock ikonu her zaman duruyor (LSUIElement kapali). Uygulama pencere gizliyken de
+// Cmd+Tab listesinde: tray'e cekilmis bir pencereye klavyeden donebilmek, dock'ta bir
+// ikon tasimaya degiyor. Dock ikonuna tiklamak pencereyi geri getiriyor (app 'activate').
 function showWindow() {
   if (!win || win.isDestroyed()) createWindow();
-  // Sira onemli: dock'u once acarsak aktivasyon politikasi accessory -> regular'a
-  // gecerken az once gosterdigimiz pencereyi yutuyor. Once pencere, sonra dock.
   win.show();
-  syncDock(true);
   win.focus();
   app.focus({ steal: true });
 }
