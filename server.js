@@ -374,6 +374,13 @@ function parseTail(file, size) {
               detail:
                 (c.input && (c.input.description || c.input.command || c.input.file_path || c.input.pattern || c.input.prompt)) ||
                 null,
+              // SendMessage'in alicisi: ofis gorunumu bir session'in digerine
+              // gidisini ancak bununla eslestirebiliyor. `to` hedefin session adi
+              // ('ccwatch-24'), yani asagidaki `name` alaniyla birebir ayni sey.
+              // id de cagriyi tekilleyip ayni mesaji tekrar tekrar oynatmiyor:
+              // lastTool her poll'da ayni gelir, "yeni mi" sorusunun cevabi bu.
+              to: c.name === 'SendMessage' && c.input ? c.input.to || null : null,
+              id: c.id || null,
             };
           }
         }

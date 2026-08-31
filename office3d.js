@@ -46,6 +46,9 @@ const LOUNGE = [
 ];
 
 const SPEED = 34;          // birim / saniye
+const VISIT_STAY = 6;      // hedefin yaninda kalma suresi (sn)
+const VISIT_GAP = 25;      // ayni kisi yeniden kalkmadan once bekleyecegi sure (sn)
+const VISIT_SIDE = 22;     // masaya degil, yanina: bu kadar uzakta duruyor
 const FPS = 30;
 const SEAT_COUCH = 10;     // kanepe oturaginin ust yuzeyi
 const SEAT_CHAIR = 14;     // sandalye oturagi
@@ -117,6 +120,14 @@ let ready = false;
 
 const nodes = new Map();            // key -> { g, parts, at, path, ... }
 const slotOf = new Map();
+
+// Ziyaret. Sahnedeki her sey tek bir session'in kendi hali; mesajlasma ise iki
+// session arasinda oldugu icin gosterilecek yeri yoktu. SendMessage'i yakalayip
+// gonderen kisiyi hedefin yanina yurutuyoruz.
+const lastMsgId = new Map();        // key -> oynatilmis tool_use id
+let visiting = null;                // ayni anda tek ziyaret: ofis curcunaya donmesin
+let visitPrimed = false;            // acilista duran eski mesajlar icin kimse kalkmasin
+let clock = 0;                      // saniye; tick besliyor
 
 const BOX = new THREE.BoxGeometry(1, 1, 1);
 const matCache = new Map();
@@ -1115,6 +1126,7 @@ function ensureNode(s, x, z, rot, prop, bub) {
     node = {
       g: built.g, parts: built.parts, at: { x, z }, dest: { x, z },
       rot, rotGoal: rot, path: null, walking: false, t: Math.random() * 10,
+      key, visit: null, visitedAt: 0,
     };
     node.label = mkLabel('of3-name');
     nodes.set(key, node);
@@ -1138,12 +1150,60 @@ function ensureNode(s, x, z, rot, prop, bub) {
   return node;
 }
 
+// Slot atamasi 2 saniyede bir yeniden hesaplaniyor ve `dest`'i eziyor; ziyaret
+// bunun ustunde durmazsa ziyaretci yolun yarisinda masasina geri cekilir.
 function applyDest(node) {
-  const d = node.dest;
+  const d = node.visit ? node.visit.at : node.dest;
   const cur = node.path ? node.path[node.path.length - 1] : node.at;
   if (cur.x === d.x && cur.z === d.z) return;
   node.path = pathTo(node, d);
   node.walking = true;
+}
+
+// ---------------------------------------------------------------- ziyaret
+
+function startVisit(node, target) {
+  const at = { x: target.dest.x + VISIT_SIDE, z: target.dest.z + 4 };
+  node.visit = {
+    at,
+    rot: Math.atan2(target.dest.x - at.x, target.dest.z - at.z),   // hedefe donuk
+    until: 0,                                                       // varista doluyor
+  };
+  applyDest(node);
+}
+
+// Yol suresi onceden bilinmiyor, o yuzden sayac varista basliyor.
+function stepVisit(node) {
+  const v = node.visit;
+  if (!v || node.walking) return;
+  if (!v.until) { v.until = clock + VISIT_STAY; node.rotGoal = v.rot; return; }
+  if (clock < v.until) { node.rotGoal = v.rot; return; }
+  node.visit = null;
+  node.visitedAt = clock;
+  if (visiting === node.key) visiting = null;
+  applyDest(node);
+}
+
+function noteVisits(list) {
+  const byName = new Map();
+  for (const s of list) if (s.name) byName.set(String(s.name), keyOf(s));
+
+  for (const s of list) {
+    const key = keyOf(s);
+    const lt = s.lastTool;
+    if (!lt || lt.name !== 'SendMessage' || !lt.to) continue;
+    const id = lt.id || lt.to;
+    if (lastMsgId.get(key) === id) continue;   // ayni cagri, ikinci kez yurutmuyoruz
+    lastMsgId.set(key, id);
+    if (!visitPrimed || visiting) continue;
+    const from = nodes.get(key);
+    const to = nodes.get(byName.get(String(lt.to)));
+    if (!from || !to || from === to || from.visit) continue;
+    if (from.visitedAt && clock - from.visitedAt < VISIT_GAP) continue;
+    startVisit(from, to);
+    visiting = key;
+  }
+  visitPrimed = true;
 }
 
 // ---------------------------------------------------------------- animasyon
@@ -1170,6 +1230,26 @@ function pose(node, dt) {
     p.ring.visible = false;
     p.head.rotation.set(0, 0, 0);
     node.g.position.y = 0;
+    return;
+  }
+
+  // Hedefin yaninda: ayakta duruyor, balon havada. Kendi masasinda `busy` olsa
+  // bile burada oturtmuyoruz — ziyaret durumu slot pozunun onunde.
+  if (node.visit) {
+    p.body.position.y = 0;
+    node.g.position.y = 0;
+    p.legL.rotation.x = 0; p.legR.rotation.x = 0;
+    const k = Math.sin(t * 1.7) * 0.09;
+    p.armL.rotation.x = k; p.armR.rotation.x = -k;
+    p.armL.rotation.z = 0; p.armR.rotation.z = 0;
+    p.body.rotation.x = 0;
+    p.head.rotation.y = Math.sin(t * 0.75) * 0.35;
+    p.head.rotation.x = Math.sin(t * 1.9) * 0.05;
+    p.mug.visible = false;
+    p.ring.visible = false;
+    p.bubble.visible = true;
+    p.bubble.material = bubbleMats.gossip;
+    p.bubble.position.y = 42 + (Math.floor(t * 1.2) % 2 ? 1.5 : 0);
     return;
   }
 
@@ -1314,7 +1394,8 @@ function tick(now) {
 
   if (pong) pongStep(dt);
   catStep(dt);
-  for (const node of nodes.values()) advance(node, dt);
+  clock = now / 1000;
+  for (const node of nodes.values()) { advance(node, dt); stepVisit(node); }
   updateLabels();
   renderer.render(scene, camera);
 }
@@ -1364,7 +1445,10 @@ function render(list, container, translate) {
     n.label.remove();
     nodes.delete(key);
     slotOf.delete(key);
+    lastMsgId.delete(key);
+    if (visiting === key) visiting = null;
   }
+  noteVisits(list);
   for (const n of touched) applyDest(n);
   hint.textContent = T('camHint');
 }
