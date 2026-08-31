@@ -73,7 +73,10 @@ function create({ cwd, cols, rows, command } = {}) {
   // Varsayilan: claude'u calistir, o kapaninca kabuk acik kalsin. Session bitince
   // pencerenin kapanmasi yerine elinde bir kabuk kaliyor (resume, git, ne gerekirse).
   const cmd = command || 'claude';
-  const args = ['-l', '-c', `${cmd}; exec ${shell} -l`];
+  // '-i' sart: zsh `-l -c` ile .zshrc'yi OKUMUYOR, yalniz .zprofile'i okuyor.
+  // Kullanicilarin PATH eklemeleri (~/.local/bin, nvm, pyenv) genelde .zshrc'de
+  // oturuyor; onsuz uygulama Finder'dan acildiginda `claude` bulunamiyor.
+  const args = ['-l', '-i', '-c', `${cmd}; exec ${shell} -l`];
 
   const p = pty.spawn(shell, args, {
     name: 'xterm-256color',
