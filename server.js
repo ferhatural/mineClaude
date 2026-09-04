@@ -50,6 +50,18 @@ const ENDED_WINDOW_MS = 3 * 24 * 3600 * 1000; // kapanmis session'lari kac gun g
 
 const LSTART_RE = /^(\w{3}\s+\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})$/;
 
+// `ps` yalniz macOS/Linux'ta calisiyor (Windows'ta Git Bash'in ps'i BSD bayraklarini
+// desteklemiyor, psSnapshot() bos donuyor). O durumda tek elimizdeki bilgi pid'in
+// hala yasiyor olmasi; session dosyasini zaten claude kendisi yazdigi icin yeterli.
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function psSnapshot() {
   const map = new Map();
   let out = '';
@@ -444,7 +456,7 @@ function collect() {
 
   for (const s of sessFiles) {
     const proc = procs.get(s.pid);
-    const alive = !!proc && looksLikeClaude(proc.command);
+    const alive = proc ? looksLikeClaude(proc.command) : pidAlive(s.pid);
     if (!alive) continue; // olu pid -> bayat dosya, atla
     seenPids.add(s.pid);
 
@@ -830,7 +842,16 @@ function serve() {
     console.log(`  durdurmak icin Ctrl+C\n`);
     if (!hasFlag('--no-open')) {
       try {
-        spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+        const opener =
+          process.platform === 'win32' ? 'start' : process.platform === 'linux' ? 'xdg-open' : 'open';
+        const child =
+          process.platform === 'win32'
+            ? spawn('cmd', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true })
+            : spawn(opener, [url], { stdio: 'ignore', detached: true });
+        child.on('error', () => {
+          /* tarayici acilamadi (komut yok vb.) - sunucu yine de ayakta kalsin */
+        });
+        child.unref();
       } catch {
         /* yoksay */
       }
