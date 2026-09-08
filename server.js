@@ -64,11 +64,15 @@ function pidAlive(pid) {
 
 function psSnapshot() {
   const map = new Map();
+  // Windows'ta BSD tipi `ps -axo` yok (Git Bash'inki de dahil): deneyip her seferinde
+  // hata mesaji basmak yerine hic denemiyoruz, alive kontrolu pidAlive()'a kaliyor.
+  if (process.platform === 'win32') return map;
   let out = '';
   try {
     out = execFileSync('ps', ['-axo', 'pid=,ppid=,tty=,%cpu=,rss=,lstart=,command='], {
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch {
     return map;
