@@ -196,6 +196,26 @@
   .tm-lay:hover{color:var(--text)}
   .tm-lay svg{width:15px;height:15px;display:block}
   .tm-pane .xterm{height:100%}
+  .tm-findbtn.on{color:var(--idle)}
+  /* Arama cubugu: seridin hemen altinda, terminalin ustune biner (yerlesimden
+     yukseklik yemesin). Sayac 3/17; eslesme yoksa kutu kizarir. */
+  .tm-find{position:absolute;top:36px;right:10px;z-index:4;display:flex;align-items:center;gap:4px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:4px 6px;
+    box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:12px}
+  .tm-find input{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel);
+    border:1px solid var(--line);border-radius:6px;padding:4px 8px;width:200px;outline:none}
+  .tm-find input:focus{border-color:var(--idle)}
+  .tm-find.none input{border-color:#d0524a}
+  .tm-find-count{color:var(--faint);font-variant-numeric:tabular-nums;min-width:44px;text-align:center;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  .tm-find.none .tm-find-count{color:#d0524a}
+  .tm-find button{font:inherit;font-size:12.5px;line-height:1;color:var(--faint);background:none;
+    border:1px solid transparent;border-radius:6px;padding:4px 7px;cursor:pointer}
+  .tm-find button:hover{color:var(--text);background:var(--panel)}
+  .tm-find .tm-find-case{font-size:11px;font-weight:600}
+  .tm-find .tm-find-case.on{color:var(--idle);border-color:var(--idle)}
+  .tm-find .tm-find-x{font-size:15px}
+  @media (max-width:560px){.tm-find input{width:130px}}
   .tm-empty{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;
     align-items:center;justify-content:center;color:var(--faint);font-size:13px}
   /* Chrome'un "sekmeleri geri yükle" çubuğu gibi: öneriyor, kendiliğinden açmıyor */
@@ -405,6 +425,7 @@ const I18N = {
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'geri yükle', termRestoreNo:'yoksay',
     termPick:'Terminal hangi klasörde açılsın?', termPickGo:'aç', termGone:'oturum artık yok', termKeys:'tuş şeridi', termKeybar:'dokunmatik tuş şeridi',
+    termFind:'terminalde ara', termFindNone:'yok', termFindCase:'büyük/küçük harf duyarlı',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
@@ -443,6 +464,7 @@ const I18N = {
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'restore', termRestoreNo:'dismiss',
     termPick:'Which folder should the terminal open in?', termPickGo:'open', termGone:'session is gone', termKeys:'key bar', termKeybar:'on-screen key bar',
+    termFind:'find in terminal', termFindNone:'none', termFindCase:'match case',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
@@ -643,10 +665,14 @@ document.addEventListener('keydown', (e) => {
   if(!hasTerm() || view !== 'term') return;
   if(e.key === 't'){ e.preventDefault(); MTerm.openPicked().then(syncCloseIntercept); return; }
   if(e.key >= '1' && e.key <= '9'){ e.preventDefault(); MTerm.selectIndex(+e.key - 1); return; }
+  // ⌘F tamponda arar; tarayıcının sayfa aramasının burada işi yok. ⌘G / ⌘⇧G sonraki/önceki.
+  if(e.key === 'f' || e.key === 'F'){ if(MTerm.findOpen()) e.preventDefault(); return; }
+  if(e.key === 'g' || e.key === 'G'){ if(MTerm.findStep(e.shiftKey)) e.preventDefault(); return; }
 });
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!setModal.hidden){ closeSettings(); return; }
+  if(hasTerm() && view === 'term' && MTerm.findClose()) return;
   if(picked){ picked = null; renderPicked(Date.now()); }
 });
 document.addEventListener('pointerdown', (e) => {

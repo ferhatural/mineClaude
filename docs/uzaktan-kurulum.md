@@ -105,6 +105,9 @@ Gerisi aynı: Tailscale, `claude`, `node server.js --terminals`, `tailscale serv
 - **Tablet ergonomisi:** yüzen tuş şeridi (`esc · tab · ^C · ^D · ^Z · oklar · kopyala ·
   yapıştır · A− · A+`), yazı boyutu kontrolü, tarayıcı için klasör seçici
 - **Sekme rengi:** o sekmedeki oturum input beklerken başlık amber, yanında yanıp sönen nokta
+- **⌘F ile tamponda arama** (4 Eylül 2026 eklendi): xterm `addon-search` vendor'da, şeritte
+  büyüteç düğmesi (tablette ⌘F yok). Eklentinin 0.16'daki hatası — seçenek değişince vurguların
+  yenilenmemesi — `term.js`'te temizle-yeniden-ara ile aşılıyor
 
 `ws` ve `node-pty` ikisi de `optionalDependencies`; yoksa özellik yok, panel eskisi gibi
 çalışıyor. Çekirdek hâlâ bağımlılıksız.

@@ -20,6 +20,14 @@ Or, if you would rather see your sessions as an office:
 People at desks are working, the one with a raised hand needs your input, and the ones on the
 sofa have been idle for a while. Status changes make them walk — through the door, not the wall.
 
+The same office also renders in 3D, if your browser has WebGL2:
+
+![3D office view](docs/office3d.png)
+
+And if you would rather not leave the dashboard at all, it can run your Claude sessions itself:
+
+![Terminals view](docs/terminals.png)
+
 ---
 
 ## Install
@@ -164,6 +172,15 @@ the view and all of them at once in a near-square grid. ⌘T opens one, ⌘1–�
 closes the focused terminal rather than the window — once the last one is gone ⌘W hides the
 window again, the way it does everywhere else.
 
+⌘F searches the active terminal's buffer: a small box opens under the tab strip, matches turn
+yellow as you type, the active one orange, with a `3/17` counter on the right. Enter goes to the
+next match, ⇧Enter to the previous, and ⌘G / ⌘⇧G do the same while the box isn't focused. Esc
+closes it and hands the cursor back to the terminal. Switching tabs carries the search over and
+clears the old tab's marks. If text is selected in the terminal, the box opens with it. Tablets
+have no ⌘F, so the strip has a magnifier button too. This is xterm's own `addon-search`
+(vendored), not the browser's find — the browser's ⌘F would only ever see the lines on screen,
+not the scrollback.
+
 Terminals live in the app process, so quitting the app closes them — it asks first, naming the
 folders that are about to go, and defaults to cancelling. Next launch it offers to bring them
 back, the way a browser offers to reopen tabs: it names the folders and waits, rather than
@@ -171,6 +188,10 @@ starting five Claude sessions on your behalf. Restoring runs `claude --resume` o
 that tab was running, falling back to a fresh `claude` in the same folder when that session no
 longer exists. `claude --resume` picks a
 session back up.
+
+Three sessions side by side in tile view, right after `claude` started in each:
+
+![Terminals view](docs/terminals.png)
 
 ## Statuses
 
@@ -264,6 +285,10 @@ the conversation) before they get one.
 The 👥 button in the top right toggles between cards and a 2D office (the choice is remembered).
 Everything is drawn as inline SVG in Minecraft-ish pixel style — characters are built from sprite
 maps at Steve proportions (8×8 head, 4×12 arms), the scene from block patterns.
+
+The cube button next to it renders the same room in 3D instead, built with three.js: same desks,
+same lounge, same status-driven walking, just an orbiting camera in place of a flat SVG. It only
+appears when the browser reports WebGL2 — no polyfill, it just falls back to the 2D office.
 
 - **working** — behind their own desk, head down
 - **waiting for input** — standing beside the desk, facing you, hand up, `?` above their head

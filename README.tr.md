@@ -144,6 +144,14 @@ hepsinin aynı anda kareye yakın bir ızgarada durduğu görünüm arasında ge
 açar, ⌘1–⌘9 arasında geçer, ⌘W ise pencereyi değil odaktaki terminali kapatır — sonuncusu da
 kapanınca ⌘W yine pencereyi gizlemeye döner, her yerdeki alışkanlık bozulmaz.
 
+⌘F etkin terminalin tamponunda arar: şeridin altında küçük bir kutu açılır, yazdıkça eşleşmeler
+sarıya boyanır, etkin olan turuncu, sağda `3/17` gibi bir sayaç. Enter sonrakine, ⇧Enter
+öncekine gider, ⌘G / ⌘⇧G da aynı işi kutu odakta değilken yapar. Esc kapatıp imleci terminale
+geri verir. Sekme değiştirince arama yeni sekmeye taşınır, eskisinin işaretleri silinir.
+Terminalde seçili metin varsa kutu onunla açılır. Tablette ⌘F olmadığı için şeritte bir
+büyüteç düğmesi de var. Arama xterm'in kendi eklentisiyle (`addon-search`, vendor'da), tarayıcı
+araması değil — tarayıcının ⌘F'i zaten yalnız ekrandaki satırları görürdü, geçmişi değil.
+
 Terminaller uygulamanın sürecinde yaşıyor, yani uygulamayı kapatınca kapanıyorlar — ama önce
 soruyor, kapanacak klasörleri sayıyor ve varsayılan düğme vazgeçmek. Sonraki açılışta geri
 yüklemeyi öneriyor, tarayıcının sekmeleri geri açmayı önermesi gibi: klasörleri sayıp bekliyor,
@@ -200,6 +208,10 @@ kullanılamaz (protokolün kendi güvenlik sınırı).
 Sağ üstteki 👥 butonu kart görünümü ile 2D ofis görünümü arasında geçiş yapar (tercih saklanır).
 Görseller Minecraft/voxel stilinde: karakterler Steve oranlarında (8×8 kafa, 4×12 kol) piksel
 sprite'lardan, sahne blok dokularından çiziliyor (`shape-rendering: crispEdges`).
+
+Yanındaki küp düğmesi aynı odayı three.js ile 3D çiziyor: aynı masalar, aynı lounge, aynı durum
+bazlı yürüme, yalnız düz SVG yerine döndürülebilen bir kamera. Yalnız tarayıcı WebGL2 bildirirse
+çıkıyor — polyfill yok, yoksa sessizce 2D ofise düşüyor.
 
 - **çalışanlar** kendi masalarının arkasında, işe dalmış
 - **input bekleyenler** masasının yanında, kameraya dönük, eli havada, başında `?` balonu

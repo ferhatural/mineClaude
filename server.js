@@ -789,6 +789,7 @@ function serve() {
       '/term.js': JS,
       '/vendor/xterm.module.js': JS,
       '/vendor/xterm-addon-fit.module.js': JS,
+      '/vendor/xterm-addon-search.module.js': JS,
       '/vendor/xterm.css': 'text/css; charset=utf-8',
       '/sw.js': JS,
       '/vendor/three.module.min.js': JS,

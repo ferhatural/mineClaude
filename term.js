@@ -5,6 +5,7 @@
 
 import { Terminal } from './vendor/xterm.module.js';
 import { FitAddon } from './vendor/xterm-addon-fit.module.js';
+import { SearchAddon } from './vendor/xterm-addon-search.module.js';
 
 // Iki tasima, tek arayuz. Electron'da PTY'ler ana surecte ve IPC ile konusuluyor;
 // tarayicida ayni PTY'ler sunucunun icinde ve WebSocket ile. term.js ikisini de
@@ -209,6 +210,127 @@ function start() {
       : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
     lay.onclick = () => setLayout(layout === 'tabs' ? 'tiles' : 'tabs');
     strip.appendChild(lay);
+
+    // Tablette ⌘F yok; ayni is icin bir dugme.
+    const fnd = document.createElement('button');
+    fnd.className = 'tm-lay tm-findbtn' + (find && !find.box.hidden ? ' on' : '');
+    fnd.title = T2('termFind') + '  (⌘F)';
+    fnd.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/></svg>';
+    fnd.onclick = () => (find && !find.box.hidden ? closeFind() : openFind());
+    strip.appendChild(fnd);
+  }
+
+  // --- tampon icinde arama (⌘F) ---
+  // Tek cubuk, etkin sekmede arar. Sekme degisince eski sekmenin isaretleri
+  // siliniyor, ayni metin yeni sekmede aranıyor. Enter ileri, ⇧Enter geri,
+  // Esc kapatip terminale doner. Vurgular xterm'in decoration API'siyle:
+  // allowProposedApi acik oldugu icin calisiyor.
+  let find = null;                 // { box, input, count, caseBtn, caseSensitive }
+
+  const findDecor = () => ({
+    matchBackground: 'rgba(255,196,0,.35)',
+    matchBorder: 'rgba(255,196,0,.9)',
+    matchOverviewRuler: '#e0a800',
+    activeMatchBackground: 'rgba(255,140,0,.75)',
+    activeMatchBorder: '#ff8c00',
+    activeMatchColorOverviewRuler: '#ff8c00',
+  });
+
+  function buildFind() {
+    const box = document.createElement('div');
+    box.className = 'tm-find';
+    box.hidden = true;
+    box.innerHTML = `
+      <input type="text" spellcheck="false" autocomplete="off" placeholder="${esc(T2('termFind'))}">
+      <span class="tm-find-count"></span>
+      <button class="tm-find-case" title="${esc(T2('termFindCase'))}">Aa</button>
+      <button class="tm-find-prev" title="⇧Enter">↑</button>
+      <button class="tm-find-next" title="Enter">↓</button>
+      <button class="tm-find-x" title="Esc">×</button>`;
+    const input = box.querySelector('input');
+    const count = box.querySelector('.tm-find-count');
+    const caseBtn = box.querySelector('.tm-find-case');
+    find = { box, input, count, caseBtn, caseSensitive: localStorage.getItem('cc.termFindCase') === '1' };
+    caseBtn.classList.toggle('on', find.caseSensitive);
+
+    input.oninput = () => runFind('incremental');
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); runFind(e.shiftKey ? 'prev' : 'next'); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+      else if (e.metaKey && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); runFind(e.shiftKey ? 'prev' : 'next'); }
+      // Cubuk acikken ⌘F yeniden basilirsa: metni sec, yeniden yaz
+      else if (e.metaKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); input.select(); }
+    };
+    caseBtn.onclick = () => {
+      find.caseSensitive = !find.caseSensitive;
+      localStorage.setItem('cc.termFindCase', find.caseSensitive ? '1' : '0');
+      caseBtn.classList.toggle('on', find.caseSensitive);
+      // addon-search 0.16: findNext yeni secenekleri once "son secenek" diye
+      // yaziyor, sonra degisti mi diye kendisiyle karsilastiriyor; secenek
+      // degisince vurgular hic yenilenmiyor. Temizleyip onbellegini dusuruyoruz.
+      if (active) active.search.clearDecorations();
+      runFind('incremental');
+      input.focus();
+    };
+    box.querySelector('.tm-find-prev').onclick = () => { runFind('prev'); input.focus(); };
+    box.querySelector('.tm-find-next').onclick = () => { runFind('next'); input.focus(); };
+    box.querySelector('.tm-find-x').onclick = () => closeFind();
+    // Tiklama terminale gitmesin (mousedown -> select(t) -> term.focus())
+    box.addEventListener('mousedown', (e) => e.stopPropagation());
+    return box;
+  }
+
+  function openFind() {
+    if (!host || !active) return false;
+    if (!find) host.appendChild(buildFind());
+    const wasHidden = find.box.hidden;
+    find.box.hidden = false;
+    // Terminalde secili metin varsa onu ara: Terminal.app ve VS Code boyle yapiyor.
+    const sel = active.term.getSelection();
+    if (sel && !sel.includes('\n')) find.input.value = sel.trim();
+    find.input.focus();
+    find.input.select();
+    if (wasHidden) drawStrip();
+    if (find.input.value) runFind('incremental');
+    return true;
+  }
+
+  function closeFind() {
+    if (!find || find.box.hidden) return false;
+    find.box.hidden = true;
+    for (const t of tabs) t.search.clearDecorations();
+    showCount(null);
+    drawStrip();
+    if (active) active.term.focus();
+    return true;
+  }
+
+  function runFind(how) {
+    if (!find || !active) return;
+    const q = find.input.value;
+    const opts = { caseSensitive: find.caseSensitive, decorations: findDecor() };
+    if (!q) { active.search.clearDecorations(); showCount(null); return; }
+    // incremental: yazarken imlec olduğu eslesmede kalsin, ileri ziplamasin
+    if (how === 'prev') active.search.findPrevious(q, opts);
+    else active.search.findNext(q, { ...opts, incremental: how === 'incremental' });
+  }
+
+  function showCount(r) {
+    if (!find) return;
+    if (!r) { find.count.textContent = ''; find.box.classList.remove('none'); return; }
+    // resultIndex -1: eslesme var ama etkin olan yok (bkz. addon); resultCount -1: 1000+ eslesme
+    const total = r.resultCount < 0 ? '1000+' : String(r.resultCount);
+    find.count.textContent = r.resultCount === 0 ? T2('termFindNone')
+      : `${r.resultIndex >= 0 ? r.resultIndex + 1 : '–'}/${total}`;
+    find.box.classList.toggle('none', r.resultCount === 0);
+  }
+
+  // Sekme degisince aramayi yeni sekmeye tasi
+  function refind(prev) {
+    if (!find || find.box.hidden) return;
+    if (prev && prev.search) prev.search.clearDecorations();
+    showCount(null);
+    if (find.input.value) runFind('incremental');
   }
 
   function setLayout(next) {
@@ -353,6 +475,8 @@ function start() {
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    const search = new SearchAddon();
+    term.loadAddon(search);
     term.open(el);
     fit.fit();
 
@@ -364,7 +488,9 @@ function start() {
       return;
     }
 
-    const t = { ...info, term, fit, el, dead: false };
+    const t = { ...info, term, fit, search, el, dead: false };
+    // Sayac yalniz etkin sekme icin: izgarada digerlerinden gelen sonuc ustune yazmasin
+    search.onDidChangeResults((r) => { if (t === active) showCount(r); });
     // Bazi tarayicilar Ctrl+C'yi "kopyala" diye yorumlayip terminale hic vermiyor.
     // Secim varken kopyalamak dogru davranis; secim yokken ^C gitmesi gerekiyor.
     term.attachCustomKeyEventHandler((e) => {
@@ -392,12 +518,15 @@ function start() {
   }
 
   function select(t) {
+    const prev = active;
     active = t;
     for (const x of tabs) x.el.classList.toggle('on', x === t);
     const empty = panes.querySelector('.tm-empty');
     if (empty) empty.remove();
     drawStrip();
-    requestAnimationFrame(() => { fitAll(); t.term.focus(); });
+    if (prev !== t) refind(prev);
+    // Arama cubugu acikken odak orada kalsin; yoksa terminale
+    requestAnimationFrame(() => { fitAll(); if (find && !find.box.hidden) find.input.focus(); else t.term.focus(); });
   }
 
   function selectIndex(i) {
@@ -466,6 +595,9 @@ function start() {
     open,                              // panel/kart "burada terminal ac" icin
     openPicked,                        // ⌘T
     closeActive: () => { if (active) { close(active); return true; } return false; },
+    findOpen: openFind,                // ⌘F
+    findClose: closeFind,              // Esc (index.html'deki genel Esc zinciri)
+    findStep: (back) => { if (find && !find.box.hidden && find.input.value) { runFind(back ? 'prev' : 'next'); return true; } return false; }, // ⌘G / ⌘⇧G
     selectIndex,                       // ⌘1-9
     // Panel bir session'in tty'sini biliyor: bu sekmelerden biri mi?
     tabForTty: (tty) => (tty ? (tabs.find((t) => t.tty === tty) || null) : null),
