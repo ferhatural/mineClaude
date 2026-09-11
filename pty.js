@@ -29,6 +29,13 @@ let nextId = 1;
 // Login shell: PATH, nvm/asdf, alias'lar ancak boyle yukleniyor. Kullanicinin
 // kendi kabugunu kullaniyoruz, sabit bir sey dayatmiyoruz.
 function loginShell() {
+  if (process.platform === 'win32') {
+    // powershell.exe her Windows'ta hazir gelir ve PATH'tedir; kullanicinin
+    // $PROFILE'ini (alias, PATH eklemeleri) POSIX login shell'in .zshrc'si
+    // gibi kendisi yukluyor. Eskiden buraya da /bin/zsh dusuyordu — node-pty
+    // onu Windows'ta hic bulamiyor, terminal acma her seferinde patliyordu.
+    return 'powershell.exe';
+  }
   const sh = process.env.SHELL || '/bin/zsh';
   try {
     fs.accessSync(sh, fs.constants.X_OK);
@@ -65,18 +72,30 @@ function childEnv() {
   return env;
 }
 
-function create({ cwd, cols, rows, command } = {}) {
+function create({ cwd, cols, rows, command, resumeSessionId } = {}) {
   if (!pty) throw new Error('node-pty yok: ' + (loadError || 'kurulu degil'));
   const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
   const shell = loginShell();
+  const isWin = process.platform === 'win32';
+
+  // Oturum kimligi verilmisse ona don, bulunamazsa (silinmis, hic konusulmamis)
+  // taze bir claude ac. POSIX'te `||` bunu tek satirda hallediyor; Windows'ta
+  // hazir gelen powershell.exe (5.1) `||`/`&&` bilmiyor (PowerShell 7'de var),
+  // o yuzden cikis koduna bakan bir if ile ayni seyi kuruyoruz.
+  const cmd = resumeSessionId
+    ? (isWin
+        ? `claude --resume ${resumeSessionId}; if ($LASTEXITCODE -ne 0) { claude }`
+        : `claude --resume ${resumeSessionId} || claude`)
+    : (command || 'claude');
 
   // Varsayilan: claude'u calistir, o kapaninca kabuk acik kalsin. Session bitince
   // pencerenin kapanmasi yerine elinde bir kabuk kaliyor (resume, git, ne gerekirse).
-  const cmd = command || 'claude';
   // '-i' sart: zsh `-l -c` ile .zshrc'yi OKUMUYOR, yalniz .zprofile'i okuyor.
   // Kullanicilarin PATH eklemeleri (~/.local/bin, nvm, pyenv) genelde .zshrc'de
   // oturuyor; onsuz uygulama Finder'dan acildiginda `claude` bulunamiyor.
-  const args = ['-l', '-i', '-c', `${cmd}; exec ${shell} -l`];
+  const args = isWin
+    ? ['-NoExit', '-Command', cmd]
+    : ['-l', '-i', '-c', `${cmd}; exec ${shell} -l`];
 
   const p = pty.spawn(shell, args, {
     name: 'xterm-256color',

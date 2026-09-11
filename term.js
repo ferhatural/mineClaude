@@ -173,8 +173,10 @@ function start() {
       // Oturum bulunamazsa (hic konusulmamis, silinmis, sikistirilmis) resume
       // sifirdan farkli donuyor: o zaman ayni klasorde taze bir claude aciliyor.
       // Boylece sekme her hâlukârda calisir bir Claude'la geliyor, hata satiri
-      // ve bos kabukla degil.
-      await open(r.cwd, r.sessionId ? `claude --resume ${r.sessionId} || claude` : undefined);
+      // ve bos kabukla degil. Fallback mantigi burada bir shell string olarak
+      // kurulmuyor artik: POSIX ve Windows'ta sozdizimi farkli (`||` PowerShell
+      // 5.1'de yok), o karari resumeSessionId ile pty.js platforma gore veriyor.
+      await open(r.cwd, undefined, r.sessionId || undefined);
     }
     saveRestore();
   }
@@ -458,7 +460,7 @@ function start() {
     box.querySelectorAll('[data-dir]').forEach((b) => { b.onclick = () => git(b.dataset.dir); });
   }
 
-  async function open(cwd, command) {
+  async function open(cwd, command, resumeSessionId) {
     if (!panes) return;
     const el = document.createElement('div');
     el.className = 'tm-pane';
@@ -482,7 +484,7 @@ function start() {
 
     let info;
     try {
-      info = await T.create({ cwd, cols: term.cols, rows: term.rows, command });
+      info = await T.create({ cwd, cols: term.cols, rows: term.rows, command, resumeSessionId });
     } catch (e) {
       term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
       return;

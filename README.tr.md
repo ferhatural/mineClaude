@@ -268,4 +268,6 @@ diğerleri yerinden oynamaz. `prefers-reduced-motion` açıksa tüm animasyonlar
 - Panel sadece `127.0.0.1` üzerinden dinler, dışarı açık değil.
 - Salt-okunur bir izleyicidir; hiçbir session'a müdahale etmez, kill etmez.
 - macOS için yazıldı (`ps`/`lsof` çıktı formatına bağlı). Linux'ta `ps` satır ayrıştırması
-  gözden geçirilmeli.
+  gözden geçirilmeli. Windows'ta bu ikisi de yok, panel bugün hiç session göstermiyor —
+  istisna **Terminaller** görünümü: yalnız `node-pty`'e ihtiyacı var, login shell yerine
+  powershell.exe ile platformlar arası çalışıyor.

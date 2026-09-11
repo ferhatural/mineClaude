@@ -326,7 +326,9 @@ All animation stops under `prefers-reduced-motion`.
 - Read-only by design apart from the message box. It never kills or restarts a session.
 - Binds to `127.0.0.1` only. `POST /api/send` additionally rejects foreign `Origin` headers.
 - Written for macOS: it parses BSD `ps` and `lsof` output. Linux should mostly work but the `ps`
-  line parsing deserves a review first.
+  line parsing deserves a review first. On Windows those calls fail (there is no `ps`/`lsof`),
+  so the dashboard itself shows no sessions today — the **Terminals** view is the exception,
+  since it only needs `node-pty` and works cross-platform, PowerShell instead of a login shell.
 - It leans on Claude Code internals (`~/.claude/sessions`, the transcript format, the messaging
   socket) that are undocumented and may change between versions. If a release breaks something
   here, that is why.
