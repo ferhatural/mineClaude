@@ -920,8 +920,14 @@ function serve() {
     console.log(`\n  mineClaude calisiyor -> ${url}`);
     console.log(`  durdurmak icin Ctrl+C\n`);
     if (!hasFlag('--no-open')) {
+      
+      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
       try {
-        spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+        const child = spawn(opener, [url], { stdio: 'ignore', detached: true });
+        child.on('error', () => {
+          console.error(`  could not open a browser (${opener} not found) - open the URL above yourself`);
+        });
+        child.unref();
       } catch {
         /* yoksay */
       }
