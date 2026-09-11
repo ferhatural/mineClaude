@@ -3,3 +3,4 @@ dist/
 electron/assets/preview.png
 *.log
 .DS_Store
+.mineclaude/
