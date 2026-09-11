@@ -8,7 +8,7 @@
 //
 // Dock'ta ikon yok (LSUIElement). Cikis tray menusunden ya da Cmd+Q ile.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen, dialog, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
@@ -31,11 +31,19 @@ let closeIntercept = false;   // sayfa: terminal gorunumunde ve acik terminal va
 let quitConfirmed = false;    // "hepsi kapanacak" sorusu onaylandi mi
 
 // Menuler ve dialoglar isletim sisteminin diline uyuyor. Electron'un hazir menu
-// rolleri (Minimize, Zoom, Reload...) zaten oyle geliyor; kendi yazdiklarimiz da
-// onlarla ayni dilde olsun diye. Panelin TR/EN anahtari icerigi ilgilendiriyor,
-// pencere kromunu degil — cogu uygulamada boyle.
-const TR = /^tr/i.test(app.getLocale() || '');
-const L = {
+// rolleri (Minimize, Zoom, Reload...) macOS'ta boyle geliyor; Windows'ta ise
+// role etiketleri hep Ingilizce kaliyor (Edit dahil), o yuzden Edit menusunu ve
+// alt ogelerini kendimiz etiketliyoruz. Panelin TR/EN anahtari icerigi
+// ilgilendiriyor, pencere kromunu degil — cogu uygulamada boyle.
+//
+// app.getLocale() Windows'ta yalnizca 'ready' olayindan sonra dogru sonuc
+// veriyor (Electron'un kendi notu) — bu yuzden TR/L'yi dosya basinda degil,
+// initL() ile ready sonrasi hesapliyoruz.
+let TR;
+let L;
+function initL() {
+  TR = config.lang ? config.lang === 'tr' : /^tr/i.test(app.getLocale() || '');
+  L = {
   show:      TR ? 'mineClaude’i aç'        : 'Open mineClaude',
   hide:      TR ? 'Pencereyi gizle'        : 'Hide window',
   browser:   TR ? 'Tarayıcıda aç'          : 'Open in browser',
@@ -44,9 +52,40 @@ const L = {
   server:    TR ? 'Sunucu'                 : 'Server',
   external:  TR ? 'dışarıdan'              : 'external',
   quit:      TR ? 'mineClaude’ten çık'     : 'Quit mineClaude',
+  editMenu:  TR ? 'Düzenle'                : 'Edit',
+  undo:      TR ? 'Geri al'                : 'Undo',
+  redo:      TR ? 'Yinele'                 : 'Redo',
+  cut:       TR ? 'Kes'                    : 'Cut',
+  copy:      TR ? 'Kopyala'                : 'Copy',
+  paste:     TR ? 'Yapıştır'               : 'Paste',
+  pasteStyle:TR ? 'Yapıştır ve Stili Eşleştir' : 'Paste and Match Style',
+  delete:    TR ? 'Sil'                    : 'Delete',
+  selectAll: TR ? 'Tümünü seç'             : 'Select All',
   viewMenu:  TR ? 'Görünüm'                : 'View',
+  forceReload: TR ? 'Yeniden yükle (zorla)': 'Force Reload',
+  devTools:  TR ? 'Geliştirici Araçları'   : 'Toggle Developer Tools',
+  actualSize:TR ? 'Gerçek Boyut'           : 'Actual Size',
+  zoomIn:    TR ? 'Yakınlaştır'            : 'Zoom In',
+  zoomOut:   TR ? 'Uzaklaştır'             : 'Zoom Out',
+  fullscreen:TR ? 'Tam Ekran'              : 'Toggle Full Screen',
   winMenu:   TR ? 'Pencere'                : 'Window',
+  minimize:  TR ? 'Simge durumuna küçült'  : 'Minimize',
+  winZoom:   TR ? 'Pencereyi büyüt'        : 'Zoom',
   close:     TR ? 'Kapat'                  : 'Close',
+  settingsMenu: TR ? 'Ayarlar'             : 'Settings',
+  langMenu:  TR ? 'Dil'                    : 'Language',
+  langSystem:TR ? 'Sistem (varsayılan)'    : 'System (default)',
+  themeMenu: TR ? 'Tema'                   : 'Theme',
+  themeSystem: TR ? 'Sistem (varsayılan)'  : 'System (default)',
+  themeLight:TR ? 'Açık'                   : 'Light',
+  themeDark: TR ? 'Koyu'                   : 'Dark',
+  helpMenu:  TR ? 'Yardım'                 : 'Help',
+  about:     TR ? 'Hakkında'               : 'About',
+  aboutDetail: (v) => (TR
+    ? `Sürüm ${v}\n\nYerel Claude Code oturumların için bir kontrol paneli.`
+    : `Version ${v}\n\nA local dashboard for your Claude Code sessions.`),
+  aboutGitHub: TR ? "GitHub'da aç"          : 'Open on GitHub',
+  ok:        TR ? 'Tamam'                  : 'OK',
   pickDir:   TR ? 'Terminal hangi klasörde açılsın?' : 'Which folder should the terminal open in?',
   qButtons:  TR ? ['Çık', 'Vazgeç']        : ['Quit', 'Cancel'],
   qDetail:   TR ? 'İçlerinde çalışan Claude oturumları da kapanır.'
@@ -54,12 +93,15 @@ const L = {
   qMessage:  (n) => (TR
     ? `${n} terminal açık — hepsi kapanacak`
     : `${n} terminal${n > 1 ? 's are' : ' is'} open — all of them will close`),
-};
+  };
+}
 
 // ---------------------------------------------------------------- ayarlar
 
 const configFile = () => path.join(app.getPath('userData'), 'config.json');
-const config = { port: DEFAULT_PORT, bounds: null };
+// lang: null = sistemin diline uy, 'tr'/'en' = kullanicinin Ayarlar > Dil'den sectigi zorlama.
+// theme: null = sistemin temasina uy, 'light'/'dark' = Ayarlar > Tema'dan secilen zorlama.
+const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null };
 
 function loadConfig() {
   try {
@@ -425,29 +467,70 @@ async function focusTerminal({ tty, host }) {
 
 // ---------------------------------------------------------------- uygulama menusu
 
+// Dil, Ayarlar > Dil menusunden seciliyor ve config.json'a yaziliyor; sayfa da
+// bunu IPC ile dinleyip kendi metnini ayni dile cekiyor (bkz preload.js: lang.onChange).
+function applyLangOverride(newLang, notifyPage = true) {
+  if (config.lang === newLang) return;
+  config.lang = newLang;
+  saveConfig();
+  initL();
+  setAppMenu();
+  if (notifyPage && win && !win.isDestroyed()) {
+    win.webContents.send('mineclaude:lang-changed', TR ? 'tr' : 'en');
+  }
+}
+
+// Tema Ayarlar > Tema'dan seciliyor. nativeTheme.themeSource'u degistirmek hem native
+// pencere/diyalog renklerini hem de sayfadaki (index.html) prefers-color-scheme
+// medya sorgusunu otomatik guncelliyor — sayfa tarafinda ekstra kod gerekmiyor.
+function applyThemeOverride(newTheme) {
+  if (config.theme === newTheme) return;
+  config.theme = newTheme;
+  saveConfig();
+  nativeTheme.themeSource = newTheme || 'system';
+  setAppMenu();
+}
+
 function setAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { role: 'appMenu' },
-    { role: 'editMenu' },
+    // appMenu (uygulama adiyla acilan ilk menu: About/Hide/Quit) sadece macOS'ta bir
+    // sey gosteriyor. Windows'ta zaten bomboş acılıyor, sadece kucuk harfli "mineclaude"
+    // yazan cirkin bir etiket olarak kalıyor — o yuzden orada hic eklemiyoruz.
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    {
+      label: L.editMenu,
+      submenu: [
+        { role: 'undo', label: L.undo },
+        { role: 'redo', label: L.redo },
+        { type: 'separator' },
+        { role: 'cut', label: L.cut },
+        { role: 'copy', label: L.copy },
+        { role: 'paste', label: L.paste },
+        ...(process.platform === 'darwin' ? [{ role: 'pasteAndMatchStyle', label: L.pasteStyle }] : []),
+        { role: 'delete', label: L.delete },
+        { type: 'separator' },
+        { role: 'selectAll', label: L.selectAll },
+      ],
+    },
     {
       label: L.viewMenu,
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        { role: 'reload', label: L.reload },
+        { role: 'forceReload', label: L.forceReload },
+        { role: 'toggleDevTools', label: L.devTools },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        { role: 'resetZoom', label: L.actualSize },
+        { role: 'zoomIn', label: L.zoomIn },
+        { role: 'zoomOut', label: L.zoomOut },
         { type: 'separator' },
-        { role: 'togglefullscreen' },
+        { role: 'togglefullscreen', label: L.fullscreen },
       ],
     },
     {
       label: L.winMenu,
       submenu: [
-        { role: 'minimize' },
-        { role: 'zoom' },
+        { role: 'minimize', label: L.minimize },
+        { role: 'zoom', label: L.winZoom },
         // ⌘W varsayilan olarak pencereyi kapatiyor (bizde: gizliyor). Terminal
         // gorunumundeyken beklenen sey etkin terminali kapatmak. Karari sayfa
         // veriyor: terminal kapattiysa 'true' donuyor, yoksa pencereyi gizliyoruz.
@@ -466,7 +549,53 @@ function setAppMenu() {
         },
       ],
     },
+    {
+      label: L.settingsMenu,
+      submenu: [
+        {
+          label: L.langMenu,
+          submenu: [
+            { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
+            { label: 'Türkçe', type: 'radio', checked: config.lang === 'tr', click: () => applyLangOverride('tr') },
+            { label: 'English', type: 'radio', checked: config.lang === 'en', click: () => applyLangOverride('en') },
+          ],
+        },
+        {
+          label: L.themeMenu,
+          submenu: [
+            { label: L.themeSystem, type: 'radio', checked: !config.theme, click: () => applyThemeOverride(null) },
+            { label: L.themeLight, type: 'radio', checked: config.theme === 'light', click: () => applyThemeOverride('light') },
+            { label: L.themeDark, type: 'radio', checked: config.theme === 'dark', click: () => applyThemeOverride('dark') },
+          ],
+        },
+      ],
+    },
+    {
+      label: L.helpMenu,
+      submenu: [
+        {
+          label: L.about,
+          click: () => showAbout(),
+        },
+      ],
+    },
   ]));
+}
+
+function showAbout() {
+  const v = app.getVersion();
+  dialog.showMessageBox(win, {
+    type: 'info',
+    title: L.about,
+    message: 'mineClaude',
+    detail: L.aboutDetail(v),
+    buttons: [L.ok, L.aboutGitHub],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  }).then((r) => {
+    if (r.response === 1) shell.openExternal('https://github.com/ferhatural/mineClaude');
+  });
 }
 
 // ---------------------------------------------------------------- giris
@@ -478,6 +607,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     loadConfig();
+    initL();
+    if (config.theme) nativeTheme.themeSource = config.theme;
     // Dock'u burada gizlemiyoruz: acilista showWindow() zaten gosterecek ve pesi sira
     // gelen hide()/show() cifti AppKit'te birbirini yiyor. Gizleme isi pencere
     // kapandiginda (win 'hide') oluyor.
@@ -510,6 +641,8 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('mineclaude:term-resize', (_e, { id, cols, rows }) => term.resize(id, cols, rows));
   ipcMain.on('mineclaude:term-kill', (_e, { id }) => term.kill(id));
   ipcMain.on('mineclaude:close-intercept', (_e, on) => { closeIntercept = !!on; });
+  ipcMain.handle('mineclaude:get-lang', () => (config.lang === 'tr' || config.lang === 'en' ? config.lang : null));
+  ipcMain.on('mineclaude:set-lang', (_e, l) => applyLangOverride(l === 'tr' || l === 'en' ? l : null, false));
   ipcMain.handle('mineclaude:pick-folder', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: L.pickDir });
     return r.canceled ? null : r.filePaths[0];

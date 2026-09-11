@@ -14,6 +14,9 @@ if (D && D.term) {
   let T = (k) => k;
   // 'tabs': tek terminal tam ekran · 'tiles': hepsi ayni anda, izgara
   let layout = localStorage.getItem('cc.termLayout') === 'tiles' ? 'tiles' : 'tabs';
+  // Gorev paneli mineClaude'un kendi tarafinda aciliyor/kapaniyor; burasi
+  // sadece anahtar dugmeyi cizip acik/kapali oldugunu isaretliyor.
+  let tasksOpen = false;
 
   // Kapanista acik olan sekmeler. Uygulama PTY'leri surecinde tuttugu icin cikista
   // hepsi oluyor; burada ne oldugunu hatirlayip acilista geri yuklemeyi *oneriyoruz*.
@@ -123,6 +126,16 @@ if (D && D.term) {
       : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
     lay.onclick = () => setLayout(layout === 'tabs' ? 'tiles' : 'tabs');
     strip.appendChild(lay);
+
+    const tasksBtn = document.createElement('button');
+    tasksBtn.className = 'tm-tasks-btn' + (tasksOpen ? ' on' : '');
+    tasksBtn.title = T('tasksTab');
+    tasksBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">'
+      + '<rect x="1.8" y="2.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 4h7.4"/>'
+      + '<rect x="1.8" y="6.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 8h7.4"/>'
+      + '<rect x="1.8" y="10.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 12h7.4"/></svg>';
+    tasksBtn.onclick = () => window.dispatchEvent(new Event('term-tasks-toggle'));
+    strip.appendChild(tasksBtn);
   }
 
   function setLayout(next) {
@@ -277,6 +290,7 @@ if (D && D.term) {
     count: () => tabs.length,
     layout: () => layout,
     setLayout,
+    setTasksOpen: (v) => { tasksOpen = !!v; if (strip) drawStrip(); },
     fit: fitAll,
     retheme: () => { for (const t of tabs) t.term.options.theme = theme(); },
   };
