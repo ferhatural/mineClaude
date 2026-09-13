@@ -28,12 +28,22 @@ let nextId = 1;
 
 // Login shell: PATH, nvm/asdf, alias'lar ancak boyle yukleniyor. Kullanicinin
 // kendi kabugunu kullaniyoruz, sabit bir sey dayatmiyoruz.
+//
+// Windows'ta /bin/zsh yok: SHELL degiskeni de tanimli olmuyor, o yuzden
+// bu dal hep sabit '/bin/zsh'e dusup node-pty'ye "File not found" hatasi
+// attiriyordu. Orada PowerShell'i varsayilan aliyoruz (her Windows'ta hazir).
 function loginShell() {
   if (process.platform === 'win32') {
     // powershell.exe her Windows'ta hazir gelir ve PATH'tedir; kullanicinin
     // $PROFILE'ini (alias, PATH eklemeleri) POSIX login shell'in .zshrc'si
     // gibi kendisi yukluyor. Eskiden buraya da /bin/zsh dusuyordu — node-pty
     // onu Windows'ta hic bulamiyor, terminal acma her seferinde patliyordu.
+    //
+    // COMSPEC'e bakmiyoruz: Windows'ta o degisken her zaman tanimli ve her
+    // zaman cmd.exe'yi gosteriyor, yani ona bakmak "varsayilan PowerShell"
+    // demenin degil "hep cmd" demenin baska bir yolu olurdu. cmd.exe yine de
+    // destekleniyor (asagidaki isPowerShell dallari) — sadece kendiliginden
+    // secilmiyor.
     return 'powershell.exe';
   }
   const sh = process.env.SHELL || '/bin/zsh';
@@ -43,6 +53,10 @@ function loginShell() {
   } catch {
     return '/bin/zsh';
   }
+}
+
+function isPowerShell(shell) {
+  return /(^|[\\/])(powershell|pwsh)(\.exe)?$/i.test(shell);
 }
 
 // Uygulama bir Claude oturumunun icinden baslatilmis olabilir (terminalden
@@ -79,11 +93,12 @@ function create({ cwd, cols, rows, command, resumeSessionId } = {}) {
   const isWin = process.platform === 'win32';
 
   // Oturum kimligi verilmisse ona don, bulunamazsa (silinmis, hic konusulmamis)
-  // taze bir claude ac. POSIX'te `||` bunu tek satirda hallediyor; Windows'ta
-  // hazir gelen powershell.exe (5.1) `||`/`&&` bilmiyor (PowerShell 7'de var),
-  // o yuzden cikis koduna bakan bir if ile ayni seyi kuruyoruz.
+  // taze bir claude ac. POSIX ve cmd.exe'de `||` bunu tek satirda hallediyor;
+  // Windows'ta hazir gelen powershell.exe (5.1) `||`/`&&` bilmiyor (PowerShell
+  // 7'de var), o yuzden orada cikis koduna bakan bir if ile ayni seyi kuruyoruz.
+  const ps = isWin && isPowerShell(shell);
   const cmd = resumeSessionId
-    ? (isWin
+    ? (ps
         ? `claude --resume ${resumeSessionId}; if ($LASTEXITCODE -ne 0) { claude }`
         : `claude --resume ${resumeSessionId} || claude`)
     : (command || 'claude');
@@ -93,8 +108,9 @@ function create({ cwd, cols, rows, command, resumeSessionId } = {}) {
   // '-i' sart: zsh `-l -c` ile .zshrc'yi OKUMUYOR, yalniz .zprofile'i okuyor.
   // Kullanicilarin PATH eklemeleri (~/.local/bin, nvm, pyenv) genelde .zshrc'de
   // oturuyor; onsuz uygulama Finder'dan acildiginda `claude` bulunamiyor.
+  // Windows'ta kabugu acik tutan bayrak PowerShell'de -NoExit, cmd.exe'de /k.
   const args = isWin
-    ? ['-NoExit', '-Command', cmd]
+    ? (ps ? ['-NoLogo', '-NoExit', '-Command', cmd] : ['/k', cmd])
     : ['-l', '-i', '-c', `${cmd}; exec ${shell} -l`];
 
   const p = pty.spawn(shell, args, {

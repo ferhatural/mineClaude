@@ -40,7 +40,7 @@
   header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}
   h1{font-size:19px;margin:0;letter-spacing:-.01em}
   h1 .sub{color:var(--faint);font-weight:400;margin-left:8px;font-size:13px}
-  .hright{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .hright{margin-left:auto;display:flex;align-items:center;gap:5px}
   .conn{display:flex;align-items:center;gap:8px;color:var(--faint);font-size:12px}
   .conn .dot{width:7px;height:7px;border-radius:50%;background:var(--busy)}
   .conn.off .dot{background:#d0524a}
@@ -97,12 +97,54 @@
   .pk-head{display:flex;align-items:center;gap:10px;padding:16px 16px 8px}
   .pk-head .proj{font-size:16px}
   .pk-sub{padding:0 16px 12px;border-bottom:1px solid var(--line)}
+  .pk-tabs{display:flex;gap:14px;padding:0 16px;border-bottom:1px solid var(--line)}
+  .pk-tab{font:inherit;font-size:12.5px;color:var(--faint);background:none;border:none;
+    padding:9px 0;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .pk-tab:hover{color:var(--text)}
+  .pk-tab.on{color:var(--text);border-bottom-color:var(--idle)}
+  .pk-note{padding:12px 16px;border-bottom:1px solid var(--line);
+    flex:1;min-height:0;display:flex;flex-direction:column}
+  .pk-note-add{margin-bottom:10px;position:relative;flex:none}
+  .pk-note-add textarea{display:block;width:100%;min-width:0;resize:none;overflow-y:hidden;font:inherit;font-size:12.5px;
+    line-height:18px;background:var(--panel2);border:1px solid var(--faint);border-radius:8px;
+    color:var(--text);padding:8px 36px 8px 10px;height:88px;box-sizing:border-box;
+    transition:border-color .12s}
+  .pk-note-add textarea:focus{outline:none;border-color:var(--idle)}
+  .pk-note-add textarea::placeholder{color:var(--dim)}
+  .pk-note-send{position:absolute;right:8px;bottom:8px;width:26px;height:26px;display:flex;
+    align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;
+    color:var(--faint);cursor:pointer;padding:0;transition:color .12s,background .12s,transform .1s}
+  .pk-note-send:hover{color:var(--idle);background:var(--panel)}
+  .pk-note-send:active{transform:scale(.92)}
+  .pk-note-send.ok{color:var(--busy)}
+  .pk-note-send svg{width:14px;height:14px;stroke-width:2.2}
+  .pk-tasks{display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;overflow-y:auto}
+  .pk-task{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.4;
+    background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 9px;
+    transition:border-color .12s,background .15s}
+  .pk-task:hover{border-color:var(--faint)}
+  .pk-task.done{background:color-mix(in srgb,var(--busy) 8%,var(--panel2))}
+  .pk-task .txt{flex:1;word-break:break-word;white-space:pre-wrap;padding-top:1px}
+  .pk-task.done .txt{color:var(--faint);text-decoration:line-through}
+  .pk-task .check{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+    border:0;background:none;color:var(--faint);cursor:pointer;padding:0;transition:color .15s}
+  .pk-task .check:hover{color:var(--busy)}
+  .pk-task.done .check{color:var(--busy)}
+  .pk-task .check svg{width:13px;height:13px}
+  .pk-task .rm{flex:none;width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+    border:0;background:none;color:var(--faint);cursor:pointer;padding:0;opacity:0;transition:opacity .15s}
+  .pk-task:hover .rm{opacity:1}
+  .pk-task .rm:hover{color:#d0524a}
+  .pk-task .rm svg{width:13px;height:13px}
   .pk-body{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
   .pk-msg{border-left:2px solid var(--line);padding-left:11px}
-  .pk-msg.you{border-left-color:var(--idle)}
+  .pk-msg.you{border-left-color:var(--idle);background:color-mix(in srgb,var(--idle) 12%,transparent);
+    border-radius:0 8px 8px 0;padding:8px 11px}
   .pk-who{font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--faint);margin-bottom:3px}
-  .pk-text{font-size:13px;line-height:1.55;color:var(--dim);white-space:pre-wrap;word-break:break-word}
-  .pk-msg:last-child .pk-text{color:var(--text)}
+  .pk-msg.you .pk-who{color:red}
+  .pk-text{font-size:13px;line-height:1.55;color:var(--text);white-space:pre-wrap;word-break:break-word}
+  .pk-msg.you .pk-text{color:color-mix(in srgb,red 55%,var(--dim));font-weight:500}
+  .pk-msg.you:last-child .pk-text{color:red;font-weight:600}
   .pk-empty{color:var(--faint);font-size:12.5px}
   .pk-foot{border-top:1px solid var(--line);padding:12px 16px 14px}
   .pk-foot .meta{border-top:0;padding-top:0;margin-bottom:10px}
@@ -136,6 +178,15 @@
   body.office #office{display:flex}
   body.office #office svg{width:100%;height:100%}
   body.office #office3d{aspect-ratio:auto}
+  .term-tasks{flex:none;width:280px;margin-left:10px;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius);
+    display:flex;flex-direction:column;overflow:hidden}
+  .term-tasks-head{padding:12px 14px 10px;border-bottom:1px solid var(--line)}
+  .term-tasks-head b{display:block;font-size:13.5px;margin-bottom:2px}
+  .term-tasks-head .path{margin:0}
+  #termTasksBody{flex:1;min-height:0;display:flex;flex-direction:column}
+  #termTasksBody .pk-note{flex:1;min-height:0;padding:12px 14px;border-bottom:0}
+  @media (max-width:900px){ .term-tasks{display:none} }
 
   /* gomulu terminaller */
   .tm-host{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;
@@ -195,6 +246,11 @@
     background:none;border:0;padding:4px 8px;cursor:pointer;align-self:center;margin-left:auto}
   .tm-lay:hover{color:var(--text)}
   .tm-lay svg{width:15px;height:15px;display:block}
+  .tm-tasks-btn{display:flex;align-items:center;justify-content:center;font:inherit;color:var(--faint);
+    background:none;border:0;padding:4px 8px;cursor:pointer;align-self:center}
+  .tm-tasks-btn:hover{color:var(--text)}
+  .tm-tasks-btn.on{color:var(--idle)}
+  .tm-tasks-btn svg{width:15px;height:15px;display:block}
   .tm-pane .xterm{height:100%}
   .tm-findbtn.on{color:var(--idle)}
   /* Arama cubugu: seridin hemen altinda, terminalin ustune biner (yerlesimden
@@ -263,6 +319,13 @@
   .sheet label{display:flex;gap:8px;align-items:center;cursor:pointer;user-select:none}
   .sheet input[type=checkbox]{accent-color:var(--idle)}
   .sheet .seg{margin-left:0;margin-top:4px}
+  .at-sheet{width:min(560px,100%)}
+  .at-body{max-height:64vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+  .at-group{display:flex;flex-direction:column;gap:6px}
+  .at-group h4{margin:0;display:flex;align-items:baseline;gap:8px;min-width:0}
+  .at-group h4 .name{font-size:13.5px;font-weight:600;color:var(--text);flex:none}
+  .at-group h4 .path{margin:0;flex:1}
+  .at-empty{color:var(--faint);font-size:12.5px}
 
   .grid{display:grid;grid-template-columns:var(--gtc);gap:12px;align-items:start}
   @media (max-width:720px){
@@ -272,11 +335,10 @@
   }
 
   .card{
-    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    padding:14px 16px 12px;position:relative;overflow:hidden;transition:.15s
+    background:var(--panel);border:2px solid var(--c);border-radius:var(--radius);
+    padding:14px 16px 12px;position:relative;overflow:hidden;transition:.15s;cursor:pointer
   }
-  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
-  .card:hover{border-color:var(--faint)}
+  .card:hover{box-shadow:0 2px 10px rgba(0,0,0,.12)}
   .card.waiting{--c:var(--wait);box-shadow:0 0 0 1px color-mix(in srgb,var(--wait) 45%,transparent)}
   .card.busy{--c:var(--busy)} .card.ready{--c:var(--idle)} .card.idle{--c:var(--ended)}
   .card.unknown{--c:var(--unknown)} .card.ended{--c:var(--ended);opacity:.72}
@@ -315,19 +377,6 @@
   .meta b{color:var(--dim);font-weight:500}
 
   .bottom{display:flex;gap:6px;align-items:center;margin-top:9px}
-  .msg{display:flex;gap:6px;flex:1;min-width:0;align-items:flex-end}
-  /* textarea: tek satir yuksekliginde baslar, yazdikca buyur (JS), 6 satirda durur */
-  .msg textarea{
-    flex:1;min-width:0;font:inherit;font-size:12.5px;line-height:18px;color:var(--text);
-    background:var(--panel2);border:1px solid var(--line);border-radius:8px;
-    padding:4px 10px;height:28px;max-height:130px;outline:none;transition:border-color .12s;
-    resize:none;overflow-y:auto
-  }
-  .msg textarea:focus{border-color:var(--idle)}
-  .msg textarea::placeholder{color:var(--faint)}
-  .msg.ok textarea{border-color:var(--busy)} .msg.err textarea{border-color:#d0524a}
-  .msg.off{opacity:.4}
-  .msg.off textarea,.msg.off .iconbtn{cursor:not-allowed;background:transparent;border-style:dashed}
 
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);
     margin:28px 0 12px;font-weight:600;display:flex;align-items:center;gap:8px;cursor:pointer}
@@ -345,8 +394,8 @@
     <h1><span id="appTitle"></span> <span class="sub" id="host"></span></h1>
     <div class="hright">
       <div class="conn" id="conn"><span class="dot"></span><span id="connText"></span></div>
-      <div class="opts" id="langSw"></div>
       <div class="opts icons" id="viewSw"></div>
+      <button class="iconbtn" id="allTasksBtn"></button>
       <button class="iconbtn" id="setBtn"></button>
       <button class="iconbtn" id="fs">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
@@ -375,12 +424,26 @@
     </div>
   </div>
 
+  <div id="allTasks" class="modal" hidden>
+    <div class="sheet at-sheet">
+      <div class="sheet-head"><b id="allTasksTitle"></b><button class="pick-x" id="allTasksClose"></button></div>
+      <div class="at-body" id="allTasksBody"></div>
+    </div>
+  </div>
+
   <div id="stage" hidden>
     <div id="office" hidden></div>
     <div id="office3d" hidden></div>
     <div id="terms" hidden></div>
-    <div id="pick" hidden></div>
+    <div id="termTasks" class="term-tasks" hidden>
+      <div class="term-tasks-head">
+        <b id="termTasksProj"></b>
+        <div class="path" id="termTasksPath"></div>
+      </div>
+      <div id="termTasksBody"></div>
+    </div>
   </div>
+  <div id="pick" hidden></div>
   <div id="live" class="grid"></div>
 
   <h2 id="endedHead" class="closed"><span class="caret">▾</span> <span id="endedLabel"></span> <span id="endedCount"></span></h2>
@@ -398,7 +461,7 @@
 // yollar ve Claude Code'un kendi ürettiği metinler (waitingFor) olduğu gibi kalır.
 const I18N = {
   tr: {
-    appTitle:"Claude session'ları", live:'canlı', connecting:'bağlanıyor…',
+    appTitle:'Claude Oturumları', live:'canlı', connecting:'bağlanıyor…',
     disconnected:'bağlantı koptu — yeniden deneniyor',
     serverDown:'mineClaude sunucusu çalışmıyor', serverDownHint:'Terminalde başlat:',
     officeView:'Ofis görünümü', office3dView:'3D ofis görünümü', cardView:'Kart görünümü',
@@ -408,15 +471,16 @@ const I18N = {
     notifyLabel:'input bekleyince bildirim gönder', soundLabel:'durum değişince ses çal', hideEmptyLabel:'boş/kullanılmayan süreçleri gizle',
     columns:'kolon', waitsForYou:'Senden input bekliyor',
     'no-conversation':'Bu süreçte hiç konuşma yok', 'maybe-permission':'izin bekliyor olabilir',
-    context:'bağlam', messages:'mesaj', openFor:'açık', permission:'izin',
-    send:'gönder', msgPlaceholder:'mesaj gönder', msgClosed:'mesajlaşmaya kapalı',
-    msgClosedWhy:'Bu session mesajlaşmaya kapalı: açılışta soket almamış. Devam ettirirken --messaging-socket-path verirsen açılır.',
+    context:'bağlam', messages:'tur', openFor:'açık', permission:'izin',
     copyResume:'resume komutunu kopyala', copyCd:'klasöre gitme komutunu kopyala',
     copyTranscript:'transcript yolunu kopyala',
     focusTty:(t)=>`terminal sekmesine git (${t})`,
     focusTtyNone:'sekme bulunamadı — terminal kapanmış olabilir',
-    close:'kapat', loading:'yükleniyor…', noMessages:'mesaj bulunamadı', you:'Sen',
+    close:'kapat', loading:'yükleniyor…', noMessages:'Geçmiş bulunamadı', you:'Sen',
     settings:'Ayarlar',
+    allTasks:'Tüm görevler', noTasksAnywhere:'Hiçbir projede görev yok.',
+    clientNotePh:'Yeni görev ekle…',
+    tasksTab:'Görevler', historyTab:'Geçmiş',
     petCat:'kediyi sev', asked:'soru sordu',
     termView:'Terminaller', termNew:'klasör seç ve terminal aç', termEmpty:'Açık terminal yok.',
     termClosed:'kapandı', termHere:'burada terminal aç',
@@ -427,7 +491,7 @@ const I18N = {
     termPick:'Terminal hangi klasörde açılsın?', termPickGo:'aç', termGone:'oturum artık yok', termKeys:'tuş şeridi', termKeybar:'dokunmatik tuş şeridi',
     termFind:'terminalde ara', termFindNone:'yok', termFindCase:'büyük/küçük harf duyarlı',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
-    noneInFilter:'Bu filtrede session yok.', recentlyClosed:'son kapanan session\'lar',
+    noneInFilter:'Bu filtrede oturum yok.', recentlyClosed:'son kapanan oturumlar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
     notifAsked:(p)=>`${p} sana bir soru sordu`,
     justNow:'az önce', sec:'sn önce', min:'dk önce', hour:'sa önce', day:'gün önce',
@@ -437,7 +501,7 @@ const I18N = {
     footer2:(a,b)=>`Terminalden: ${a} · JSON: ${b}`,
   },
   en: {
-    appTitle:'Claude sessions', live:'live', connecting:'connecting…',
+    appTitle:'Claude Sessions', live:'live', connecting:'connecting…',
     disconnected:'connection lost — retrying',
     serverDown:'The mineClaude server is not running', serverDownHint:'Start it in your terminal:',
     officeView:'Office view', office3dView:'3D office view', cardView:'Card view',
@@ -447,15 +511,16 @@ const I18N = {
     notifyLabel:'notify me when a session wants input', soundLabel:'play a sound on status changes', hideEmptyLabel:'hide unused processes',
     columns:'columns', waitsForYou:'Waiting for your input',
     'no-conversation':'No conversation in this process', 'maybe-permission':'may be waiting for permission',
-    context:'context', messages:'messages', openFor:'open', permission:'perm',
-    send:'send', msgPlaceholder:'send a message', msgClosed:'messaging unavailable',
-    msgClosedWhy:'This session has no messaging socket: it did not get one at startup. Resume it with --messaging-socket-path to enable it.',
+    context:'context', messages:'turns', openFor:'open', permission:'perm',
     copyResume:'copy resume command', copyCd:'copy cd command',
     copyTranscript:'copy transcript path',
     focusTty:(t)=>`go to the terminal tab (${t})`,
     focusTtyNone:'tab not found — the terminal may have been closed',
-    close:'close', loading:'loading…', noMessages:'no messages found', you:'You',
+    close:'close', loading:'loading…', noMessages:'No history found', you:'You',
     settings:'Settings',
+    allTasks:'All tasks', noTasksAnywhere:'No tasks in any project.',
+    clientNotePh:'Add a task…',
+    tasksTab:'Tasks', historyTab:'History',
     petCat:'pet the cat', asked:'asked you something',
     termView:'Terminals', termNew:'pick a folder and open a terminal', termEmpty:'No terminals open.',
     termClosed:'closed', termHere:'open a terminal here',
@@ -494,7 +559,6 @@ const ICON = {
   resume:'<path d="M5.5 3.2v9.6L13 8z" fill="currentColor" stroke="none"/>',
   folder:'<path d="M1.8 12.8V3.4h4.1l1.3 1.7h7v7.7z"/>',
   file:'<path d="M4 1.9h4.7l3.3 3.3v8.9H4z"/><path d="M6.3 8h4M6.3 10.4h4"/>',
-  send:'<path d="M14 2.2L1.9 7.6l4.4 1.6M14 2.2L8.9 14l-2.6-4.8M14 2.2L6.3 9.2"/>',
   check:'<path d="M3 8.4l3.2 3.2L13 4.6"/>',
   cross:'<path d="M4 4l8 8M12 4l-8 8"/>',
   people:'<circle cx="5.8" cy="5" r="2.6"/><path d="M1.4 13.4c0-2.6 2-4.2 4.4-4.2s4.4 1.6 4.4 4.2"/><circle cx="11.8" cy="5.6" r="2"/><path d="M11 9.4c2.1 0 3.6 1.5 3.6 4"/>',
@@ -503,13 +567,15 @@ const ICON = {
   terminal:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M4.4 6.4L6.6 8.4 4.4 10.4M8.4 10.6h3"/>',
   term:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M4.4 6.4L6.6 8.4 4.4 10.4M8.4 10.6h3"/>',
   gear:'<circle cx="8" cy="8" r="2.3"/><path d="M8 1.6l1 1.7 1.9-.5.5 1.9 1.7 1-1 1.7 1 1.7-1.7 1-.5 1.9-1.9-.5-1 1.7-1-1.7-1.9.5-.5-1.9-1.7-1 1-1.7-1-1.7 1.7-1 .5-1.9 1.9.5z"/>',
+  trash:'<path d="M2.8 4.4h10.4M6.2 4.4V3.1c0-.6.5-1.1 1.1-1.1h1.4c.6 0 1.1.5 1.1 1.1v1.3M4.3 4.4l.6 8.3c.05.7.6 1.2 1.3 1.2h3.6c.7 0 1.25-.5 1.3-1.2l.6-8.3M6.5 7v4M9.5 7v4"/>',
+  arrowUp:'<path d="M8 13V3M4 7l4-4 4 4"/>',
+  checklist:'<rect x="1.8" y="2.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 4h7.4"/><rect x="1.8" y="6.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 8h7.4"/><rect x="1.8" y="10.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 12h7.4"/>',
 };
 const svg = (k) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 
 const $ = (s)=>document.querySelector(s);
 let state = null, filter = 'all', prevWaiting = new Set(), endedOpen = false;
 let es = null;   // SSE bağlantısı — applyLang() açılışta buna bakıyor, bu yüzden burada tanımlı
-const drafts = new Map(); // pid -> yazilmakta olan mesaj (2sn'lik render'da kaybolmasin)
 
 const notifyBox = $('#notify'), hideEmptyBox = $('#hideEmpty');
 notifyBox.checked = localStorage.getItem('cc.notify') === '1';
@@ -573,6 +639,53 @@ $('#setBtn').onclick = openSettings;
 $('#setClose').onclick = closeSettings;
 setModal.onpointerdown = (e) => { if(e.target === setModal) closeSettings(); };
 
+// --- tum projelerin gorevleri: tek tek karta tiklamadan toplu bakabilmek icin ---
+const allTasksModal = $('#allTasks');
+const openAllTasks = () => { renderAllTasks(); allTasksModal.hidden = false; };
+const closeAllTasks = () => { allTasksModal.hidden = true; };
+$('#allTasksBtn').onclick = openAllTasks;
+$('#allTasksClose').onclick = closeAllTasks;
+allTasksModal.onpointerdown = (e) => { if(e.target === allTasksModal) closeAllTasks(); };
+
+function renderAllTasks(){
+  const body = $('#allTasksBody');
+  if(!state){ body.innerHTML = ''; return; }
+  const byCwd = new Map();
+  for(const s of [...state.live, ...state.ended]){
+    if(!s.cwd || !s.projectTasks || !s.projectTasks.length) continue;
+    if(!byCwd.has(s.cwd)) byCwd.set(s.cwd, { project: s.project, tasks: s.projectTasks });
+  }
+  if(!byCwd.size){ body.innerHTML = `<div class="at-empty">${T('noTasksAnywhere')}</div>`; return; }
+  body.innerHTML = [...byCwd.entries()].map(([cwd, g]) => `
+    <div class="at-group" data-cwd="${esc(cwd)}">
+      <h4><span class="name">${esc(g.project)}</span><span class="path" title="${esc(cwd)}">${esc(cwd)}</span></h4>
+      <div class="pk-tasks">${g.tasks.map(taskRowHtml).join('')}</div>
+    </div>`).join('');
+  body.querySelectorAll('.at-group').forEach(group => {
+    const cwd = group.dataset.cwd;
+    let tasks = byCwd.get(cwd).tasks.map(t => ({...t}));
+    const persist = () => fetch('/api/note', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ cwd, tasks }),
+    }).catch(() => {});
+    group.querySelectorAll('.pk-task').forEach(row => {
+      const t = tasks.find(x => x.id === row.dataset.id);
+      if(!t) return;
+      row.querySelector('.check').onclick = () => {
+        t.done = !t.done;
+        row.classList.toggle('done', t.done);
+        persist();
+      };
+      row.querySelector('.rm').onclick = () => {
+        tasks = tasks.filter(x => x.id !== t.id);
+        row.remove();
+        persist();
+        if(!tasks.length) group.remove();
+      };
+    });
+  });
+}
+
 // --- sahnedeki birine tıklayınca sağda açılan kolon ---
 //
 // Panel iki saniyede bir baştan çizilmiyor. Çizilseydi içindeki mesaj kutusu her
@@ -587,7 +700,112 @@ function onPick(key){
   picked = (!key || picked === key) ? null : key;
   renderPicked(Date.now());
 }
-function closePick(){ picked = null; renderPicked(Date.now()); }
+function closePick(){
+  picked = null; renderPicked(Date.now());
+}
+
+// Musteri istekleri tek bir not kutusuna sigmiyordu: bir projede 5-10 ayri is
+// birikince hepsi ayni metnin icinde kaybolyordu. Onun yerine her istek kendi
+// satirinda, silinebilen bir liste — /api/note artik tek metin degil tum
+// listeyi aliyor.
+function taskRowHtml(t){
+  return `
+    <div class="pk-task${t.done ? ' done' : ''}" data-id="${esc(t.id)}">
+      <button type="button" class="check">${svg('check')}</button>
+      <div class="txt">${esc(t.text)}</div>
+      <button type="button" class="rm" title="${T('close')}">${svg('trash')}</button>
+    </div>`;
+}
+
+function noteHtml(s){
+  if(!s.cwd) return '';
+  const tasks = s.projectTasks || [];
+  return `
+    <div class="pk-note">
+      <form class="pk-note-add">
+        <textarea rows="1" placeholder="${esc(T('clientNotePh'))}" autocomplete="off" spellcheck="false"></textarea>
+        <button type="submit" class="pk-note-send">${svg('arrowUp')}</button>
+      </form>
+      <div class="pk-tasks">${tasks.map(taskRowHtml).join('')}</div>
+    </div>`;
+}
+
+function wireNote(pop, s){
+  const wrap = pop.querySelector('.pk-note');
+  if(!wrap) return;
+  const list = wrap.querySelector('.pk-tasks');
+  const addForm = wrap.querySelector('.pk-note-add');
+  const addInput = addForm.querySelector('textarea');
+  const addBtn = addForm.querySelector('.pk-note-send');
+  let tasks = (s.projectTasks || []).map(t => ({...t}));
+  let uid = 0;
+
+  // tek satirdan basla, icerik buyudukce uzat (CSS max-height'te durur)
+  const grow = () => {
+    addInput.style.height = 'auto';
+    addInput.style.height = Math.max(88, addInput.scrollHeight) + 'px';
+  };
+  const flashSaved = () => {
+    addBtn.classList.add('ok');
+    setTimeout(() => addBtn.classList.remove('ok'), 900);
+  };
+  const persist = () => {
+    fetch('/api/note', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ cwd: s.cwd, tasks }),
+    }).then(flashSaved).catch(() => {});
+  };
+
+  const wireRow = (row, t) => {
+    row.querySelector('.check').onclick = () => {
+      t.done = !t.done;
+      row.classList.toggle('done', t.done);
+      persist();
+    };
+    row.querySelector('.rm').onclick = () => {
+      tasks = tasks.filter(x => x.id !== t.id);
+      row.remove();
+      persist();
+    };
+  };
+  list.querySelectorAll('.pk-task').forEach(row => {
+    const t = tasks.find(x => x.id === row.dataset.id);
+    if(t) wireRow(row, t);
+  });
+
+  addInput.oninput = grow;
+  // textarea'da Enter varsayilan olarak yeni satir yazar; gondermeyi ona baglayip
+  // yeni satiri Shift+Enter'a aliyoruz — sohbet kutularinin alisilmis davranisi.
+  addInput.onkeydown = (e) => {
+    if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){
+      e.preventDefault();
+      addForm.requestSubmit ? addForm.requestSubmit() : addForm.onsubmit(new Event('submit'));
+    }
+  };
+  addForm.onsubmit = (e) => {
+    e.preventDefault();
+    const text = addInput.value.trim();
+    if(!text) return;
+    const t = { id: 'n' + Date.now() + '-' + (uid++), text };
+    tasks.push(t);
+    list.insertAdjacentHTML('beforeend', taskRowHtml(t));
+    wireRow(list.lastElementChild, t);
+    addInput.value = '';
+    grow();
+    persist();
+  };
+}
+
+function wirePickTabs(pop){
+  const tabs = [...pop.querySelectorAll('.pk-tab')];
+  tabs.forEach(btn => btn.onclick = () => {
+    tabs.forEach(b => b.classList.toggle('on', b === btn));
+    const tab = btn.dataset.tab;
+    pop.querySelector('.pk-note').hidden = tab !== 'tasks';
+    pop.querySelector('.pk-body').hidden = tab !== 'history';
+  });
+}
 
 function buildPick(pop, s){
   pop.innerHTML = `
@@ -597,14 +815,20 @@ function buildPick(pop, s){
       <button class="pick-x" title="${T('close')}">${svg('cross')}</button>
     </div>
     <div class="pk-sub"><div class="path"></div></div>
-    <div class="pk-body"><div class="pk-empty">${T('loading')}</div></div>
+    <div class="pk-tabs">
+      <button class="pk-tab on" data-tab="tasks">${T('tasksTab')}</button>
+      <button class="pk-tab" data-tab="history">${T('historyTab')}</button>
+    </div>
+    ${noteHtml(s)}
+    <div class="pk-body" hidden><div class="pk-empty">${T('loading')}</div></div>
     <div class="pk-foot">
       <div class="meta"></div>
-      <div class="bottom">${actionBtns(s).join('')}${msgBoxHtml(s)}</div>
+      <div class="bottom">${actionBtns(s).join('')}</div>
     </div>`;
   pop.querySelector('.pick-x').onclick = closePick;
   wireActions(pop);
-  wireMsgForm(pop, s.pid);
+  wireNote(pop, s);
+  wirePickTabs(pop);
 }
 
 function fillMessages(pop, msgs){
@@ -652,11 +876,59 @@ function updatePick(pop, s, now){
 
 function renderPicked(now){
   const pop = $('#pick');
-  const s = picked && state && state.live.find(x => String(x.sessionId || x.pid) === picked);
+  const s = picked && state && (state.live.find(x => String(x.sessionId || x.pid) === picked)
+    || state.ended.find(x => String(x.sessionId) === picked));
   if(!s){ picked = null; pickFor = null; pickMsgKey = null; pop.hidden = true; pop.innerHTML = ''; return; }
   if(pickFor !== picked){ buildPick(pop, s); pickFor = picked; pickMsgKey = null; }
   pop.hidden = false;
   updatePick(pop, s, now);
+}
+
+// Terminal görünümünde de görevlere bakabilmek icin: aktif sekmenin klasoruyle
+// eslesen gorev listesini kucuk bir yan sutunda gosteriyoruz. Panel (#pick)
+// bu gorunumde kapali oldugu icin (bkz. render()) ayri, hafif bir bilesen.
+// Hep acik durmasin diye sekme seridindeki dugmeyle acilip kapaniyor.
+let termTasksOpen = false;
+window.addEventListener('term-tasks-toggle', () => {
+  termTasksOpen = !termTasksOpen;
+  $('#termTasks').hidden = !termTasksOpen;
+  if(hasTerm()){
+    MTerm.setTasksOpen(termTasksOpen);
+    requestAnimationFrame(() => MTerm.fit());
+  }
+  if(termTasksOpen) renderTermTasks();
+});
+let termTasksCwd = undefined;
+function projectNameFromCwd(cwd){
+  const parts = String(cwd || '').split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || cwd || '?';
+}
+function renderTermTasks(){
+  if(!hasTerm()) return;
+  const activeTab = document.querySelector('.tm-tab.on');
+  const cwd = activeTab ? activeTab.title : null;
+  if(cwd === termTasksCwd) return; // aktif sekme degismedi: yeniden kurma
+  termTasksCwd = cwd;
+  const body = $('#termTasksBody');
+  if(!cwd){
+    $('#termTasksProj').textContent = '';
+    $('#termTasksPath').textContent = '';
+    body.innerHTML = `<div class="at-empty" style="padding:14px">${T('termEmpty')}</div>`;
+    return;
+  }
+  $('#termTasksProj').textContent = projectNameFromCwd(cwd);
+  $('#termTasksPath').textContent = cwd;
+  $('#termTasksPath').title = cwd;
+  body.innerHTML = `<div class="pk-empty" style="padding:14px">${T('loading')}</div>`;
+  fetch('/api/note?cwd=' + encodeURIComponent(cwd))
+    .then(r => r.json())
+    .then(d => {
+      if(termTasksCwd !== cwd) return; // bu arada baska bir sekmeye gecilmis
+      const fakeS = { cwd, projectTasks: d.tasks || [] };
+      body.innerHTML = noteHtml(fakeS);
+      wireNote(body, fakeS);
+    })
+    .catch(() => { if(termTasksCwd === cwd) body.innerHTML = `<div class="at-empty" style="padding:14px">${T('noTasksAnywhere')}</div>`; });
 }
 // Terminal kısayolları — yalnız terminal görünümü açıkken ve yazarken değilken.
 // ⌘W menüde "Kapat"a bağlı olduğu için burada değil, ana süreçten IPC ile geliyor.
@@ -672,12 +944,14 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!setModal.hidden){ closeSettings(); return; }
+  if(!allTasksModal.hidden){ closeAllTasks(); return; }
   if(hasTerm() && view === 'term' && MTerm.findClose()) return;
-  if(picked){ picked = null; renderPicked(Date.now()); }
+  if(picked){ closePick(); }
 });
 document.addEventListener('pointerdown', (e) => {
-  if(picked && !e.target.closest('#pick') && !e.target.closest('#office, #office3d')){
-    picked = null; renderPicked(Date.now());
+  if(picked && !e.target.closest('#pick') && !e.target.closest('#office, #office3d')
+     && !e.target.closest('#live, #ended')){
+    closePick();
   }
 }, true);
 Office.onPick = onPick;
@@ -709,15 +983,27 @@ function applyLang(){
   const c = (x) => `<code>${x}</code>`;
   $('#footer1').innerHTML = T('footer1', c('~/.claude/sessions/*.json'), c('ps'), c('~/.claude/projects/**/*.jsonl'));
   $('#footer2').innerHTML = T('footer2', c('node server.js --watch'), c('node server.js --json'));
-  $('#langSw').innerHTML = ['tr','en'].map(l =>
-    `<button data-l="${l}" class="${l===lang?'on':''}">${l.toUpperCase()}</button>`).join('');
-  $('#langSw').querySelectorAll('button').forEach(b => b.onclick = () => {
-    if(b.dataset.l === lang) return;
-    lang = b.dataset.l;
-    localStorage.setItem('cc.lang', lang);
-    applyLang(); applyViewBtn(); render();
-  });
   if(es && es.readyState === 1) setConn(true, T('live'));
+}
+
+// Masaustu uygulamasinda dil, uygulama menusundeki Ayarlar > Dil'den geliyor
+// (mac'te mineClaude menusunun altinda, Windows/Linux'ta menu cubugundaki ayri
+// Ayarlar menusunde). Sayfadaki Ayarlar paneli yalniz bu makineye ozel tercihler
+// icin, uygulama geneli bir sey barindirmiyor; sayfa menudeki secimi izleyip
+// kendi metnini ona gore guncelliyor.
+if(window.mineClaudeDesktop){
+  window.mineClaudeDesktop.lang.get().then(l => {
+    if((l === 'tr' || l === 'en') && l !== lang){
+      lang = l; localStorage.setItem('cc.lang', lang);
+      applyLang(); applyViewBtn(); render();
+    }
+  });
+  window.mineClaudeDesktop.lang.onChange(l => {
+    if((l === 'tr' || l === 'en') && l !== lang){
+      lang = l; localStorage.setItem('cc.lang', lang);
+      applyLang(); applyViewBtn(); render();
+    }
+  });
 }
 
 // --- görünüm anahtarı: kartlar | ofis (2D) | ofis (3D) yan yana ---
@@ -741,6 +1027,11 @@ function applyViewBtn(){
     applyViewBtn(); render();
   });
   $('#fs').title = T('fullscreen');
+  $('#allTasksBtn').title = T('allTasks');
+  $('#allTasksBtn').innerHTML = svg('checklist');
+  $('#allTasksClose').title = T('close');
+  $('#allTasksClose').innerHTML = svg('cross');
+  $('#allTasksTitle').textContent = T('allTasks');
   $('#setBtn').title = T('settings');
   $('#setBtn').innerHTML = svg('gear');
   $('#setClose').title = T('close');
@@ -843,18 +1134,6 @@ function actionBtns(s){
   return acts;
 }
 
-// Soket yoksa kutu yine dursun ama pasif olsun — yoksa "neden bazılarında yok?" sorusu doğuyor.
-function msgBoxHtml(s){
-  if(s.kind !== 'live') return '';
-  return `<form class="msg${s.socket ? '' : ' off'}" data-pid="${s.pid}"
-             title="${s.socket ? '' : T('msgClosedWhy')}">
-         <textarea rows="1" placeholder="${s.socket ? T('msgPlaceholder') : T('msgClosed')}"
-                autocomplete="off" spellcheck="false" ${s.socket ? '' : 'disabled'}
-         >${esc(drafts.get(s.pid) || '')}</textarea>
-         <button type="submit" class="iconbtn" title="${T('send')}" ${s.socket ? '' : 'disabled'}>${svg('send')}</button>
-       </form>`;
-}
-
 function wireActions(root){
   root.querySelectorAll('button[data-term-id]').forEach(b => b.onclick = () => {
     view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render();
@@ -869,45 +1148,6 @@ function wireActions(root){
     const r = await window.mineClaudeDesktop.focusTerminal({ tty: b.dataset.tty, host: b.dataset.host });
     if(!r || !r.ok){ flash(b, 'err'); b.title = T('focusTtyNone'); }
   });
-}
-
-function wireMsgForm(root, pid){
-  const form = root.querySelector('.msg:not(.off)');
-  if(!form) return;
-  const input = form.querySelector('textarea');
-  // tek satirdan basla, icerik buyudukce uzat (CSS max-height'te durur)
-  const grow = () => {
-    input.style.height = 'auto';
-    // alt sinir 28px: tek satirken yanindaki gonder dugmesiyle ayni yukseklikte dursun
-    input.style.height = Math.max(28, Math.min(input.scrollHeight, 130)) + 'px';
-  };
-  input.oninput = () => { drafts.set(pid, input.value); grow(); };
-  if(input.value) grow();
-  // textarea'da Enter varsayilan olarak yeni satir yazar; gondermeyi ona baglayip
-  // yeni satiri Shift+Enter'a aliyoruz — sohbet kutularinin alisilmis davranisi.
-  input.onkeydown = (e) => {
-    if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){
-      e.preventDefault();
-      form.requestSubmit ? form.requestSubmit() : form.onsubmit(new Event('submit'));
-    }
-  };
-  form.onsubmit = (e) => {
-    e.preventDefault();
-    const text = input.value.trim();
-    if(!text) return;
-    input.disabled = true;
-    fetch('/api/send', {
-      method:'POST', headers:{'content-type':'application/json'},
-      body: JSON.stringify({pid, text}),
-    })
-    .then(r => r.json())
-    .then(r => {
-      input.disabled = false;
-      if(r.ok){ input.value=''; drafts.delete(pid); grow(); flash(form,'ok'); input.focus(); }
-      else { flash(form,'err'); input.title = r.error || 'gönderilemedi'; }
-    })
-    .catch(() => { input.disabled = false; flash(form,'err'); });
-  };
 }
 
 function card(s, now){
@@ -927,7 +1167,6 @@ function card(s, now){
   }
 
   const acts = actionBtns(s);
-  const msgBox = msgBoxHtml(s);
 
   el.innerHTML = `
     <div class="row1">
@@ -941,31 +1180,18 @@ function card(s, now){
          </div>` : ''}
     ${banner}
     <div class="meta">${metaBits(s, now)}</div>
-    ${acts.length || msgBox ? `<div class="bottom">${acts.join('')}${msgBox}</div>` : ''}`;
+    ${acts.length ? `<div class="bottom">${acts.join('')}</div>` : ''}`;
 
   wireActions(el);
-  wireMsgForm(el, s.pid);
+  el.onclick = (e) => {
+    if(e.target.closest('.bottom')) return; // aksiyon kutusu: kart secimini tetiklemesin
+    onPick(String(s.sessionId || s.pid));
+  };
   return el;
-}
-
-// render sirasinda odakta olan mesaj kutusunu koru
-function snapshotFocus(){
-  const a = document.activeElement;
-  if(a && a.tagName === 'TEXTAREA' && a.closest('.msg') && !a.closest('#pick'))
-    return { pid: a.closest('.msg').dataset.pid, start: a.selectionStart, end: a.selectionEnd };
-  return null;
-}
-function restoreFocus(f){
-  if(!f) return;
-  const input = document.querySelector(`.grid .msg[data-pid="${f.pid}"] textarea`);
-  if(!input) return;
-  input.focus();
-  try { input.setSelectionRange(f.start, f.end); } catch {}
 }
 
 function render(){
   if(!state) return;
-  const focus = snapshotFocus();
   const now = Date.now();
   const base = hideEmptyBox.checked ? state.live.filter(s => !s.empty) : state.live;
   const n = (f) => base.filter(f).length;
@@ -997,6 +1223,7 @@ function render(){
   $('#office').hidden = v !== 'office';
   $('#office3d').hidden = v !== 'office3d';
   $('#terms').hidden = v !== 'term';
+  $('#termTasks').hidden = v !== 'term' || !termTasksOpen;
   $('#live').hidden = office;
   $('#endedHead').hidden = office;
   $('#colsWrap').hidden = office;
@@ -1006,11 +1233,9 @@ function render(){
     else if(v === 'office3d') Office3D.render(list, $('#office3d'), T, lang);
     else Office.render(list, $('#office'), T, lang);
     syncCloseIntercept();
-    if(v !== 'term') renderPicked(now); else { picked = null; $('#pick').hidden = true; }
+    if(v !== 'term') renderPicked(now); else { picked = null; $('#pick').hidden = true; if(termTasksOpen) renderTermTasks(); }
     $('#ended').hidden = true;
   } else {
-    picked = null; pickFor = null; pickMsgKey = null;
-    $('#pick').hidden = true; $('#pick').innerHTML = '';
     const live = $('#live');
     live.innerHTML = '';
     if(!list.length) live.innerHTML = `<div class="empty" style="grid-column:1/-1">${T('noneInFilter')}</div>`;
@@ -1021,10 +1246,11 @@ function render(){
     endedEl.innerHTML = '';
     for(const s of state.ended) endedEl.appendChild(card(s, now));
     $('#ended').hidden = !endedOpen;
+    renderPicked(now);
   }
 
   const w = n(s => disp(s) === 'waiting');
-  document.title = (w ? `(${w}) ` : '') + `mineClaude — ${base.length} session`;
+  document.title = (w ? `(${w}) ` : '') + `mineClaude — ${base.length} ${lang === 'tr' ? 'oturum' : 'session'}`;
   // kurulu PWA'da dock ikonunun uzerindeki sayi
   if(navigator.setAppBadge){
     if(w) navigator.setAppBadge(w).catch(()=>{});
@@ -1038,7 +1264,7 @@ function render(){
     if(s.tty) MTerm.noteWaiting(s.tty, disp(s) === 'waiting');
   }
   $('#host').textContent = state.host ? '· ' + state.host : '';
-  restoreFocus(focus);
+  if(!allTasksModal.hidden) renderAllTasks();
 }
 
 let prevDisp = new Map();
@@ -1181,11 +1407,9 @@ function syncCloseIntercept(){
 if('serviceWorker' in navigator && location.protocol !== 'file:' && !window.mineClaudeDesktop){
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 }
-// goreli zamanlari tazele; mesaj yazilirken kozmetik render'i atla
+// goreli zamanlari tazele
 setInterval(() => {
   if(!state) return;
-  const a = document.activeElement;
-  if(a && a.tagName === 'TEXTAREA' && a.closest('.msg')) return;
   render();
 }, 1000);
 </script>
