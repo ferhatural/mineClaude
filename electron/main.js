@@ -8,9 +8,10 @@
 //
 // Dock'ta ikon yok (LSUIElement). Cikis tray menusunden ya da Cmd+Q ile.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen, dialog, nativeTheme } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen, dialog, nativeTheme, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const net = require('net');
 const http = require('http');
 const { spawn, execFile } = require('child_process');
@@ -101,7 +102,9 @@ function initL() {
 const configFile = () => path.join(app.getPath('userData'), 'config.json');
 // lang: null = sistemin diline uy, 'tr'/'en' = kullanicinin Ayarlar > Dil'den sectigi zorlama.
 // theme: null = sistemin temasina uy, 'light'/'dark' = Ayarlar > Tema'dan secilen zorlama.
-const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null };
+// lastTermDir: yeni terminal icin klasor secme diyalogu en son nereden secildiyse
+// orada acilsin diye — Windows'ta bu diyalog kendiliginden hatirlamiyor.
+const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null, lastTermDir: null };
 
 function loadConfig() {
   try {
@@ -491,6 +494,15 @@ function applyThemeOverride(newTheme) {
   setAppMenu();
 }
 
+// Sayfa nativeTheme degisince prefers-color-scheme uzerinden kendi renklerini
+// otomatik guncelliyor, ama terminal (xterm) renkleri acilista bir kere
+// okunup sabitleniyor — tema degisince sayfaya haber verip xterm'i de
+// yeniden boyatmasini istiyoruz (bkz. index.html: MTerm.retheme()).
+function notifyThemeChanged() {
+  if (win && !win.isDestroyed()) win.webContents.send('mineclaude:theme-changed');
+}
+nativeTheme.on('updated', notifyThemeChanged);
+
 function setAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     // appMenu (uygulama adiyla acilan ilk menu: About/Hide/Quit) sadece macOS'ta bir
@@ -553,19 +565,19 @@ function setAppMenu() {
       label: L.settingsMenu,
       submenu: [
         {
-          label: L.langMenu,
-          submenu: [
-            { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
-            { label: 'Türkçe', type: 'radio', checked: config.lang === 'tr', click: () => applyLangOverride('tr') },
-            { label: 'English', type: 'radio', checked: config.lang === 'en', click: () => applyLangOverride('en') },
-          ],
-        },
-        {
           label: L.themeMenu,
           submenu: [
             { label: L.themeSystem, type: 'radio', checked: !config.theme, click: () => applyThemeOverride(null) },
             { label: L.themeLight, type: 'radio', checked: config.theme === 'light', click: () => applyThemeOverride('light') },
             { label: L.themeDark, type: 'radio', checked: config.theme === 'dark', click: () => applyThemeOverride('dark') },
+          ],
+        },
+        {
+          label: L.langMenu,
+          submenu: [
+            { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
+            { label: 'Türkçe', type: 'radio', checked: config.lang === 'tr', click: () => applyLangOverride('tr') },
+            { label: 'English', type: 'radio', checked: config.lang === 'en', click: () => applyLangOverride('en') },
           ],
         },
       ],
@@ -644,8 +656,32 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle('mineclaude:get-lang', () => (config.lang === 'tr' || config.lang === 'en' ? config.lang : null));
   ipcMain.on('mineclaude:set-lang', (_e, l) => applyLangOverride(l === 'tr' || l === 'en' ? l : null, false));
   ipcMain.handle('mineclaude:pick-folder', async () => {
-    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: L.pickDir });
-    return r.canceled ? null : r.filePaths[0];
+    const opts = { properties: ['openDirectory'], message: L.pickDir };
+    if (config.lastTermDir) opts.defaultPath = config.lastTermDir;
+    const r = await dialog.showOpenDialog(win, opts);
+    if (r.canceled) return null;
+    // Secilen klasorun kendisini degil bir ustunu hatirliyoruz: ayni klasorde
+    // (ornegin ~/Projects) baska bir proje daha secmek isteyince oradan
+    // basliyor, secilenin icine gomulu kalmiyor.
+    config.lastTermDir = path.dirname(r.filePaths[0]);
+    saveConfig();
+    return r.filePaths[0];
+  });
+  // Gomulu terminalde Ctrl/Cmd+V: navigator.clipboard.readText() Electron'da izin
+  // istegine takilabiliyor, dogrudan native panoyu okumak her zaman calisiyor.
+  // Panoda metin yoksa (ekran goruntusu gibi bir gorsel varsa) onu gecici bir
+  // PNG dosyasina kaydedip yolunu donuyoruz — Claude Code mesajda gecen bir
+  // gorsel dosya yolunu kendisi tanıyip ekliyor.
+  ipcMain.handle('mineclaude:clipboard-read', () => {
+    const text = clipboard.readText();
+    if (text) return { text, imagePath: null };
+    const image = clipboard.readImage();
+    if (image.isEmpty()) return { text: '', imagePath: null };
+    const dir = path.join(os.tmpdir(), 'mineclaude-paste');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `paste-${Date.now()}.png`);
+    fs.writeFileSync(file, image.toPNG());
+    return { text: '', imagePath: file };
   });
 
   app.on('activate', showWindow);

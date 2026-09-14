@@ -185,6 +185,8 @@
   .term-tasks-head b{display:block;font-size:13.5px;margin-bottom:2px}
   .term-tasks-head .path{margin:0}
   #termTasksBody{flex:1;min-height:0;display:flex;flex-direction:column}
+  .tt-empty{flex:1;display:flex;align-items:center;justify-content:center;
+    text-align:center;color:var(--faint);font-size:12.5px;padding:14px}
   #termTasksBody .pk-note{flex:1;min-height:0;padding:12px 14px;border-bottom:0}
   @media (max-width:900px){ .term-tasks{display:none} }
 
@@ -240,23 +242,41 @@
   .tm-empty button:hover{border-color:var(--faint)}
 
   /* ayarlar modali */
-  .modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);
+  .modal{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);backdrop-filter:blur(3px);
     display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px}
-  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    width:min(400px,100%);padding:16px 18px 18px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
-  .sheet-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
-  .sheet-head b{font-size:15px}
-  .sheet .row{display:flex;flex-direction:column;gap:12px;color:var(--dim);font-size:13px}
-  .sheet label{display:flex;gap:8px;align-items:center;cursor:pointer;user-select:none}
-  .sheet input[type=checkbox]{accent-color:var(--idle)}
-  .sheet .seg{margin-left:0;margin-top:4px}
+  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:calc(var(--radius) + 2px);
+    width:min(400px,100%);padding:18px 16px 16px;box-shadow:0 24px 70px rgba(0,0,0,.5)}
+  .sheet-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:0 4px}
+  .sheet-head b{font-size:16px;letter-spacing:-.01em}
+  .sheet .row{display:flex;flex-direction:column;gap:2px}
+  .opt-row{display:flex;align-items:center;gap:10px;padding:9px 6px;border-radius:9px;
+    cursor:pointer;user-select:none;transition:background .12s}
+  .opt-row:hover{background:var(--panel2)}
+  .opt-row-static{cursor:default}
+  .opt-row-static:hover{background:none}
+  .opt-icon{flex:none;width:28px;height:28px;border-radius:8px;background:var(--panel2);
+    display:flex;align-items:center;justify-content:center;color:var(--dim)}
+  .opt-icon svg{width:14px;height:14px;display:block}
+  .opt-label{flex:1;min-width:0;color:var(--text);font-size:13px}
+  .switch{position:relative;flex:none;width:36px;height:21px}
+  .switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+  .switch-track{position:absolute;inset:0;background:var(--line);border-radius:11px;transition:background .15s}
+  .switch-track::before{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;
+    background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  .switch input:checked + .switch-track{background:var(--idle)}
+  .switch input:checked + .switch-track::before{transform:translateX(15px)}
   .at-sheet{width:min(560px,100%)}
-  .at-body{max-height:64vh;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
-  .at-group{display:flex;flex-direction:column;gap:6px}
-  .at-group h4{margin:0;display:flex;align-items:baseline;gap:8px;min-width:0}
+  .at-body{max-height:64vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
+    margin:0 -4px;padding:2px 4px}
+  .at-group{display:flex;flex-direction:column;gap:10px;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:12px}
+  .at-group h4{margin:0;display:flex;align-items:center;gap:8px;min-width:0}
+  .at-group h4 .folder-icon{flex:none;color:var(--faint);width:14px;height:14px;display:block}
   .at-group h4 .name{font-size:13.5px;font-weight:600;color:var(--text);flex:none}
   .at-group h4 .path{margin:0;flex:1}
-  .at-empty{color:var(--faint);font-size:12.5px}
+  .at-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;color:var(--faint);font-size:13px;padding:48px 20px;text-align:center}
+  .at-empty svg{width:26px;height:26px;opacity:.6}
 
   .grid{display:grid;grid-template-columns:var(--gtc);gap:12px;align-items:start}
   @media (max-width:720px){
@@ -343,11 +363,45 @@
     <div class="sheet">
       <div class="sheet-head"><b id="settingsTitle"></b><button class="pick-x" id="setClose"></button></div>
       <div class="row">
-        <label><input type="checkbox" id="notify"> <span id="notifyLabel"></span></label>
-        <label><input type="checkbox" id="hideEmpty" checked> <span id="hideEmptyLabel"></span></label>
-        <label><input type="checkbox" id="sound"> <span id="soundLabel"></span></label>
-        <div class="seg" id="colsWrap">
-          <span id="colsLabel"></span>
+        <label class="opt-row">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 2.2c-2 0-3.4 1.6-3.4 3.6v2.4l-1.1 1.9h9l-1.1-1.9V5.8c0-2-1.4-3.6-3.4-3.6z"/>
+              <path d="M6.6 12.3a1.5 1.5 0 0 0 2.8 0"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="notifyLabel"></span>
+          <span class="switch"><input type="checkbox" id="notify"><span class="switch-track"></span></span>
+        </label>
+        <label class="opt-row">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 6.2h2.2L7.6 3v10L4.2 9.8H2z"/>
+              <path d="M10.2 5.7c1 .9 1 3.7 0 4.6M12 4.1c1.9 1.7 1.9 6.1 0 7.8"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="soundLabel"></span>
+          <span class="switch"><input type="checkbox" id="sound"><span class="switch-track"></span></span>
+        </label>
+        <label class="opt-row">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 8s2.2-3.8 6-3.8 6 3.8 6 3.8-2.2 3.8-6 3.8-6-3.8-6-3.8z"/>
+              <circle cx="8" cy="8" r="1.6"/>
+              <path d="M2.4 2.4l11.2 11.2"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="hideEmptyLabel"></span>
+          <span class="switch"><input type="checkbox" id="hideEmpty" checked><span class="switch-track"></span></span>
+        </label>
+        <div class="opt-row opt-row-static" id="colsWrap">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="2" width="5.2" height="5.2" rx="1.2"/>
+              <rect x="2" y="8.8" width="5.2" height="5.2" rx="1.2"/><rect x="8.8" y="8.8" width="5.2" height="5.2" rx="1.2"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="colsLabel"></span>
           <div class="opts" id="cols"></div>
         </div>
       </div>
@@ -391,35 +445,35 @@
 // yollar ve Claude Code'un kendi ürettiği metinler (waitingFor) olduğu gibi kalır.
 const I18N = {
   tr: {
-    appTitle:'Claude Oturumları', live:'canlı', connecting:'bağlanıyor…',
-    disconnected:'bağlantı koptu — yeniden deneniyor',
+    appTitle:'Claude Oturumları', live:'Canlı', connecting:'Bağlanıyor…',
+    disconnected:'Bağlantı koptu — yeniden deneniyor',
     serverDown:'mineClaude sunucusu çalışmıyor', serverDownHint:'Terminalde başlat:',
     officeView:'Ofis görünümü', office3dView:'3D ofis görünümü', cardView:'Kart görünümü',
-    fullscreen:'Tam ekran', camHint:'tıkla: kart · sürükle: döndür · space+sürükle: kaydır · tekerlek: yakınlaş · çift tık: sıfırla',
-    all:'tümü', waiting:'input bekliyor', busy:'çalışıyor', ready:'beklemede', idle:'boşta',
-    unknown:'bilinmiyor', ended:'kapandı',
-    notifyLabel:'input bekleyince bildirim gönder', soundLabel:'durum değişince ses çal', hideEmptyLabel:'boş/kullanılmayan süreçleri gizle',
-    columns:'kolon', waitsForYou:'Senden input bekliyor',
+    fullscreen:'Tam ekran', camHint:'Tıkla: kart · sürükle: döndür · space+sürükle: kaydır · tekerlek: yakınlaş · çift tık: sıfırla',
+    all:'Tümü', waiting:'İnput bekliyor', busy:'Çalışıyor', ready:'Beklemede', idle:'Boşta',
+    unknown:'Bilinmiyor', ended:'Kapandı',
+    notifyLabel:'İnput bekleyince bildirim gönder', soundLabel:'Durum değişince ses çal', hideEmptyLabel:'Boş/kullanılmayan süreçleri gizle',
+    columns:'Kolon', waitsForYou:'Senden input bekliyor',
     'no-conversation':'Bu süreçte hiç konuşma yok', 'maybe-permission':'izin bekliyor olabilir',
-    context:'bağlam', messages:'tur', openFor:'açık', permission:'izin',
-    copyResume:'resume komutunu kopyala', copyCd:'klasöre gitme komutunu kopyala',
-    copyTranscript:'transcript yolunu kopyala',
-    focusTty:(t)=>`terminal sekmesine git (${t})`,
-    focusTtyNone:'sekme bulunamadı — terminal kapanmış olabilir',
-    close:'kapat', loading:'yükleniyor…', noMessages:'Geçmiş bulunamadı', you:'Sen',
+    context:'bağlam', messages:'tur', openFor:'açık', permission:'İzin',
+    copyResume:'Resume komutunu kopyala', copyCd:'Klasöre gitme komutunu kopyala',
+    copyTranscript:'Transcript yolunu kopyala',
+    focusTty:(t)=>`Terminal sekmesine git (${t})`,
+    focusTtyNone:'Sekme bulunamadı — terminal kapanmış olabilir',
+    close:'Kapat', loading:'Yükleniyor…', noMessages:'Geçmiş bulunamadı', you:'Sen',
     settings:'Ayarlar',
     allTasks:'Tüm görevler', noTasksAnywhere:'Hiçbir projede görev yok.',
     clientNotePh:'Yeni görev ekle…',
     tasksTab:'Görevler', historyTab:'Geçmiş',
-    petCat:'kediyi sev', asked:'soru sordu',
-    termView:'Terminaller', termNew:'klasör seç ve terminal aç', termEmpty:'Açık terminal yok.',
-    termClosed:'kapandı', termHere:'burada terminal aç',
-    termTiles:'ızgara görünümü', termTabs:'sekme görünümü',
-    termGoTab:'sekmesine git', termInApp:'mineClaude terminali',
+    petCat:'Kediyi sev', asked:'Soru sordu',
+    termView:'Terminaller', termNew:'Proje klasörü seç', termEmpty:'Açık terminal yok.',
+    termClosed:'Kapandı', termHere:'Burada terminal aç', termResume:'Bu konuşmayı burada devam ettir',
+    termTiles:'Izgara görünümü', termTabs:'Sekme görünümü',
+    termGoTab:'Sekmesine git', termInApp:'mineClaude terminali',
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
-    termRestoreYes:'geri yükle', termRestoreNo:'yoksay',
+    termRestoreYes:'Geri yükle', termRestoreNo:'Yoksay',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
-    noneInFilter:'Bu filtrede oturum yok.', recentlyClosed:'son kapanan oturumlar',
+    noneInFilter:'Bu filtrede oturum yok.', recentlyClosed:'Son kapanan oturumlar',
     notifTitle:(p)=>`${p} senden input bekliyor`,
     notifAsked:(p)=>`${p} sana bir soru sordu`,
     justNow:'az önce', sec:'sn önce', min:'dk önce', hour:'sa önce', day:'gün önce',
@@ -429,35 +483,35 @@ const I18N = {
     footer2:(a,b)=>`Terminalden: ${a} · JSON: ${b}`,
   },
   en: {
-    appTitle:'Claude Sessions', live:'live', connecting:'connecting…',
-    disconnected:'connection lost — retrying',
+    appTitle:'Claude Sessions', live:'Live', connecting:'Connecting…',
+    disconnected:'Connection lost — retrying',
     serverDown:'The mineClaude server is not running', serverDownHint:'Start it in your terminal:',
     officeView:'Office view', office3dView:'3D office view', cardView:'Card view',
-    fullscreen:'Fullscreen', camHint:'click: card · drag: rotate · space+drag: pan · wheel: zoom · double-click: reset',
-    all:'all', waiting:'waiting for input', busy:'working', ready:'standing by', idle:'idle',
-    unknown:'unknown', ended:'ended',
-    notifyLabel:'notify me when a session wants input', soundLabel:'play a sound on status changes', hideEmptyLabel:'hide unused processes',
-    columns:'columns', waitsForYou:'Waiting for your input',
+    fullscreen:'Fullscreen', camHint:'Click: card · drag: rotate · space+drag: pan · wheel: zoom · double-click: reset',
+    all:'All', waiting:'Waiting for input', busy:'Working', ready:'Standing by', idle:'Idle',
+    unknown:'Unknown', ended:'Ended',
+    notifyLabel:'Notify me when a session wants input', soundLabel:'Play a sound on status changes', hideEmptyLabel:'Hide unused processes',
+    columns:'Columns', waitsForYou:'Waiting for your input',
     'no-conversation':'No conversation in this process', 'maybe-permission':'may be waiting for permission',
-    context:'context', messages:'turns', openFor:'open', permission:'perm',
-    copyResume:'copy resume command', copyCd:'copy cd command',
-    copyTranscript:'copy transcript path',
-    focusTty:(t)=>`go to the terminal tab (${t})`,
-    focusTtyNone:'tab not found — the terminal may have been closed',
-    close:'close', loading:'loading…', noMessages:'No history found', you:'You',
+    context:'context', messages:'turns', openFor:'open', permission:'Perm',
+    copyResume:'Copy resume command', copyCd:'Copy cd command',
+    copyTranscript:'Copy transcript path',
+    focusTty:(t)=>`Go to the terminal tab (${t})`,
+    focusTtyNone:'Tab not found — the terminal may have been closed',
+    close:'Close', loading:'Loading…', noMessages:'No history found', you:'You',
     settings:'Settings',
     allTasks:'All tasks', noTasksAnywhere:'No tasks in any project.',
     clientNotePh:'Add a task…',
     tasksTab:'Tasks', historyTab:'History',
-    petCat:'pet the cat', asked:'asked you something',
-    termView:'Terminals', termNew:'pick a folder and open a terminal', termEmpty:'No terminals open.',
-    termClosed:'closed', termHere:'open a terminal here',
-    termTiles:'tile view', termTabs:'tab view',
-    termGoTab:'go to its tab', termInApp:'mineClaude terminal',
+    petCat:'Pet the cat', asked:'Asked you something',
+    termView:'Terminals', termNew:'Select project folder', termEmpty:'No terminals open.',
+    termClosed:'Closed', termHere:'Open a terminal here', termResume:'Resume this conversation here',
+    termTiles:'Tile view', termTabs:'Tab view',
+    termGoTab:'Go to its tab', termInApp:'mineClaude terminal',
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
-    termRestoreYes:'restore', termRestoreNo:'dismiss',
+    termRestoreYes:'Restore', termRestoreNo:'Dismiss',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
-    noneInFilter:'No sessions in this filter.', recentlyClosed:'recently closed sessions',
+    noneInFilter:'No sessions in this filter.', recentlyClosed:'Recently closed sessions',
     notifTitle:(p)=>`${p} is waiting for your input`,
     notifAsked:(p)=>`${p} asked you something`,
     justNow:'just now', sec:'s ago', min:'m ago', hour:'h ago', day:'d ago',
@@ -492,6 +546,7 @@ const ICON = {
   cube:'<path d="M8 1.6l5.6 3.2v6.4L8 14.4 2.4 11.2V4.8z"/><path d="M2.4 4.8L8 8l5.6-3.2M8 8v6.4"/>',
   terminal:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M4.4 6.4L6.6 8.4 4.4 10.4M8.4 10.6h3"/>',
   term:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M4.4 6.4L6.6 8.4 4.4 10.4M8.4 10.6h3"/>',
+  termPlus:'<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="1.6"/><path d="M8 5.5v5M5.5 8h5"/>',
   gear:'<circle cx="8" cy="8" r="2.3"/><path d="M8 1.6l1 1.7 1.9-.5.5 1.9 1.7 1-1 1.7 1 1.7-1.7 1-.5 1.9-1.9-.5-1 1.7-1-1.7-1.9.5-.5-1.9-1.7-1 1-1.7-1-1.7 1.7-1 .5-1.9 1.9.5z"/>',
   trash:'<path d="M2.8 4.4h10.4M6.2 4.4V3.1c0-.6.5-1.1 1.1-1.1h1.4c.6 0 1.1.5 1.1 1.1v1.3M4.3 4.4l.6 8.3c.05.7.6 1.2 1.3 1.2h3.6c.7 0 1.25-.5 1.3-1.2l.6-8.3M6.5 7v4M9.5 7v4"/>',
   arrowUp:'<path d="M8 13V3M4 7l4-4 4 4"/>',
@@ -563,27 +618,72 @@ $('#allTasksBtn').onclick = openAllTasks;
 $('#allTasksClose').onclick = closeAllTasks;
 allTasksModal.onpointerdown = (e) => { if(e.target === allTasksModal) closeAllTasks(); };
 
+let allTasksSnapshot = null; // son cizilen veri: degismediyse yeniden kurmuyoruz
+let allTasksReq = 0; // gecikip gelen eski bir istek daha yeni veriyi ezmesin
+// Sadece canli oturumlardan derlersek gorevi olan ama su an acik bir sureci
+// bulunmayan projeler hic gorunmuyordu. Bunun yerine mineClaude'un bildigi
+// TUM projeleri (oturum durumundan bagimsiz) sunucudan cekiyoruz.
 function renderAllTasks(){
   const body = $('#allTasksBody');
-  if(!state){ body.innerHTML = ''; return; }
-  const byCwd = new Map();
-  for(const s of [...state.live, ...state.ended]){
-    if(!s.cwd || !s.projectTasks || !s.projectTasks.length) continue;
-    if(!byCwd.has(s.cwd)) byCwd.set(s.cwd, { project: s.project, tasks: s.projectTasks });
-  }
-  if(!byCwd.size){ body.innerHTML = `<div class="at-empty">${T('noTasksAnywhere')}</div>`; return; }
-  body.innerHTML = [...byCwd.entries()].map(([cwd, g]) => `
-    <div class="at-group" data-cwd="${esc(cwd)}">
-      <h4><span class="name">${esc(g.project)}</span><span class="path" title="${esc(cwd)}">${esc(cwd)}</span></h4>
-      <div class="pk-tasks">${g.tasks.map(taskRowHtml).join('')}</div>
-    </div>`).join('');
+  const reqId = ++allTasksReq;
+  fetch('/api/all-tasks').then(r => r.json()).then(d => {
+    if(reqId !== allTasksReq) return; // bu arada daha yeni bir istek basladi
+    const projects = d.projects || [];
+    const byCwd = new Map(projects.map(p => [p.cwd, { project: p.project, tasks: p.tasks }]));
+    // Bu pencere acikken saniyede bir cagriliyor; veri gercekten degismediyse
+    // DOM'u bastan kurmuyoruz — yoksa mouse bir gorevin uzerindeyken eleman
+    // yenilenip hover durumu (silme ikonunun gorunmesi) surekli gidip geliyordu.
+    const snapshot = JSON.stringify(projects);
+    if(snapshot === allTasksSnapshot) return;
+    allTasksSnapshot = snapshot;
+    if(!byCwd.size){
+      body.innerHTML = `<div class="at-empty">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1.8" y="2.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 4h7.4"/>
+          <rect x="1.8" y="6.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 8h7.4"/>
+          <rect x="1.8" y="10.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 12h7.4"/>
+        </svg>
+        <div>${T('noTasksAnywhere')}</div>
+      </div>`;
+      return;
+    }
+    body.innerHTML = [...byCwd.entries()].map(([cwd, g]) => `
+      <div class="at-group" data-cwd="${esc(cwd)}">
+        <h4>
+          <svg class="folder-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.8 12.8V3.4h4.1l1.3 1.7h7v7.7z"/>
+          </svg>
+          <span class="name">${esc(g.project)}</span><span class="path" title="${esc(cwd)}">${esc(cwd)}</span>
+        </h4>
+        <div class="pk-tasks">${g.tasks.map(taskRowHtml).join('')}</div>
+      </div>`).join('');
+    wireAllTasksGroups(body, byCwd);
+  }).catch(() => {});
+}
+function wireAllTasksGroups(body, byCwd){
   body.querySelectorAll('.at-group').forEach(group => {
     const cwd = group.dataset.cwd;
     let tasks = byCwd.get(cwd).tasks.map(t => ({...t}));
-    const persist = () => fetch('/api/note', {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ cwd, tasks }),
-    }).catch(() => {});
+    // Bu proje ayni anda per-session panelde ya da terminal gorunumunde de
+    // acik olabilir; onlar state.live/ended'daki projectTasks'i okuyor, o
+    // yuzden buradaki degisikligi state'e de hemen yansitiyoruz.
+    const patchState = () => {
+      if(!state) return;
+      for(const s of state.live) if(s.cwd === cwd) s.projectTasks = tasks;
+      for(const s of state.ended) if(s.cwd === cwd) s.projectTasks = tasks;
+    };
+    // Ust uste hizli silinince (ornegin "hepsini sil") her tik ayri bir POST
+    // atiyordu; bunlar siraya girmezse eski istek gec cevaplayip son (bos)
+    // listeyi ezebiliyordu. Zincirleyerek her istegin bir oncekinin bitmesini
+    // beklemesini ve gonderirken tasks'in en guncel halini almasini sagliyoruz.
+    let saveChain = Promise.resolve();
+    const persist = () => {
+      patchState();
+      saveChain = saveChain.then(() => fetch('/api/note', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cwd, tasks }),
+      })).catch(() => {});
+    };
     group.querySelectorAll('.pk-task').forEach(row => {
       const t = tasks.find(x => x.id === row.dataset.id);
       if(!t) return;
@@ -665,12 +765,17 @@ function wireNote(pop, s){
     addBtn.classList.add('ok');
     setTimeout(() => addBtn.classList.remove('ok'), 900);
   };
+  // Ust uste hizli degisiklikte (ornegin birkac gorevi art arda silmek) her
+  // tik ayri bir POST atardi; siraya girmezse eski istek gec cevaplayip son
+  // hali ezebilirdi. Zincirleyerek hem sirayi koruyoruz hem de gonderirken
+  // tasks'in en guncel halini aliyoruz.
+  let saveChain = Promise.resolve();
   const persist = () => {
-    fetch('/api/note', {
+    saveChain = saveChain.then(() => fetch('/api/note', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ cwd: s.cwd, tasks }),
-    }).then(flashSaved).catch(() => {});
+    })).then(flashSaved).catch(() => {});
   };
 
   const wireRow = (row, t) => {
@@ -829,13 +934,13 @@ function renderTermTasks(){
   if(!cwd){
     $('#termTasksProj').textContent = '';
     $('#termTasksPath').textContent = '';
-    body.innerHTML = `<div class="at-empty" style="padding:14px">${T('termEmpty')}</div>`;
+    body.innerHTML = `<div class="tt-empty">${T('termEmpty')}</div>`;
     return;
   }
   $('#termTasksProj').textContent = projectNameFromCwd(cwd);
   $('#termTasksPath').textContent = cwd;
   $('#termTasksPath').title = cwd;
-  body.innerHTML = `<div class="pk-empty" style="padding:14px">${T('loading')}</div>`;
+  body.innerHTML = `<div class="tt-empty">${T('loading')}</div>`;
   fetch('/api/note?cwd=' + encodeURIComponent(cwd))
     .then(r => r.json())
     .then(d => {
@@ -844,7 +949,7 @@ function renderTermTasks(){
       body.innerHTML = noteHtml(fakeS);
       wireNote(body, fakeS);
     })
-    .catch(() => { if(termTasksCwd === cwd) body.innerHTML = `<div class="at-empty" style="padding:14px">${T('noTasksAnywhere')}</div>`; });
+    .catch(() => { if(termTasksCwd === cwd) body.innerHTML = `<div class="tt-empty">${T('noTasksAnywhere')}</div>`; });
 }
 // Terminal kısayolları — yalnız terminal görünümü açıkken ve yazarken değilken.
 // ⌘W menüde "Kapat"a bağlı olduğu için burada değil, ana süreçten IPC ile geliyor.
@@ -913,6 +1018,11 @@ if(window.mineClaudeDesktop){
       lang = l; localStorage.setItem('cc.lang', lang);
       applyLang(); applyViewBtn(); render();
     }
+  });
+  // Tema degisince sayfa CSS'i (prefers-color-scheme) kendiliginden guncelleniyor
+  // ama xterm renkleri acilista sabitlendigi icin terminalleri ayrica boyuyoruz.
+  window.mineClaudeDesktop.theme.onChange(() => {
+    if(hasTerm()) MTerm.retheme();
   });
 }
 
@@ -1033,9 +1143,15 @@ function actionBtns(s){
     // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
     if(window.mineClaudeDesktop && s.kind === 'live' && s.tty)
       acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
-    // uygulamanin icinde, bu klasorde yeni bir terminal
-    if(hasTerm() && s.cwd)
-      acts.push(`<button class="iconbtn" title="${T('termHere')}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}">${svg('term')}</button>`);
+    // uygulamanin icinde: sessionId varsa o konusmayi resume ediyoruz, yoksa
+    // bos bir terminal aciyoruz. Resume varken yanina ayrica bos terminal icin
+    // kucuk bir "+" dugmesi ekliyoruz — istersen kisayol (Shift+tik) da calisir.
+    if(hasTerm() && s.cwd){
+      if(s.sessionId)
+        acts.push(`<button class="iconbtn" title="${T('termHere')}: ${esc(s.cwd)}" data-term-cwd-new="${esc(s.cwd)}">${svg('termPlus')}</button>`);
+      const title = s.sessionId ? T('termResume') : T('termHere');
+      acts.push(`<button class="iconbtn" title="${title}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}" data-term-session="${esc(s.sessionId || '')}">${svg('term')}</button>`);
+    }
   }
   if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
   if(s.cwd) acts.push(`<button class="iconbtn" title="${T('copyCd')}: ${esc(s.cwd)}" data-copy="cd &quot;${esc(s.cwd)}&quot;">${svg('folder')}</button>`);
@@ -1048,9 +1164,20 @@ function wireActions(root){
     view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render();
     MTerm.selectById(b.dataset.termId);
   });
-  root.querySelectorAll('button[data-term-cwd]').forEach(b => b.onclick = () => {
-    view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render();
-    MTerm.open(b.dataset.termCwd);
+  const goTerm = () => { view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render(); };
+  root.querySelectorAll('button[data-term-cwd]').forEach(b => {
+    const openBlank = () => { goTerm(); MTerm.open(b.dataset.termCwd); };
+    // sessionId varsa tik resume acar, Shift+tik her zaman bos terminal acar
+    // (ayni klasorde ikinci bir Claude sureci istersen). Yanindaki "+" dugmesi
+    // ayni seye mouse'la ulasmanin gorsel yolu.
+    b.onclick = (e) => {
+      if(b.dataset.termSession && !e.shiftKey){
+        goTerm(); MTerm.open(b.dataset.termCwd, `claude --resume ${b.dataset.termSession} || claude`);
+      } else openBlank();
+    };
+  });
+  root.querySelectorAll('button[data-term-cwd-new]').forEach(b => b.onclick = () => {
+    goTerm(); MTerm.open(b.dataset.termCwdNew);
   });
   root.querySelectorAll('button[data-copy]').forEach(b => b.onclick = () => copy(b, b.dataset.copy));
   root.querySelectorAll('button[data-tty]').forEach(b => b.onclick = async () => {

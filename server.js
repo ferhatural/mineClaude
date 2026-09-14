@@ -479,6 +479,40 @@ function saveTasks(cwd, tasks) {
   } else {
     fs.rmSync(file, { force: true });
   }
+  // Bu proje artik kendi klasorunde tutuluyor. Eski merkezi kayittaki girdisi
+  // silinmeden kalsaydi, tum gorevler silinip proje dosyasi kaldirilinca
+  // notesFor() tekrar oraya dusup eski (silinmis) gorevleri geri getiriyordu.
+  const legacy = loadLegacyNotes();
+  if (cwd in legacy) {
+    delete legacy[cwd];
+    fs.mkdirSync(path.dirname(NOTES_FILE), { recursive: true });
+    fs.writeFileSync(NOTES_FILE, JSON.stringify(legacy, null, 2));
+  }
+}
+
+// "Tum gorevler" penceresi sadece o an canli oturumlarla sinirli olursa, gorevi
+// olan ama su an calisan bir sureci bulunmayan (ya da uzun zaman once kapanmis)
+// projeler hic gorunmuyordu. Bunun yerine mineClaude'un gordugu HER projeyi
+// (transcript index) tarayip gorevi olanlari donuyoruz — oturum durumundan
+// bagimsiz. Proje klasoru basina en yeni transcript'e bakmak yeterli: hepsini
+// tek tek acmaya gerek yok.
+function allProjectTasks() {
+  const idx = transcriptIndex();
+  const byProjectDir = new Map();
+  for (const rec of idx.all) {
+    // idx.all mtime'a gore siralı: bir proje dizini icin ilk gorulen en yenisi
+    if (!byProjectDir.has(rec.projectDir)) byProjectDir.set(rec.projectDir, rec);
+  }
+  const out = [];
+  const seenCwd = new Set();
+  for (const rec of byProjectDir.values()) {
+    const tr = readTranscriptTail(rec.file, rec.mtime, rec.size);
+    if (!tr.cwd || seenCwd.has(tr.cwd)) continue;
+    seenCwd.add(tr.cwd);
+    const tasks = notesFor(tr.cwd);
+    if (tasks.length) out.push({ cwd: tr.cwd, project: projectName(tr.cwd), tasks });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- toplayici
@@ -763,6 +797,11 @@ function serve() {
       const body = JSON.stringify(collect());
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       res.end(body);
+      return;
+    }
+    if (url === '/api/all-tasks') {
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ projects: allProjectTasks() }));
       return;
     }
     if (url === '/api/messages') {

@@ -173,6 +173,13 @@ if (D && D.term) {
 
   async function open(cwd, command) {
     if (!panes) return;
+    // Ayni klasorde ikinci bir terminal (ikinci bir Claude sureci) ayni dosyalari
+    // ayni anda degistirmeye kalkabilir. Ozel bir komut istenmediyse (resume gibi)
+    // ve o klasor icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
+    if (!command) {
+      const existing = tabs.find((t) => t.cwd === cwd && !t.dead);
+      if (existing) { select(existing); return; }
+    }
     const el = document.createElement('div');
     el.className = 'tm-pane';
     panes.appendChild(el);
@@ -190,6 +197,22 @@ if (D && D.term) {
     term.loadAddon(fit);
     term.open(el);
     fit.fit();
+    // Ctrl/Cmd+V: xterm bunu kendi tusuna gore islemiyor, tarayicinin "paste"
+    // olayina biraktigi icin bazi ortamlarda (Electron izin istemi vb.) hic
+    // calismiyordu. Native panoyu dogrudan okuyup elle yapistiriyoruz.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        e.stopPropagation();
+        D.term.readClipboard().then((r) => {
+          if (r && r.text) term.paste(r.text);
+          else if (r && r.imagePath) term.paste(`"${r.imagePath}"`);
+        });
+        return false;
+      }
+      return true;
+    });
 
     let info;
     try {
@@ -245,8 +268,13 @@ if (D && D.term) {
   function fitOne(t) {
     // Gizli pane'in olcusu 0: olcmeye calisirsak xterm anlamsiz bir boyuta duser
     if (!t.el.isConnected || !t.el.clientWidth || !t.el.clientHeight) return;
+    // mount() render() her saniye cagirdigi icin fitAll buraya da her saniye
+    // dusuyordu. Kutu boyutu degismediyse yeniden olcmeye hic gerek yok.
+    if (t.el.clientWidth === t._fitW && t.el.clientHeight === t._fitH) return;
     try {
       t.fit.fit();
+      t._fitW = t.el.clientWidth;
+      t._fitH = t.el.clientHeight;
       D.term.resize(t.id, t.term.cols, t.term.rows);
     } catch { /* pane henuz yerlesmemis olabilir */ }
   }
