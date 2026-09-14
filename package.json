@@ -122,8 +122,8 @@
       ],
       "category": "Development",
       "icon": "icons/icon-512.png",
-      "desktopName": "mineclaude.desktop",
-      "synopsis": "Claude Code CLI oturumlari icin masaustu paneli"
+      "synopsis": "Claude Code CLI oturumlari icin masaustu paneli",
+      "syncDesktopName": true
     }
   },
   "optionalDependencies": {
