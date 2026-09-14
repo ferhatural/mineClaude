@@ -15,6 +15,7 @@ const os = require('os');
 const net = require('net');
 const http = require('http');
 const { spawn, execFile } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 const term = require('./pty');
 
 const ROOT = path.join(__dirname, '..');
@@ -94,6 +95,12 @@ function initL() {
   qMessage:  (n) => (TR
     ? `${n} terminal açık — hepsi kapanacak`
     : `${n} terminal${n > 1 ? 's are' : ' is'} open — all of them will close`),
+  updateTitle:   TR ? 'Güncelleme hazır'      : 'Update ready',
+  updateMessage: (v) => (TR
+    ? `mineClaude ${v} indirildi. Şimdi yeniden başlatıp kurulsun mu?`
+    : `mineClaude ${v} has been downloaded. Restart now to install it?`),
+  updateRestart: TR ? 'Şimdi yeniden başlat'  : 'Restart now',
+  updateLater:   TR ? 'Sonra'                 : 'Later',
   };
 }
 
@@ -610,6 +617,36 @@ function showAbout() {
   });
 }
 
+// ---------------------------------------------------------------- otomatik guncelleme
+//
+// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (fork'un).
+// Yeni bir surum orada yayinlandiginda (electron-builder --publish always ile)
+// buradaki her kurulu kopya acilista ve sonra periyodik olarak kontrol edip
+// indiriyor, kullaniciya sorup onay alinca yeniden baslatip kuruyor.
+function setupAutoUpdate() {
+  if (!app.isPackaged) return; // gelistirme sirasinda (npm run app) anlamsiz, hata basar
+  autoUpdater.autoDownload = true;
+  autoUpdater.on('update-downloaded', (info) => {
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: L.updateTitle,
+      message: L.updateMessage(info.version),
+      buttons: [L.updateRestart, L.updateLater],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    }).then((r) => {
+      if (r.response === 0) autoUpdater.quitAndInstall();
+    });
+  });
+  autoUpdater.on('error', (err) => {
+    console.error('[mineClaude] guncelleme kontrolu basarisiz:', err.message || err);
+  });
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 4 * 3600e3); // uygulama uzun sure acik kalabiliyor: 4 saatte bir tekrar bak
+}
+
 // ---------------------------------------------------------------- giris
 
 if (!app.requestSingleInstanceLock()) {
@@ -631,6 +668,7 @@ if (!app.requestSingleInstanceLock()) {
     serverUrl = `http://127.0.0.1:${port}`;
     createWindow();
     showWindow(); // ilk acilista pencereyi goster; sonraki acilislar tray'den
+    setupAutoUpdate();
   });
 
   ipcMain.on('mineclaude:status', (_e, s) => setTrayStatus(s || {}));
