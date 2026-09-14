@@ -48,7 +48,8 @@
     "publish": {
       "provider": "github",
       "owner": "hakanngok",
-      "repo": "mineClaude"
+      "repo": "mineClaude",
+      "releaseType": "release"
     },
     "directories": {
       "output": "dist",
