@@ -22,6 +22,9 @@ const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
 const SESSIONS_DIR = path.join(CLAUDE_DIR, 'sessions');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
+// Proje basina kucuk bir not (mesela musteri istekleri) — cwd -> metin. Session'lar
+// gelip gecer ama proje kalici oldugu icin session'a degil klasor yoluna bagliyoruz.
+const NOTES_FILE = path.join(CLAUDE_DIR, 'mineclaude-notes.json');
 
 const argv = process.argv.slice(2);
 const hasFlag = (f) => argv.includes(f);
@@ -53,13 +56,29 @@ const ENDED_WINDOW_MS = 3 * 24 * 3600 * 1000; // kapanmis session'lari kac gun g
 
 const LSTART_RE = /^(\w{3}\s+\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})$/;
 
+// `ps` yalniz macOS/Linux'ta calisiyor (Windows'ta Git Bash'in ps'i BSD bayraklarini
+// desteklemiyor, psSnapshot() bos donuyor). O durumda tek elimizdeki bilgi pid'in
+// hala yasiyor olmasi; session dosyasini zaten claude kendisi yazdigi icin yeterli.
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function psSnapshot() {
   const map = new Map();
+  // Windows'ta BSD tipi `ps -axo` yok (Git Bash'inki de dahil): deneyip her seferinde
+  // hata mesaji basmak yerine hic denemiyoruz, alive kontrolu pidAlive()'a kaliyor.
+  if (process.platform === 'win32') return map;
   let out = '';
   try {
     out = execFileSync('ps', ['-axo', 'pid=,ppid=,tty=,%cpu=,rss=,lstart=,command='], {
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch {
     return map;
@@ -229,35 +248,25 @@ function asksQuestion(cleanText) {
   return /[?？]/.test(String(cleanText || '').slice(-200));
 }
 
-// Yan panelde son mesajlarin tamami gosteriliyor. Bunlari 2 saniyede bir herkese
-// akan /api/state'e koymuyoruz: her session icin kilobaytlarca metin demek olurdu.
+// Yan panelde tum konusma gosteriliyor. Bunu 2 saniyede bir herkese akan
+// /api/state'e koymuyoruz: her session icin kilobaytlarca metin demek olurdu.
 // Panel acildiginda tek session icin buradan isteniyor.
-const MSG_LIMIT = 6;
 const MSG_CHARS = 6000;
 
-// Dosyanin son TAIL_BYTES'i, yarim kalan ilk satir atilmis halde.
-// parseTail ayni isi kendi icin yapiyor ama sonucu ayristirilmis nesne olarak
-// donduruyor; burada ham satirlar lazim.
-function rawTail(file, size) {
-  try {
-    const fd = fs.openSync(file, 'r');
-    const start = Math.max(0, size - TAIL_BYTES);
-    let buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    if (start > 0) {
-      const nl = buf.indexOf(0x0a);
-      buf = nl === -1 ? Buffer.alloc(0) : buf.slice(nl + 1);
-    }
-    return buf.toString('utf8');
-  } catch {
-    return '';
-  }
-}
-
-function lastMessages(file, size, limit = MSG_LIMIT) {
+// TAIL_BYTES kisayolunu kullanmiyor: bir attachment/tool-sonucu tesadufen
+// 192KB'tan buyukse gercek konusma dosyanin basinda kalip tail penceresinin
+// disinda kalabiliyordu (kisa bir "selam" sonrasi buyuk bir ek geldiginde
+// oldugu gibi) — o zaman gercekten konusulmus olsa da "mesaj bulunamadi"
+// gorunuyordu. Butun dosyayi okuyup taramak bunu kokten cozuyor.
+function lastMessages(file) {
   const out = [];
-  for (const line of rawTail(file, size).split('\n')) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch {
+    return out;
+  }
+  for (const line of raw.split('\n')) {
     if (!line.startsWith('{')) continue;
     let e;
     try {
@@ -276,7 +285,7 @@ function lastMessages(file, size, limit = MSG_LIMIT) {
     if (m.role === 'user' && /^<(command-name|local-command|system-reminder)/.test(text)) continue;
     out.push({ role: m.role, text: text.slice(0, MSG_CHARS), at: e.timestamp ? Date.parse(e.timestamp) : null });
   }
-  return out.slice(-limit);
+  return out;
 }
 
 function parseTail(file, size) {
@@ -440,6 +449,82 @@ function shortPath(cwd) {
   return cwd.startsWith(HOME) ? '~' + cwd.slice(HOME.length) : cwd;
 }
 
+// Once tum projelerin gorevleri tek bir merkezi dosyada (~/.claude altinda)
+// tutuluyordu. Artik her proje kendi gorevlerini kendi klasorunde saklıyor —
+// proje kopyalanip tasinsa ya da baska bir makineden acilsa bile gorevler
+// projeyle birlikte geliyor.
+function tasksFileFor(cwd) {
+  return path.join(cwd, '.mineclaude', 'tasks.json');
+}
+
+function loadLegacyNotes() {
+  try {
+    return JSON.parse(fs.readFileSync(NOTES_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+// Eskiden burada proje basina tek bir metin (tek "not") tutuluyordu. Musteri
+// istekleri tek seferde 5-10 is birden birikince o tek kutu yetmiyordu; artik
+// her cwd bir gorev listesi: [{id, text, done}].
+function notesFor(cwd) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(tasksFileFor(cwd), 'utf8'));
+    if (Array.isArray(raw)) return raw;
+  } catch {
+    /* proje klasorunde henuz dosya yok: eski merkezi kayda bak */
+  }
+  const legacy = loadLegacyNotes()[cwd];
+  if (Array.isArray(legacy)) return legacy;
+  if (typeof legacy === 'string' && legacy) return [{ id: 'legacy', text: legacy, done: false }];
+  return [];
+}
+
+function saveTasks(cwd, tasks) {
+  const file = tasksFileFor(cwd);
+  if (tasks.length) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(tasks, null, 2));
+  } else {
+    fs.rmSync(file, { force: true });
+  }
+  // Bu proje artik kendi klasorunde tutuluyor. Eski merkezi kayittaki girdisi
+  // silinmeden kalsaydi, tum gorevler silinip proje dosyasi kaldirilinca
+  // notesFor() tekrar oraya dusup eski (silinmis) gorevleri geri getiriyordu.
+  const legacy = loadLegacyNotes();
+  if (cwd in legacy) {
+    delete legacy[cwd];
+    fs.mkdirSync(path.dirname(NOTES_FILE), { recursive: true });
+    fs.writeFileSync(NOTES_FILE, JSON.stringify(legacy, null, 2));
+  }
+}
+
+// "Tum gorevler" penceresi sadece o an canli oturumlarla sinirli olursa, gorevi
+// olan ama su an calisan bir sureci bulunmayan (ya da uzun zaman once kapanmis)
+// projeler hic gorunmuyordu. Bunun yerine mineClaude'un gordugu HER projeyi
+// (transcript index) tarayip gorevi olanlari donuyoruz — oturum durumundan
+// bagimsiz. Proje klasoru basina en yeni transcript'e bakmak yeterli: hepsini
+// tek tek acmaya gerek yok.
+function allProjectTasks() {
+  const idx = transcriptIndex();
+  const byProjectDir = new Map();
+  for (const rec of idx.all) {
+    // idx.all mtime'a gore siralı: bir proje dizini icin ilk gorulen en yenisi
+    if (!byProjectDir.has(rec.projectDir)) byProjectDir.set(rec.projectDir, rec);
+  }
+  const out = [];
+  const seenCwd = new Set();
+  for (const rec of byProjectDir.values()) {
+    const tr = readTranscriptTail(rec.file, rec.mtime, rec.size);
+    if (!tr.cwd || seenCwd.has(tr.cwd)) continue;
+    seenCwd.add(tr.cwd);
+    const tasks = notesFor(tr.cwd);
+    if (tasks.length) out.push({ cwd: tr.cwd, project: projectName(tr.cwd), tasks });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- toplayici
 
 function collect() {
@@ -454,7 +539,7 @@ function collect() {
 
   for (const s of sessFiles) {
     const proc = procs.get(s.pid);
-    const alive = !!proc && looksLikeClaude(proc.command);
+    const alive = proc ? looksLikeClaude(proc.command) : pidAlive(s.pid);
     if (!alive) continue; // olu pid -> bayat dosya, atla
     seenPids.add(s.pid);
 
@@ -495,7 +580,6 @@ function collect() {
       tty: proc ? proc.tty : null,
       cpu: proc ? proc.cpu : null,
       rssMb: proc ? proc.rssMb : null,
-      socket: s.messagingSocketPath || null,
       transcript: rec ? rec.file : null,
       title: tr && tr.title,
       lastPrompt: tr && tr.lastPrompt,
@@ -579,42 +663,13 @@ function collect() {
     counts[k] = (counts[k] || 0) + 1;
   }
 
+  for (const s of live) s.projectTasks = s.cwd ? notesFor(s.cwd) : [];
+  for (const s of ended) s.projectTasks = s.cwd ? notesFor(s.cwd) : [];
+
   return { now, live, ended, counts, host: os.hostname(), version: VERSION };
 }
 
 // ---------------------------------------------------------------- mesaj gonderme
-
-// Claude Code her session icin (feature gate acikken) bir unix soketi dinler:
-//   /tmp/cc-socks/<pid>.sock  <- satir satir JSON
-// Buraya yazilan mesaj hedef session'a "baska bir Claude session'i" olarak ulasir.
-function sendToSession(pid, text, cb) {
-  const sess = readSessionFiles().find((s) => s.pid === pid);
-  if (!sess) return cb(new Error('Bu pid icin session kaydi yok'));
-  const sock = sess.messagingSocketPath;
-  if (!sock) return cb(new Error('Bu session mesajlasmaya acik degil'));
-  // yalnizca cc-socks dizini altindaki .sock yollarina yaz
-  if (!/(^|\/)cc-socks[^/]*\/[^/]+\.sock$/.test(sock)) return cb(new Error('Beklenmeyen soket yolu'));
-  try {
-    process.kill(pid, 0); // surec gercekten yasiyor mu
-  } catch {
-    return cb(new Error('Surec artik yasamiyor'));
-  }
-  const net = require('net');
-  const payload = JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n';
-  let done = false;
-  const finish = (err) => {
-    if (done) return;
-    done = true;
-    cb(err || null);
-  };
-  const c = net.connect(sock, () => c.end(payload));
-  c.setTimeout(4000, () => {
-    c.destroy();
-    finish(new Error('Soket zaman asimi'));
-  });
-  c.on('error', finish);
-  c.on('close', () => finish(null));
-}
 
 // ---------------------------------------------------------------- terminal ciktisi
 
@@ -833,6 +888,11 @@ function serve() {
       res.end(JSON.stringify({ enabled: TERMINALS, terminals: list }));
       return;
     }
+    if (url === '/api/all-tasks') {
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ projects: allProjectTasks() }));
+      return;
+    }
     if (url === '/api/messages') {
       const id = new URL(req.url, 'http://x').searchParams.get('session') || '';
       const reply = (code, obj) => {
@@ -844,13 +904,18 @@ function serve() {
       const rec = transcriptIndex().bySession.get(id);
       if (!rec) return reply(404, { error: 'transcript yok' });
       try {
-        return reply(200, { sessionId: id, messages: lastMessages(rec.file, rec.size) });
+        return reply(200, { sessionId: id, messages: lastMessages(rec.file) });
       } catch (e) {
         return reply(500, { error: String(e.message || e) });
       }
     }
-    if (url === '/api/send' && req.method === 'POST') {
-      // baska bir sitenin tarayicidan localhost'a POST atmasini engelle
+    if (url === '/api/note' && req.method === 'GET') {
+      const cwd = new URL(req.url, 'http://x').searchParams.get('cwd') || '';
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ tasks: cwd ? notesFor(cwd) : [] }));
+      return;
+    }
+    if (url === '/api/note' && req.method === 'POST') {
       const origin = req.headers.origin;
       if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) {
         res.writeHead(403, { 'content-type': 'application/json' });
@@ -861,7 +926,7 @@ function serve() {
       let tooBig = false;
       req.on('data', (chunk) => {
         body += chunk;
-        if (body.length > 64 * 1024) {
+        if (body.length > 16 * 1024) {
           tooBig = true;
           req.destroy();
         }
@@ -878,13 +943,25 @@ function serve() {
         } catch {
           return reply(400, { ok: false, error: 'gecersiz JSON' });
         }
-        const pid = parseInt(d.pid, 10);
-        const text = typeof d.text === 'string' ? d.text.trim() : '';
-        if (!pid || !text) return reply(400, { ok: false, error: 'pid ve text gerekli' });
-        sendToSession(pid, text, (err) => {
-          if (err) return reply(409, { ok: false, error: err.message });
+        const cwd = typeof d.cwd === 'string' ? d.cwd.trim() : '';
+        if (!cwd) return reply(400, { ok: false, error: 'cwd gerekli' });
+        if (!Array.isArray(d.tasks)) return reply(400, { ok: false, error: 'tasks gerekli' });
+        // istemci her degisiklikte tum listeyi gonderiyor: burada da sadece
+        // sekli dogrulayip oldugu gibi yaziyoruz, 50 madde / 300 karakter sinirinda.
+        const tasks = [];
+        for (const t of d.tasks) {
+          if (!t || typeof t.text !== 'string') continue;
+          const text = t.text.trim().slice(0, 300);
+          if (!text) continue;
+          tasks.push({ id: typeof t.id === 'string' ? t.id.slice(0, 64) : String(tasks.length), text, done: !!t.done });
+          if (tasks.length >= 50) break;
+        }
+        try {
+          saveTasks(cwd, tasks);
           reply(200, { ok: true });
-        });
+        } catch (e) {
+          reply(500, { ok: false, error: String(e.message || e) });
+        }
       });
       return;
     }
@@ -921,7 +998,16 @@ function serve() {
     console.log(`  durdurmak icin Ctrl+C\n`);
     if (!hasFlag('--no-open')) {
       try {
-        spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+        const opener =
+          process.platform === 'win32' ? 'start' : process.platform === 'linux' ? 'xdg-open' : 'open';
+        const child =
+          process.platform === 'win32'
+            ? spawn('cmd', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true })
+            : spawn(opener, [url], { stdio: 'ignore', detached: true });
+        child.on('error', () => {
+          /* tarayici acilamadi (komut yok vb.) - sunucu yine de ayakta kalsin */
+        });
+        child.unref();
       } catch {
         /* yoksay */
       }

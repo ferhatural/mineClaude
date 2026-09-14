@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
     resize: (id, cols, rows) => ipcRenderer.send('mineclaude:term-resize', { id, cols, rows }),
     kill: (id) => ipcRenderer.send('mineclaude:term-kill', { id }),
     pickFolder: () => ipcRenderer.invoke('mineclaude:pick-folder'),
+    readClipboard: () => ipcRenderer.invoke('mineclaude:clipboard-read'),
     onData: (fn) => ipcRenderer.on('mineclaude:term-data', (_e, m) => fn(m)),
     onExit: (fn) => ipcRenderer.on('mineclaude:term-exit', (_e, m) => fn(m)),
   },
@@ -27,4 +28,17 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   // ayrimi hic kurcalamamak demek.
   setCloseIntercept: (on) => ipcRenderer.send('mineclaude:close-intercept', !!on),
   onCloseTerminal: (fn) => ipcRenderer.on('mineclaude:close-terminal', () => fn()),
+
+  // Ayarlar > Dil ile Pencere > Dil ayni ayari paylasiyor: main surec tek kaynak.
+  lang: {
+    get: () => ipcRenderer.invoke('mineclaude:get-lang'),
+    set: (l) => ipcRenderer.send('mineclaude:set-lang', l),
+    onChange: (fn) => ipcRenderer.on('mineclaude:lang-changed', (_e, l) => fn(l)),
+  },
+
+  // Tema Ayarlar > Tema'dan (veya sistem temasi) degisince sayfa xterm
+  // renklerini de yeniden boyamak icin bunu dinliyor (bkz. MTerm.retheme()).
+  theme: {
+    onChange: (fn) => ipcRenderer.on('mineclaude:theme-changed', () => fn()),
+  },
 });

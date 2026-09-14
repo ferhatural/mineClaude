@@ -28,13 +28,19 @@ let nextId = 1;
 
 // Login shell: PATH, nvm/asdf, alias'lar ancak boyle yukleniyor. Kullanicinin
 // kendi kabugunu kullaniyoruz, sabit bir sey dayatmiyoruz.
+//
+// Windows'ta /bin/zsh yok: SHELL degiskeni de tanimli olmuyor, o yuzden
+// bu dal hep sabit '/bin/zsh'e dusup node-pty'ye "File not found" hatasi
+// attiriyordu. Orada PowerShell'i varsayilan aliyoruz (her Windows'ta hazir),
+// COMSPEC tanimliysa onu kullaniyoruz.
 function loginShell() {
   if (process.platform === 'win32') {
     // powershell.exe her Windows'ta hazir gelir ve PATH'tedir; kullanicinin
     // $PROFILE'ini (alias, PATH eklemeleri) POSIX login shell'in .zshrc'si
     // gibi kendisi yukluyor. Eskiden buraya da /bin/zsh dusuyordu — node-pty
     // onu Windows'ta hic bulamiyor, terminal acma her seferinde patliyordu.
-    return 'powershell.exe';
+    // COMSPEC tanimliysa (ör. kullanici cmd.exe'yi tercih ediyorsa) onu kullaniyoruz.
+    return process.env.COMSPEC || 'powershell.exe';
   }
   const sh = process.env.SHELL || '/bin/zsh';
   try {
@@ -43,6 +49,10 @@ function loginShell() {
   } catch {
     return '/bin/zsh';
   }
+}
+
+function isPowerShell(shell) {
+  return /(^|[\\/])(powershell|pwsh)(\.exe)?$/i.test(shell);
 }
 
 // Uygulama bir Claude oturumunun icinden baslatilmis olabilir (terminalden
@@ -88,13 +98,13 @@ function create({ cwd, cols, rows, command, resumeSessionId } = {}) {
         : `claude --resume ${resumeSessionId} || claude`)
     : (command || 'claude');
 
-  // Varsayilan: claude'u calistir, o kapaninca kabuk acik kalsin. Session bitince
-  // pencerenin kapanmasi yerine elinde bir kabuk kaliyor (resume, git, ne gerekirse).
   // '-i' sart: zsh `-l -c` ile .zshrc'yi OKUMUYOR, yalniz .zprofile'i okuyor.
   // Kullanicilarin PATH eklemeleri (~/.local/bin, nvm, pyenv) genelde .zshrc'de
   // oturuyor; onsuz uygulama Finder'dan acildiginda `claude` bulunamiyor.
   const args = isWin
-    ? ['-NoExit', '-Command', cmd]
+    ? isPowerShell(shell)
+      ? ['-NoLogo', '-NoExit', '-Command', cmd]
+      : ['/k', cmd]
     : ['-l', '-i', '-c', `${cmd}; exec ${shell} -l`];
 
   const p = pty.spawn(shell, args, {

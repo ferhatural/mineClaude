@@ -88,6 +88,9 @@ function start() {
   let T2 = (k) => k;
   // 'tabs': tek terminal tam ekran · 'tiles': hepsi ayni anda, izgara
   let layout = localStorage.getItem('cc.termLayout') === 'tiles' ? 'tiles' : 'tabs';
+  // Gorev paneli mineClaude'un kendi tarafinda aciliyor/kapaniyor; burasi
+  // sadece anahtar dugmeyi cizip acik/kapali oldugunu isaretliyor.
+  let tasksOpen = false;
 
   // Kapanista acik olan sekmeler. Uygulama PTY'leri surecinde tuttugu icin cikista
   // hepsi oluyor; burada ne oldugunu hatirlayip acilista geri yuklemeyi *oneriyoruz*.
@@ -220,6 +223,16 @@ function start() {
     fnd.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/></svg>';
     fnd.onclick = () => (find && !find.box.hidden ? closeFind() : openFind());
     strip.appendChild(fnd);
+
+    const tasksBtn = document.createElement('button');
+    tasksBtn.className = 'tm-tasks-btn' + (tasksOpen ? ' on' : '');
+    tasksBtn.title = T2('tasksTab');
+    tasksBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">'
+      + '<rect x="1.8" y="2.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 4h7.4"/>'
+      + '<rect x="1.8" y="6.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 8h7.4"/>'
+      + '<rect x="1.8" y="10.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 12h7.4"/></svg>';
+    tasksBtn.onclick = () => window.dispatchEvent(new Event('term-tasks-toggle'));
+    strip.appendChild(tasksBtn);
   }
 
   // --- tampon icinde arama (⌘F) ---
@@ -462,6 +475,13 @@ function start() {
 
   async function open(cwd, command, resumeSessionId) {
     if (!panes) return;
+    // Ayni klasorde ikinci bir terminal (ikinci bir Claude sureci) ayni dosyalari
+    // ayni anda degistirmeye kalkabilir. Ozel bir komut istenmediyse (resume gibi)
+    // ve o klasor icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
+    if (!command) {
+      const existing = tabs.find((t) => t.cwd === cwd && !t.dead);
+      if (existing) { select(existing); return; }
+    }
     const el = document.createElement('div');
     el.className = 'tm-pane';
     panes.appendChild(el);
@@ -481,6 +501,22 @@ function start() {
     term.loadAddon(search);
     term.open(el);
     fit.fit();
+    // Ctrl/Cmd+V: xterm bunu kendi tusuna gore islemiyor, tarayicinin "paste"
+    // olayina biraktigi icin bazi ortamlarda (Electron izin istemi vb.) hic
+    // calismiyordu. Native panoyu dogrudan okuyup elle yapistiriyoruz.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        e.stopPropagation();
+        D.term.readClipboard().then((r) => {
+          if (r && r.text) term.paste(r.text);
+          else if (r && r.imagePath) term.paste(`"${r.imagePath}"`);
+        });
+        return false;
+      }
+      return true;
+    });
 
     let info;
     try {
@@ -552,6 +588,9 @@ function start() {
   function fitOne(t) {
     // Gizli pane'in olcusu 0: olcmeye calisirsak xterm anlamsiz bir boyuta duser
     if (!t.el.isConnected || !t.el.clientWidth || !t.el.clientHeight) return;
+    // mount() render() her saniye cagirdigi icin fitAll buraya da her saniye
+    // dusuyordu. Kutu boyutu degismediyse yeniden olcmeye hic gerek yok.
+    if (t.el.clientWidth === t._fitW && t.el.clientHeight === t._fitH) return;
     try {
       // Izgaradan tekliye gecerken terminal iki katina buyuyor; xterm tamponu
       // yeniden akitirken gorunum penceresi icerigin disinda bir yere
@@ -560,6 +599,8 @@ function start() {
       const altta = b.viewportY >= b.baseY;
       t.fit.fit();
       if (altta) t.term.scrollToBottom();
+      t._fitW = t.el.clientWidth;
+      t._fitH = t.el.clientHeight;
       T.resize(t.id, t.term.cols, t.term.rows);
     } catch { /* pane henuz yerlesmemis olabilir */ }
   }
@@ -623,6 +664,7 @@ function start() {
     count: () => tabs.length,
     layout: () => layout,
     setLayout,
+    setTasksOpen: (v) => { tasksOpen = !!v; if (strip) drawStrip(); },
     fit: fitAll,
     retheme: () => { for (const t of tabs) t.term.options.theme = theme(); },
   };
