@@ -207,15 +207,6 @@ function start() {
     plus.onclick = () => openPicked();
     strip.appendChild(plus);
 
-    const lay = document.createElement('button');
-    lay.className = 'tm-lay';
-    lay.title = layout === 'tabs' ? T2('termTiles') : T2('termTabs');
-    lay.innerHTML = layout === 'tabs'
-      ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="9" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="1.8" y="9" width="5.2" height="5.2" rx="1"/><rect x="9" y="9" width="5.2" height="5.2" rx="1"/></svg>'
-      : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
-    lay.onclick = () => setLayout(layout === 'tabs' ? 'tiles' : 'tabs');
-    strip.appendChild(lay);
-
     // Tablette ⌘F yok; ayni is icin bir dugme.
     const fnd = document.createElement('button');
     fnd.className = 'tm-lay tm-findbtn' + (find && !find.box.hidden ? ' on' : '');
@@ -233,6 +224,16 @@ function start() {
       + '<rect x="1.8" y="10.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 12h7.4"/></svg>';
     tasksBtn.onclick = () => window.dispatchEvent(new Event('term-tasks-toggle'));
     strip.appendChild(tasksBtn);
+
+    const lay = document.createElement('button');
+    lay.className = 'tm-lay';
+    lay.title = layout === 'tabs' ? T2('termTiles') : T2('termTabs');
+    lay.innerHTML = layout === 'tabs'
+      ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="9" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="1.8" y="9" width="5.2" height="5.2" rx="1"/><rect x="9" y="9" width="5.2" height="5.2" rx="1"/></svg>'
+      : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
+    lay.onclick = () => setLayout(layout === 'tabs' ? 'tiles' : 'tabs');
+    lay.style.marginLeft = '0';
+    strip.appendChild(lay);
   }
 
   // --- tampon icinde arama (⌘F) ---
@@ -382,11 +383,9 @@ function start() {
     ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'], ['→', '\x1b[C'],
   ];
 
-  let keyWrap = null;
-
   function buildKeys() {
     const wrap = document.createElement('div');
-    wrap.className = 'tm-keywrap' + (localStorage.getItem('cc.termKeys') === '0' ? ' off' : '');
+    wrap.className = 'tm-keywrap on' + (localStorage.getItem('cc.termKeys') === '0' ? ' off' : '');
 
     const tog = document.createElement('button');
     tog.className = 'tm-keytoggle';
@@ -426,7 +425,6 @@ function start() {
     ekle('A+', () => setFont(1));
 
     wrap.append(tog, bar);
-    keyWrap = wrap;
     return wrap;
   }
 
@@ -659,7 +657,6 @@ function start() {
     pendingCount: () => pending.length,
     list: () => tabs.map((t) => ({ id: t.id, cwd: t.cwd, title: t.title, tty: t.tty, dead: t.dead })),
     selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
-    showKeys: (on) => { if (keyWrap) keyWrap.classList.toggle('on', !!on); },
     conn: () => (T.state ? T.state() : { kind: T.kind }),
     count: () => tabs.length,
     layout: () => layout,
