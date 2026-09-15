@@ -198,44 +198,25 @@
   .tm-tab{display:flex;align-items:center;gap:7px;font:inherit;font-size:12px;color:var(--faint);
     background:none;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;
     padding:6px 9px;cursor:pointer;max-width:210px;transition:.12s}
-  .tm-tab span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tm-tab .tm-tab-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tm-tab:hover{color:var(--text)}
   .tm-tab.on{color:var(--text);background:var(--panel);border-color:var(--line)}
   .tm-tab.dead{opacity:.5}
+  /* Filtre satirindakiyle ayni renk dili (.count.waiting/.busy/.ready/.idle) */
+  .tm-avatar{width:7px;height:7px;border-radius:50%;flex:none}
   /* Bu sekmedeki oturum input bekliyor — ofiste el kaldiranin karsiligi */
   .tm-tab.waiting{color:var(--wait)}
   .tm-tab.waiting.on{border-color:var(--wait)}
   .tm-tab.waiting::before{content:"";width:6px;height:6px;border-radius:50%;
     background:var(--wait);flex:none;animation:blink 1s steps(2,start) infinite}
+  /* Ofiste masasinda degil, lounge'da (atDesk false) — bkz. office3d.js stateOf/atDesk */
+  .tm-tab.lounge{opacity:.65}
+  .tm-lounge-badge{font-size:10px;line-height:1;flex:none;opacity:.85}
   .tm-x{flex:none;opacity:.5;font-size:14px;line-height:1}
   .tm-x:hover{opacity:1;color:#d0524a}
   .tm-plus{font:inherit;font-size:15px;line-height:1;color:var(--faint);background:none;border:0;
     padding:4px 10px;cursor:pointer;align-self:center}
   .tm-plus:hover{color:var(--text)}
-  /* Dokunmatik tuş şeridi. Terminalin üstüne biniyor: yerleşimden yükseklik
-     yemesin diye — tablette bir satır bile pahalı. Katlanınca sadece ⌨ kalıyor. */
-  /* Gorunurluk medya sorgusuna birakilmiyor: klavyeli tabletler cogu zaman
-     `pointer: fine` bildiriyor ve serit hic cikmiyor. JS dokunma yetenegine
-     bakip .on siniifini koyuyor, ayarlardan da elle acilip kapanabiliyor. */
-  .tm-keywrap{display:none;position:absolute;left:0;right:0;bottom:0;z-index:3;
-    align-items:flex-end;gap:6px;padding:6px 8px;pointer-events:none}
-  .tm-keywrap.on{display:flex}
-  .tm-keywrap > *{pointer-events:auto}
-  .tm-keytoggle{flex:0 0 auto;font:inherit;font-size:15px;line-height:1;
-    color:var(--dim);background:color-mix(in srgb,var(--panel) 88%,transparent);
-    border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer;
-    backdrop-filter:blur(6px);touch-action:manipulation}
-  .tm-keys{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;
-    background:color-mix(in srgb,var(--panel) 88%,transparent);
-    border:1px solid var(--line);border-radius:10px;padding:5px;backdrop-filter:blur(6px)}
-  .tm-keys::-webkit-scrollbar{display:none}
-  .tm-keywrap.off .tm-keys{display:none}
-  .tm-keys button{flex:0 0 auto;font:inherit;font-size:13px;min-width:44px;
-    color:var(--text);background:var(--panel2);border:1px solid var(--line);
-    border-radius:7px;padding:7px 9px;cursor:pointer;touch-action:manipulation}
-  .tm-keys button.wide{min-width:auto;font-size:12px}
-  .tm-keys button:active{background:var(--panel);border-color:var(--idle)}
-
   .tm-panes{position:relative;flex:1;min-height:0}
   .tm-pane{position:absolute;inset:0;padding:8px 10px;display:none}
   .tm-pane.on{display:block}
@@ -541,7 +522,8 @@ const I18N = {
     termGoTab:'Sekmesine git', termInApp:'mineClaude terminali',
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'Geri yükle', termRestoreNo:'Yoksay',
-    termPick:'Terminal hangi klasörde açılsın?', termPickGo:'Aç', termGone:'Oturum artık yok', termKeys:'Tuş şeridi',
+    termPick:'Terminal hangi klasörde açılsın?', termPickGo:'Aç', termGone:'Oturum artık yok',
+    termLounge:'Lounge — boşta, masasında değil',
     termFind:'Terminalde ara', termFindNone:'Yok', termFindCase:'Büyük/küçük harf duyarlı',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede oturum yok.', recentlyClosed:'Son kapanan oturumlar',
@@ -549,7 +531,7 @@ const I18N = {
     notifAsked:(p)=>`${p} sana bir soru sordu`,
     justNow:'az önce', sec:'sn önce', min:'dk önce', hour:'sa önce', day:'gün önce',
     dMin:'dk', dHour:'sa', dDay:'g',
-    desks:'MASALAR', lounge:'LOUNGE',
+    desks:'OFİS', lounge:'LOUNGE',
     footer1:(a,b,c)=>`Kaynak: ${a} + ${b} + ${c}. 2 saniyede bir yenilenir.`,
     footer2:(a,b)=>`Terminalden: ${a} · JSON: ${b}`,
   },
@@ -581,7 +563,8 @@ const I18N = {
     termGoTab:'Go to its tab', termInApp:'mineClaude terminal',
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'Restore', termRestoreNo:'Dismiss',
-    termPick:'Which folder should the terminal open in?', termPickGo:'Open', termGone:'Session is gone', termKeys:'Key bar',
+    termPick:'Which folder should the terminal open in?', termPickGo:'Open', termGone:'Session is gone',
+    termLounge:'Lounge — idle, not at their desk',
     termFind:'Find in terminal', termFindNone:'None', termFindCase:'Match case',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'Recently closed sessions',
@@ -589,7 +572,7 @@ const I18N = {
     notifAsked:(p)=>`${p} asked you something`,
     justNow:'just now', sec:'s ago', min:'m ago', hour:'h ago', day:'d ago',
     dMin:'m', dHour:'h', dDay:'d',
-    desks:'DESKS', lounge:'LOUNGE',
+    desks:'OFFICE', lounge:'LOUNGE',
     footer1:(a,b,c)=>`Sources: ${a} + ${b} + ${c}. Refreshes every 2 seconds.`,
     footer2:(a,b)=>`In the terminal: ${a} · JSON: ${b}`,
   },
@@ -1374,7 +1357,7 @@ function render(){
   // Hangi sekmede hangi oturum kosuyor: geri yuklerken --resume <id> diyebilmek icin
   if(hasTerm()) for(const s of state.live){
     if(s.tty && s.sessionId) MTerm.noteSession(s.tty, s.sessionId);
-    if(s.tty) MTerm.noteWaiting(s.tty, disp(s) === 'waiting');
+    if(s.tty) MTerm.noteStatus(s.tty, disp(s));
   }
   $('#host').textContent = state.host ? '· ' + state.host : '';
   if(!allTasksModal.hidden) renderAllTasks();

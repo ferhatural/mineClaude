@@ -7,6 +7,16 @@ import { Terminal } from './vendor/xterm.module.js';
 import { FitAddon } from './vendor/xterm-addon-fit.module.js';
 import { SearchAddon } from './vendor/xterm-addon-search.module.js';
 
+// Karttaki filtre renkleriyle ayni dil (bkz. index.html .count.waiting/.busy/.ready/.idle):
+// bekliyor=amber, calisiyor=yesil, hazir=mavi, bosta/bilinmiyor=gri.
+function statusColor(status) {
+  if (status === 'waiting') return 'var(--wait)';
+  if (status === 'busy') return 'var(--busy)';
+  if (status === 'ready') return 'var(--idle)';
+  if (status === 'idle' || status === 'unknown') return 'var(--ended)';
+  return 'var(--line)';
+}
+
 // Iki tasima, tek arayuz. Electron'da PTY'ler ana surecte ve IPC ile konusuluyor;
 // tarayicida ayni PTY'ler sunucunun icinde ve WebSocket ile. term.js ikisini de
 // ayni sekilli nesne olarak goruyor, geri kalan kod farki bilmiyor.
@@ -97,12 +107,6 @@ function start() {
   // Kendiliginden acmiyoruz: bes sekme, bes Claude oturumu demek.
   const FONT_KEY = 'cc.termFont';
   let fontSize = Math.min(22, Math.max(9, parseFloat(localStorage.getItem(FONT_KEY)) || 12.5));
-  function setFont(delta) {
-    fontSize = Math.min(22, Math.max(9, fontSize + delta));
-    localStorage.setItem(FONT_KEY, String(fontSize));
-    for (const t of tabs) t.term.options.fontSize = fontSize;
-    fitAll();
-  }
 
   const RESTORE_KEY = 'cc.termRestore';
   let pending = [];
@@ -137,9 +141,6 @@ function start() {
     panes.className = 'tm-panes';
     host.append(strip, panes);
     container.appendChild(host);
-    // Serit host'a asili, panes'e degil: showEmpty() panes.innerHTML yazdiginda
-    // silinmesin. Konumu yine panes'in ustune denk geliyor (host position:relative).
-    host.appendChild(buildKeys());
     drawStrip();
     applyLayout();
     if (!tabs.length) showEmpty();
@@ -189,9 +190,10 @@ function start() {
     for (const t of tabs) {
       const b = document.createElement('button');
       b.className = 'tm-tab' + (t === active ? ' on' : '') + (t.dead ? ' dead' : '')
-        + (t.waiting ? ' waiting' : '');
+        + (t.waiting ? ' waiting' : '') + (t.lounge && !t.waiting && !t.dead ? ' lounge' : '');
       b.title = t.cwd;
-      b.innerHTML = `<span>${esc(t.title)}</span>`;
+      b.innerHTML = `<span class="tm-avatar" style="background:${statusColor(t.status)}"></span><span class="tm-tab-title">${esc(t.title)}</span>`
+        + (t.lounge && !t.waiting && !t.dead ? `<span class="tm-lounge-badge" title="${esc(T2('termLounge'))}">☕</span>` : '');
       b.onclick = () => select(t);
       const x = document.createElement('span');
       x.className = 'tm-x';
@@ -373,59 +375,6 @@ function start() {
       for (const t of tabs) t.el.classList.remove('shown');
     }
     requestAnimationFrame(fitAll);
-  }
-
-  // Dokunmatik cihazda Ctrl gibi tuslar tarayiciya ya da klavye katmanina takiliyor;
-  // Android'de Ctrl+C sayfaya hic ulasmayabiliyor. Bu serit klavyeden bagimsiz:
-  // dogrudan denetim dizisini PTY'ye yaziyor. Fare/trackpad varsa gizli duruyor.
-  const KEYS = [
-    ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'], ['^D', '\x04'], ['^Z', '\x1a'],
-    ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'], ['→', '\x1b[C'],
-  ];
-
-  function buildKeys() {
-    const wrap = document.createElement('div');
-    wrap.className = 'tm-keywrap on' + (localStorage.getItem('cc.termKeys') === '0' ? ' off' : '');
-
-    const tog = document.createElement('button');
-    tog.className = 'tm-keytoggle';
-    tog.textContent = '⌨';
-    tog.title = T2('termKeys');
-    tog.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      wrap.classList.toggle('off');
-      localStorage.setItem('cc.termKeys', wrap.classList.contains('off') ? '0' : '1');
-    });
-
-    const bar = document.createElement('div');
-    bar.className = 'tm-keys';
-    const ekle = (ad, fn, cls) => {
-      const b = document.createElement('button');
-      b.textContent = ad;
-      if (cls) b.className = cls;
-      b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); if (active) active.term.focus(); });
-      bar.appendChild(b);
-    };
-
-    for (const [ad, dizi] of KEYS) ekle(ad, () => { if (active) T.write(active.id, dizi); });
-
-    // Dokunmatikte metin secip kopyalamak zor; acik dugme daha guvenilir.
-    // Clipboard API guvenli baglam istiyor — localhost tunelinde saglaniyor.
-    ekle('kopyala', async () => {
-      if (!active) return;
-      const sel = active.term.getSelection();
-      if (sel) { try { await navigator.clipboard.writeText(sel); } catch {} }
-    }, 'wide');
-    ekle('yapıştır', async () => {
-      if (!active) return;
-      try { const t = await navigator.clipboard.readText(); if (t) T.write(active.id, t); } catch {}
-    }, 'wide');
-    // Tarayici yakinlastirmasi terminale gecmiyor; xterm'in kendi boyutu.
-    ekle('A−', () => setFont(-1));
-    ekle('A+', () => setFont(1));
-
-    wrap.append(tog, bar);
-    return wrap;
   }
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -645,10 +594,16 @@ function start() {
     // Panel bir sekmede hangi oturumun kostugunu biliyor; geri yuklemede
     // `--resume <id>` diyebilmek icin onu sekmeye yaziyoruz.
     // Ofiste el kaldiran kisi neyse, sekmede amber baslik o: bu sekmedeki
-    // oturum senden input bekliyor.
-    noteWaiting: (tty, waiting) => {
+    // oturum senden input bekliyor. Ofiste masasinda mi lounge'da mi oturdugu
+    // (atDesk, bkz. office3d.js) sekmede de ayni ayrimla gorunsun istedik.
+    noteStatus: (tty, status) => {
       const t = tabs.find((x) => x.tty === tty);
-      if (t && !!t.waiting !== !!waiting) { t.waiting = !!waiting; drawStrip(); }
+      if (!t) return;
+      const waiting = status === 'waiting';
+      const lounge = status === 'idle' || status === 'unknown';
+      if (t.status !== status || t.waiting !== waiting || t.lounge !== lounge) {
+        t.status = status; t.waiting = waiting; t.lounge = lounge; drawStrip();
+      }
     },
     noteSession: (tty, sessionId) => {
       const t = tabs.find((x) => x.tty === tty);
