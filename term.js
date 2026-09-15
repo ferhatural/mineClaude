@@ -448,22 +448,6 @@ function start() {
     term.loadAddon(search);
     term.open(el);
     fit.fit();
-    // Ctrl/Cmd+V: xterm bunu kendi tusuna gore islemiyor, tarayicinin "paste"
-    // olayina biraktigi icin bazi ortamlarda (Electron izin istemi vb.) hic
-    // calismiyordu. Native panoyu dogrudan okuyup elle yapistiriyoruz.
-    term.attachCustomKeyEventHandler((e) => {
-      if (e.type !== 'keydown') return true;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-        e.preventDefault();
-        e.stopPropagation();
-        D.term.readClipboard().then((r) => {
-          if (r && r.text) term.paste(r.text);
-          else if (r && r.imagePath) term.paste(`"${r.imagePath}"`);
-        });
-        return false;
-      }
-      return true;
-    });
 
     let info;
     try {
@@ -476,11 +460,22 @@ function start() {
     const t = { ...info, term, fit, search, el, dead: false };
     // Sayac yalniz etkin sekme icin: izgarada digerlerinden gelen sonuc ustune yazmasin
     search.onDidChangeResults((r) => { if (t === active) showCount(r); });
-    // Bazi tarayicilar Ctrl+C'yi "kopyala" diye yorumlayip terminale hic vermiyor.
-    // Secim varken kopyalamak dogru davranis; secim yokken ^C gitmesi gerekiyor.
+    // xterm.js'de attachCustomKeyEventHandler tek bir isleyici tutuyor — ikinci
+    // cagri birinciyi sessizce eziyordu. Ctrl/Cmd+V (native panoyu okuyup
+    // yapistirma) ile Ctrl+C (secim yokken ^C gondersin, bazi tarayicilar bunu
+    // "kopyala" saniyor) tek isleyicide birlesti.
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type === 'keydown' && e.ctrlKey && !e.metaKey && !e.altKey
-          && (e.key === 'c' || e.key === 'C') && !term.hasSelection()) {
+      if (e.type !== 'keydown') return true;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        e.stopPropagation();
+        D.term.readClipboard().then((r) => {
+          if (r && r.text) term.paste(r.text);
+          else if (r && r.imagePath) term.paste(`"${r.imagePath}"`);
+        });
+        return false;
+      }
+      if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'c' || e.key === 'C') && !term.hasSelection()) {
         T.write(t.id, '\x03');
         e.preventDefault();
         return false;
