@@ -47,6 +47,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Dal listesinde surekli sadece son 3 surum gorunsun diye her etikette
+      # release/<surum> dali olusturuyoruz ve en eskisini siliyoruz.
+      - name: release/<surum> dalini olustur, sadece son 3'u tut
+        run: |
+          version="${GITHUB_REF#refs/tags/v}"
+          branch="release/$version"
+          git push origin "HEAD:refs/heads/$branch" --force
+
+          mapfile -t branches < <(git ls-remote --heads origin 'release/*' \
+            | sed -E 's#.*refs/heads/release/##' \
+            | sort -t. -k1,1nr -k2,2nr -k3,3nr)
+
+          echo "Mevcut release dallari (yeniden eskiye): ${branches[*]}"
+
+          for old in "${branches[@]:3}"; do
+            echo "Siliniyor: release/$old"
+            git push origin --delete "release/$old" || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   macos:
     needs: [prepare-release]
     if: always() && (needs.prepare-release.result == 'success' || needs.prepare-release.result == 'skipped')
