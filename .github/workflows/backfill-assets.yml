@@ -10,12 +10,17 @@ on:
       tag:
         description: 'Hangi tag icin uretilecek (orn. v1.3.1)'
         required: true
+      platforms:
+        description: 'virgulle ayrilmis: mac,windows,linux'
+        default: 'mac,windows,linux'
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   macos:
+    if: contains(inputs.platforms, 'mac')
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v5
@@ -58,7 +63,55 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  windows:
+    if: contains(inputs.platforms, 'windows')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Windows paketleme hedefi yoksa bu build icin ekle
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            if (!p.build.win) {
+              p.build.win = { target: [{ target: 'nsis', arch: ['x64'] }], icon: 'icons/icon-512.png' };
+              p.build.nsis = {
+                oneClick: false,
+                allowToChangeInstallationDirectory: true,
+                createDesktopShortcut: true,
+                createStartMenuShortcut: true
+              };
+              fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+              console.log('win+nsis eklendi');
+            } else {
+              console.log('zaten var');
+            }
+          "
+
+      - run: npm ci
+
+      - name: NSIS uret
+        run: npx electron-builder --win --publish never
+
+      - name: Release'e ekle
+        shell: bash
+        run: |
+          ls -lh dist/*.exe dist/latest.yml dist/*.blockmap
+          gh release upload "${{ inputs.tag }}" dist/*.exe dist/latest.yml dist/*.blockmap --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   linux:
+    if: contains(inputs.platforms, 'linux')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
