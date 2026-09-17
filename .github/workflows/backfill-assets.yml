@@ -47,6 +47,23 @@ jobs:
             }
           "
 
+      # publish tanimli olmadan electron-builder dmg icin blockmap/latest-mac.yml
+      # uretmiyor (nsis'te bu varsayilan). Bu tag'lerde henuz publish yoktu,
+      # sadece bu build icin ekliyoruz ki diger surumlerle tutarli olsun.
+      - name: Publish hedefi yoksa bu build icin ekle
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            if (!p.build.publish) {
+              p.build.publish = { provider: 'github', owner: 'hakanngok', repo: 'mineClaude' };
+              fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+              console.log('publish eklendi');
+            } else {
+              console.log('zaten var');
+            }
+          "
+
       - run: npm ci
 
       - name: node-pty spawn-helper izni
