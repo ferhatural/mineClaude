@@ -87,6 +87,13 @@ function initL() {
     ? `Sürüm ${v}\n\nYerel Claude Code oturumların için bir kontrol paneli.`
     : `Version ${v}\n\nA local dashboard for your Claude Code sessions.`),
   aboutGitHub: TR ? "GitHub'da aç"          : 'Open on GitHub',
+  checkUpdates: TR ? 'Güncellemeleri kontrol et' : 'Check for Updates',
+  checkUpdatesDev: TR ? 'Geliştirme sürümünde güncelleme kontrolü kullanılamaz.'
+                       : 'Update checks are unavailable in the development build.',
+  upToDate: (v) => (TR
+    ? `mineClaude güncel (sürüm ${v}).`
+    : `mineClaude is up to date (version ${v}).`),
+  updateCheckFailed: TR ? 'Güncelleme kontrolü başarısız oldu.' : 'Update check failed.',
   ok:        TR ? 'Tamam'                  : 'OK',
   pickDir:   TR ? 'Terminal hangi klasörde açılsın?' : 'Which folder should the terminal open in?',
   qButtons:  TR ? ['Çık', 'Vazgeç']        : ['Quit', 'Cancel'],
@@ -265,6 +272,22 @@ function createWindow() {
   });
 
   win.loadURL(serverUrl);
+
+  // GECICI TEST: MINECLAUDE_TEST_UPDATE=1 ile calistirilinca acilista sahte bir
+  // "guncelleme hazir" bildirimi tetikler, boylece gercek bir surum yayinlamadan
+  // uygulama icinde modali gormek mumkun olur. Onay sonrasi kaldirilacak.
+  if (process.env.MINECLAUDE_TEST_UPDATE === '1') {
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.executeJavaScript(`window.showUpdateReady && window.showUpdateReady(${JSON.stringify({
+        version: '1.4.0',
+        notes: [
+          'Terminal sekmelerine durum rengi eklendi',
+          'Ctrl/Cmd+V ile Ctrl+C yapıştırma çakışması giderildi',
+          'Panoya yapıştırma davranışı düzeltildi',
+        ],
+      })});`).catch(() => {});
+    });
+  }
 
   const remember = () => {
     if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
@@ -583,6 +606,11 @@ function setAppMenu() {
       label: L.helpMenu,
       submenu: [
         {
+          label: L.checkUpdates,
+          click: () => checkForUpdatesManually(),
+        },
+        { type: 'separator' },
+        {
           label: L.about,
           click: () => showAbout(),
         },
@@ -635,6 +663,64 @@ function setupAutoUpdate() {
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   check();
   setInterval(check, 4 * 3600e3); // uygulama uzun sure acik kalabiliyor: 4 saatte bir tekrar bak
+}
+
+// Yardim menusundeki "Guncellemeleri kontrol et": kullanicinin elle tetikledigi
+// tek seferlik kontrol. Yukaridaki setupAutoUpdate zaten periyodik calisiyor ve
+// sadece indirilince/hata olunca konusuyor; burada ayrica "guncelsin" sonucunu da
+// gostermemiz gerekiyor, o yuzden bir kerelik dinleyiciler kurup temizliyoruz.
+let manualUpdateCheckInFlight = false;
+function checkForUpdatesManually() {
+  if (!app.isPackaged) {
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: L.checkUpdates,
+      message: L.checkUpdatesDev,
+      buttons: [L.ok],
+      noLink: true,
+    });
+    return;
+  }
+  if (manualUpdateCheckInFlight) return;
+  manualUpdateCheckInFlight = true;
+
+  const cleanup = () => {
+    manualUpdateCheckInFlight = false;
+    autoUpdater.removeListener('update-not-available', onNotAvailable);
+    autoUpdater.removeListener('update-available', onAvailable);
+    autoUpdater.removeListener('error', onError);
+  };
+  const onNotAvailable = () => {
+    cleanup();
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: L.checkUpdates,
+      message: L.upToDate(app.getVersion()),
+      buttons: [L.ok],
+      noLink: true,
+    });
+  };
+  // Guncelleme bulununca sessizce indirsin (autoDownload=true, her zamanki gibi):
+  // bitince 'update-downloaded' zaten setupAutoUpdate'teki restart/later
+  // diyalogunu gosterecek. Bu buton sadece 4 saatlik periyodik kontrolu
+  // beklemeden kullaniciya "hemen kontrol et" imkani veriyor.
+  const onAvailable = () => cleanup();
+  const onError = (err) => {
+    cleanup();
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: L.checkUpdates,
+      message: L.updateCheckFailed,
+      detail: err && err.message,
+      buttons: [L.ok],
+      noLink: true,
+    });
+  };
+
+  autoUpdater.once('update-not-available', onNotAvailable);
+  autoUpdater.once('update-available', onAvailable);
+  autoUpdater.once('error', onError);
+  autoUpdater.checkForUpdates().catch(onError);
 }
 
 // ---------------------------------------------------------------- giris

@@ -17,6 +17,12 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const { execFileSync, spawn } = require('child_process');
+let SftpClient = null;
+try {
+  SftpClient = require('ssh2-sftp-client');
+} catch {
+  /* paket kurulu degilse gorevlerin SFTP senkronu sessizce devre disi kalir */
+}
 
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
@@ -416,8 +422,15 @@ function deriveStatus(sess, tr, now) {
   // Yeni surumler durumu dogrudan ~/.claude/sessions/<pid>.json icine yaziyor.
   if (sess && sess.status) {
     const s = String(sess.status);
-    if (s === 'waiting' || s === 'busy' || s === 'idle') return { status: s, source: 'session-file' };
-    return { status: 'unknown', raw: s, source: 'session-file' };
+    const status = s === 'waiting' || s === 'busy' || s === 'idle' ? s : 'unknown';
+    // Bu alan "hic konusma olmadi" bilgisini tasimiyor, o yuzden onu ayrica
+    // transcript yoklugundan cikariyoruz — ama yalniz calismiyorken (idle/unknown)
+    // anlamli: busy/waiting zaten kullanimda oldugunu kaniti.
+    if ((status === 'idle' || status === 'unknown') && !tr) {
+      const age = sess.startedAt ? now - sess.startedAt : Infinity;
+      if (age >= 2 * 60e3) return { status: 'idle', empty: true, hintKey: 'no-conversation', source: 'session-file' };
+    }
+    return { status, raw: status === 'unknown' ? s : undefined, source: 'session-file' };
   }
   // Transcript yoksa: surec ayakta ama bu oturumda hic konusma baslamamis
   // (tipik olarak editorun acilista baslattigi bos Claude sureci).
@@ -468,7 +481,7 @@ function loadLegacyNotes() {
 // Eskiden burada proje basina tek bir metin (tek "not") tutuluyordu. Musteri
 // istekleri tek seferde 5-10 is birden birikince o tek kutu yetmiyordu; artik
 // her cwd bir gorev listesi: [{id, text, done}].
-function notesFor(cwd) {
+function notesForLocal(cwd) {
   try {
     const raw = JSON.parse(fs.readFileSync(tasksFileFor(cwd), 'utf8'));
     if (Array.isArray(raw)) return raw;
@@ -479,6 +492,11 @@ function notesFor(cwd) {
   if (Array.isArray(legacy)) return legacy;
   if (typeof legacy === 'string' && legacy) return [{ id: 'legacy', text: legacy, done: false }];
   return [];
+}
+
+function notesFor(cwd) {
+  const sftp = sftpConfigFor(cwd);
+  return sftp ? notesForSftp(cwd, sftp) : notesForLocal(cwd);
 }
 
 function saveTasks(cwd, tasks) {
@@ -498,6 +516,111 @@ function saveTasks(cwd, tasks) {
     fs.mkdirSync(path.dirname(NOTES_FILE), { recursive: true });
     fs.writeFileSync(NOTES_FILE, JSON.stringify(legacy, null, 2));
   }
+
+  // Proje klasorunde .vscode/sftp.json varsa (VS Code SFTP eklentisinin deploy
+  // ayari), gorevleri o sunucuya da yaziyoruz. Boylece ayni sftp.json'a (ayni
+  // host+remotePath) sahip baska bir bilgisayar da ayni gorev listesini gorur.
+  const sftp = sftpConfigFor(cwd);
+  if (sftp) {
+    const entry = sftpTaskCache.get(cwd) || {};
+    entry.tasks = tasks;
+    entry.fetchedAt = Date.now(); // az once biz yazdik, hemen tekrar okumaya gerek yok
+    sftpTaskCache.set(cwd, entry);
+    uploadRemoteTasks(sftp, tasks).catch((e) =>
+      console.error('[mineClaude] sftp gorev yazma hatasi (' + cwd + '):', e.message || e));
+  }
+}
+
+// ---------------------------------------------------------------- gorevlerin SFTP senkronu
+//
+// sftp.json her makinede farkli bir yerel proje yoluna karsilik gelebilir (ornek:
+// C:\Users\hakan\Projects\DSMG ile C:\Users\ahmet\proje\dsmg), ama ikisi de ayni
+// host+remotePath'a isaret ediyorsa ayni uzak tasks.json'u okuyup yazarlar — ekstra
+// bir eslesme/merkezi servise gerek yok, zaten var olan deploy ayarini kullaniyoruz.
+
+const SFTP_POLL_MS = 8000; // baska bir bilgisayarin yazdigini bu araliklarla yoklariz
+const sftpTaskCache = new Map(); // cwd -> { tasks, fetchedAt, fetching }
+
+function sftpConfigFor(cwd) {
+  if (!SftpClient) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(cwd, '.vscode', 'sftp.json'), 'utf8'));
+    if (!raw || !raw.host || !raw.username || !raw.remotePath) return null;
+    return {
+      host: raw.host,
+      port: raw.port || 22,
+      username: raw.username,
+      password: raw.password,
+      privateKey: raw.privateKeyPath ? fs.readFileSync(raw.privateKeyPath) : undefined,
+      remoteDir: String(raw.remotePath).replace(/\/+$/, '') + '/.mineclaude',
+    };
+  } catch {
+    return null; // sftp.json yok ya da bozuk: sessizce yerel dosyaya duser
+  }
+}
+
+async function withSftp(cfg, fn) {
+  const client = new SftpClient();
+  try {
+    await client.connect({
+      host: cfg.host,
+      port: cfg.port,
+      username: cfg.username,
+      password: cfg.password,
+      privateKey: cfg.privateKey,
+    });
+    return await fn(client);
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      /* baglanti zaten kopmus olabilir */
+    }
+  }
+}
+
+async function fetchRemoteTasks(cfg) {
+  return withSftp(cfg, async (client) => {
+    try {
+      const buf = await client.get(cfg.remoteDir + '/tasks.json');
+      const raw = JSON.parse(buf.toString('utf8'));
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) {
+      // dosya henuz yok (bu proje icin ilk kullanim) -> bos liste, hata degil
+      if (/no such file|not exist/i.test(String(e.message || e))) return [];
+      throw e;
+    }
+  });
+}
+
+async function uploadRemoteTasks(cfg, tasks) {
+  return withSftp(cfg, async (client) => {
+    await client.mkdir(cfg.remoteDir, true);
+    await client.put(Buffer.from(JSON.stringify(tasks, null, 2)), cfg.remoteDir + '/tasks.json');
+  });
+}
+
+// collect() ve /api/note gibi senkron yollardan cagriliyor: agi burada bekleyemeyiz.
+// Elimizdeki en son bilinen listeyi hemen donup arka planda tazeliyoruz.
+function notesForSftp(cwd, cfg) {
+  let entry = sftpTaskCache.get(cwd);
+  if (!entry) {
+    entry = { tasks: notesForLocal(cwd), fetchedAt: 0, fetching: false };
+    sftpTaskCache.set(cwd, entry);
+  }
+  if (!entry.fetching && Date.now() - entry.fetchedAt > SFTP_POLL_MS) {
+    entry.fetching = true;
+    fetchRemoteTasks(cfg)
+      .then((tasks) => {
+        entry.tasks = tasks;
+        entry.fetchedAt = Date.now();
+      })
+      .catch((e) => console.error('[mineClaude] sftp gorev okuma hatasi (' + cwd + '):', e.message || e))
+      .finally(() => {
+        entry.fetching = false;
+      });
+  }
+  return entry.tasks;
 }
 
 // "Tum gorevler" penceresi sadece o an canli oturumlarla sinirli olursa, gorevi

@@ -195,23 +195,20 @@
     background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
   .tm-strip{display:flex;align-items:stretch;gap:2px;padding:6px 6px 0;flex-wrap:wrap;
     border-bottom:1px solid var(--line);background:var(--panel2)}
+  /* Durum, dip yerine tabin ustundeki renkli seritte: nokta kucuk kaliyordu, bu daha net */
   .tm-tab{display:flex;align-items:center;gap:7px;font:inherit;font-size:12px;color:var(--faint);
-    background:none;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;
-    padding:6px 9px;cursor:pointer;max-width:210px;transition:.12s}
+    background:none;border:1px solid var(--line);border-bottom:0;
+    border-top:2px solid var(--c,var(--line));border-radius:8px 8px 0 0;
+    padding:5px 9px 6px;cursor:pointer;max-width:210px;transition:.12s}
   .tm-tab .tm-tab-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tm-tab:hover{color:var(--text)}
-  .tm-tab.on{color:var(--text);background:var(--panel);border-color:var(--line)}
+  .tm-tab.on{color:var(--text);background:var(--panel);border-color:var(--line);border-top-color:var(--c,var(--line))}
   .tm-tab.dead{opacity:.5}
   /* Filtre satirindakiyle ayni renk dili (.count.waiting/.busy/.ready/.idle) */
-  .tm-avatar{width:7px;height:7px;border-radius:50%;flex:none}
-  /* Bu sekmedeki oturum input bekliyor — ofiste el kaldiranin karsiligi */
   .tm-tab.waiting{color:var(--wait)}
-  .tm-tab.waiting.on{border-color:var(--wait)}
-  .tm-tab.waiting::before{content:"";width:6px;height:6px;border-radius:50%;
-    background:var(--wait);flex:none;animation:blink 1s steps(2,start) infinite}
+  .tm-tab.waiting .tm-avatar{animation:blink 1s steps(2,start) infinite}
   /* Ofiste masasinda degil, lounge'da (atDesk false) — bkz. office3d.js stateOf/atDesk */
   .tm-tab.lounge{opacity:.65}
-  .tm-lounge-badge{font-size:10px;line-height:1;flex:none;opacity:.85}
   .tm-x{flex:none;opacity:.5;font-size:14px;line-height:1}
   .tm-x:hover{opacity:1;color:#d0524a}
   .tm-plus{font:inherit;font-size:15px;line-height:1;color:var(--faint);background:none;border:0;
@@ -224,7 +221,7 @@
   .tm-panes.tiles{display:grid;gap:6px;padding:6px}
   .tm-panes.tiles .tm-pane{position:relative;inset:auto;display:block;min-width:0;min-height:0;
     padding:6px 8px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .tm-panes.tiles .tm-pane.on{border-color:var(--idle)}
+  .tm-panes.tiles .tm-pane.on{border-color:var(--c,var(--idle))}
   .tm-lay{display:flex;align-items:center;justify-content:center;font:inherit;color:var(--faint);
     background:none;border:0;padding:4px 8px;cursor:pointer;align-self:center;margin-left:auto}
   .tm-lay:hover{color:var(--text)}
@@ -327,6 +324,31 @@
   .at-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:10px;color:var(--faint);font-size:13px;padding:48px 20px;text-align:center}
   .at-empty svg{width:26px;height:26px;opacity:.6}
+
+  /* guncelleme hazir modali: digerlerinden farkli olarak dikeyde ortalanir */
+  #updateReady{align-items:center}
+  .update-sheet{width:min(420px,100%)}
+  .update-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .update-icon{flex:none;width:38px;height:38px;border-radius:11px;
+    background:color-mix(in srgb,var(--idle) 16%,transparent);color:var(--idle);
+    display:flex;align-items:center;justify-content:center}
+  .update-icon svg{width:18px;height:18px;display:block}
+  .update-head-txt{min-width:0}
+  .update-head-txt b{font-size:15px;letter-spacing:-.01em}
+  .update-version{color:var(--faint);font-size:12px;margin-top:1px}
+  .update-notes{list-style:none;margin:0 0 16px;max-height:38vh;overflow-y:auto;
+    display:flex;flex-direction:column;gap:7px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .update-notes li{font-size:12.5px;color:var(--dim);line-height:1.5;position:relative;padding-left:14px}
+  .update-notes li::before{content:"";position:absolute;left:0;top:.55em;
+    width:4px;height:4px;border-radius:50%;background:var(--idle)}
+  .update-notes li.update-notes-empty{padding-left:0;color:var(--faint)}
+  .update-foot{display:flex;justify-content:flex-end;gap:8px}
+  .update-btn{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line);border-radius:9px;padding:8px 14px;cursor:pointer}
+  .update-btn:hover{background:var(--line)}
+  .update-btn-primary{background:var(--idle);border-color:var(--idle);color:#fff;font-weight:600}
+  .update-btn-primary:hover{filter:brightness(1.08)}
 
   .grid{display:grid;grid-template-columns:var(--gtc);gap:12px;align-items:start}
   @media (max-width:720px){
@@ -465,6 +487,27 @@
     </div>
   </div>
 
+  <div id="updateReady" class="modal" hidden>
+    <div class="sheet update-sheet">
+      <div class="update-head">
+        <span class="update-icon">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 13V3M4 7l4-4 4 4"/>
+          </svg>
+        </span>
+        <div class="update-head-txt">
+          <b id="updateReadyTitle"></b>
+          <div class="update-version" id="updateReadyVersion"></div>
+        </div>
+      </div>
+      <ul class="update-notes" id="updateReadyNotes"></ul>
+      <div class="update-foot">
+        <button class="update-btn" id="updateReadyLater"></button>
+        <button class="update-btn update-btn-primary" id="updateReadyRestart"></button>
+      </div>
+    </div>
+  </div>
+
   <div id="stage" hidden>
     <div id="office" hidden></div>
     <div id="office3d" hidden></div>
@@ -523,7 +566,6 @@ const I18N = {
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'Geri yükle', termRestoreNo:'Yoksay',
     termPick:'Terminal hangi klasörde açılsın?', termPickGo:'Aç', termGone:'Oturum artık yok',
-    termLounge:'Lounge — boşta, masasında değil',
     termFind:'Terminalde ara', termFindNone:'Yok', termFindCase:'Büyük/küçük harf duyarlı',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede oturum yok.', recentlyClosed:'Son kapanan oturumlar',
@@ -534,6 +576,9 @@ const I18N = {
     desks:'OFİS', lounge:'LOUNGE',
     footer1:(a,b,c)=>`Kaynak: ${a} + ${b} + ${c}. 2 saniyede bir yenilenir.`,
     footer2:(a,b)=>`Terminalden: ${a} · JSON: ${b}`,
+    updateReadyTitle:'Güncelleme hazır', updateReadyVersion:(v)=>`Sürüm ${v}`,
+    updateReadyLater:'Sonra', updateReadyRestart:'Şimdi yeniden başlat',
+    updateReadyNoNotes:'Bu sürüm için ayrıntı yok.',
   },
   en: {
     appTitle:'Claude Sessions', live:'Live', connecting:'Connecting…',
@@ -564,7 +609,6 @@ const I18N = {
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'Restore', termRestoreNo:'Dismiss',
     termPick:'Which folder should the terminal open in?', termPickGo:'Open', termGone:'Session is gone',
-    termLounge:'Lounge — idle, not at their desk',
     termFind:'Find in terminal', termFindNone:'None', termFindCase:'Match case',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'Recently closed sessions',
@@ -575,6 +619,9 @@ const I18N = {
     desks:'OFFICE', lounge:'LOUNGE',
     footer1:(a,b,c)=>`Sources: ${a} + ${b} + ${c}. Refreshes every 2 seconds.`,
     footer2:(a,b)=>`In the terminal: ${a} · JSON: ${b}`,
+    updateReadyTitle:'Update ready', updateReadyVersion:(v)=>`Version ${v}`,
+    updateReadyLater:'Later', updateReadyRestart:'Restart now',
+    updateReadyNoNotes:'No details for this release.',
   },
 };
 // Varsayılan: tarayıcının dil listesinde Türkçe geçiyorsa TR, yoksa EN.
@@ -673,6 +720,46 @@ const closeAllTasks = () => { allTasksModal.hidden = true; };
 $('#allTasksBtn').onclick = openAllTasks;
 $('#allTasksClose').onclick = closeAllTasks;
 allTasksModal.onpointerdown = (e) => { if(e.target === allTasksModal) closeAllTasks(); };
+
+// --- guncelleme hazir modali ---
+const updateModal = $('#updateReady');
+const closeUpdateModal = () => { updateModal.hidden = true; };
+$('#updateReadyLater').onclick = closeUpdateModal;
+updateModal.onpointerdown = (e) => { if(e.target === updateModal) closeUpdateModal(); };
+$('#updateReadyRestart').onclick = () => {
+  if(window.mineClaudeDesktop && window.mineClaudeDesktop.update) window.mineClaudeDesktop.update.restart();
+};
+function showUpdateReady(info){
+  $('#updateReadyVersion').textContent = T('updateReadyVersion', info.version);
+  const notesEl = $('#updateReadyNotes');
+  notesEl.innerHTML = '';
+  const notes = Array.isArray(info.notes) ? info.notes : [];
+  if(notes.length){
+    for(const line of notes){
+      const li = document.createElement('li');
+      li.textContent = line;
+      notesEl.appendChild(li);
+    }
+  } else {
+    const li = document.createElement('li');
+    li.className = 'update-notes-empty';
+    li.textContent = T('updateReadyNoNotes');
+    notesEl.appendChild(li);
+  }
+  updateModal.hidden = false;
+}
+// GECICI ONIZLEME: gercek guncelleme akisini beklemeden tasarimi gormek icin.
+// http://localhost:PORT/#test-update ile acilir. Onay sonrasi kaldirilacak.
+if(location.hash === '#test-update'){
+  showUpdateReady({
+    version: '1.4.0',
+    notes: [
+      'Terminal sekmelerine durum rengi eklendi',
+      "Ctrl/Cmd+V ile Ctrl+C yapıştırma çakışması giderildi",
+      'Panoya yapıştırma davranışı düzeltildi',
+    ],
+  });
+}
 
 let allTasksSnapshot = null; // son cizilen veri: degismediyse yeniden kurmuyoruz
 let allTasksReq = 0; // gecikip gelen eski bir istek daha yeni veriyi ezmesin
@@ -880,7 +967,11 @@ function wirePickTabs(pop){
     tabs.forEach(b => b.classList.toggle('on', b === btn));
     const tab = btn.dataset.tab;
     pop.querySelector('.pk-note').hidden = tab !== 'tasks';
-    pop.querySelector('.pk-body').hidden = tab !== 'history';
+    const body = pop.querySelector('.pk-body');
+    body.hidden = tab !== 'history';
+    // Mesajlar gizliyken (tasks sekmesindeyken) yuklenmis olabilir: o an scrollTop
+    // ayari isliyor gorunse de hidden elemanda tutmuyor. Sekme goruntulenince yeniden uygula.
+    if(tab === 'history') body.scrollTop = body.scrollHeight;
   });
 }
 
@@ -1060,6 +1151,9 @@ function applyLang(){
   const c = (x) => `<code>${x}</code>`;
   $('#footer1').innerHTML = T('footer1', c('~/.claude/sessions/*.json'), c('ps'), c('~/.claude/projects/**/*.jsonl'));
   $('#footer2').innerHTML = T('footer2', c('node server.js --watch'), c('node server.js --json'));
+  $('#updateReadyTitle').textContent = T('updateReadyTitle');
+  $('#updateReadyLater').textContent = T('updateReadyLater');
+  $('#updateReadyRestart').textContent = T('updateReadyRestart');
   if(es && es.readyState === 1) setConn(true, T('live'));
 }
 
@@ -1084,6 +1178,12 @@ if(window.mineClaudeDesktop){
   window.mineClaudeDesktop.theme.onChange(() => {
     if(hasTerm()) MTerm.retheme();
   });
+  // Otomatik guncelleme indirilip kuruluma hazir olunca ana surec bunu gonderiyor
+  // (bkz. electron/main.js: 'update-downloaded'). Native OS dialogu yerine
+  // sayfanin kendi modal dilini kullaniyoruz.
+  if(window.mineClaudeDesktop.update){
+    window.mineClaudeDesktop.update.onReady(showUpdateReady);
+  }
 }
 
 // --- görünüm anahtarı: kartlar | ofis (2D) | ofis (3D) yan yana ---
@@ -1188,8 +1288,9 @@ function metaBits(s, now){
   return `<span><b>${rel(s.lastActivityAt || s.startedAt, now)}</b></span>${bits.join('')}`;
 }
 
-// Bu session bu uygulamanin bir sekmesinde mi kosuyor? tty eslesmesi kesin cevap.
-const inAppTab = (s) => (hasTerm() && s.tty ? MTerm.tabForTty(s.tty) : null);
+// Bu session bu uygulamanin bir sekmesinde mi kosuyor? tty varsa kesin cevap,
+// yoksa (Windows'ta hep boyle) cwd'ye dusuyor.
+const inAppTab = (s) => (hasTerm() ? MTerm.tabForTty(s.tty, s.cwd) : null);
 
 function actionBtns(s){
   const acts = [];
@@ -1356,8 +1457,8 @@ function render(){
   if(window.mineClaudeDesktop) window.mineClaudeDesktop.setStatus({ waiting: w, total: base.length });
   // Hangi sekmede hangi oturum kosuyor: geri yuklerken --resume <id> diyebilmek icin
   if(hasTerm()) for(const s of state.live){
-    if(s.tty && s.sessionId) MTerm.noteSession(s.tty, s.sessionId);
-    if(s.tty) MTerm.noteStatus(s.tty, disp(s));
+    if(s.sessionId) MTerm.noteSession(s.tty, s.cwd, s.sessionId);
+    MTerm.noteStatus(s.tty, s.cwd, disp(s));
   }
   $('#host').textContent = state.host ? '· ' + state.host : '';
   if(!allTasksModal.hidden) renderAllTasks();

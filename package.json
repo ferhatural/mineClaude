@@ -135,6 +135,7 @@
     "electron-winstaller": false
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "ssh2-sftp-client": "^12.1.1"
   }
 }

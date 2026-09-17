@@ -8,7 +8,7 @@ import { FitAddon } from './vendor/xterm-addon-fit.module.js';
 import { SearchAddon } from './vendor/xterm-addon-search.module.js';
 
 // Karttaki filtre renkleriyle ayni dil (bkz. index.html .count.waiting/.busy/.ready/.idle):
-// bekliyor=amber, calisiyor=yesil, hazir=mavi, bosta/bilinmiyor=gri.
+// calisiyor=yesil, input bekliyor=sari, bekliyor=mavi, bosta/bilinmiyor=gri.
 function statusColor(status) {
   if (status === 'waiting') return 'var(--wait)';
   if (status === 'busy') return 'var(--busy)';
@@ -192,8 +192,9 @@ function start() {
       b.className = 'tm-tab' + (t === active ? ' on' : '') + (t.dead ? ' dead' : '')
         + (t.waiting ? ' waiting' : '') + (t.lounge && !t.waiting && !t.dead ? ' lounge' : '');
       b.title = t.cwd;
-      b.innerHTML = `<span class="tm-avatar" style="background:${statusColor(t.status)}"></span><span class="tm-tab-title">${esc(t.title)}</span>`
-        + (t.lounge && !t.waiting && !t.dead ? `<span class="tm-lounge-badge" title="${esc(T2('termLounge'))}">☕</span>` : '');
+      b.style.setProperty('--c', statusColor(t.status));
+      if (t.el) t.el.style.setProperty('--c', statusColor(t.status)); // izgara kipinde etkin cercevenin rengi
+      b.innerHTML = `<span class="tm-tab-title">${esc(t.title)}</span>`;
       b.onclick = () => select(t);
       const x = document.createElement('span');
       x.className = 'tm-x';
@@ -584,15 +585,18 @@ function start() {
     findClose: closeFind,              // Esc (index.html'deki genel Esc zinciri)
     findStep: (back) => { if (find && !find.box.hidden && find.input.value) { runFind(back ? 'prev' : 'next'); return true; } return false; }, // ⌘G / ⌘⇧G
     selectIndex,                       // ⌘1-9
-    // Panel bir session'in tty'sini biliyor: bu sekmelerden biri mi?
-    tabForTty: (tty) => (tty ? (tabs.find((t) => t.tty === tty) || null) : null),
+    // Panel bir session'in tty'sini biliyor: bu sekmelerden biri mi? Windows'ta
+    // ConPTY'nin /dev/ttysNNN karsiligi yok, ptsName hep null donuyor — tty ile
+    // eslesme oradaki hicbir sekmeyi bulamiyor (hepsi ayni "null" ile eslesmeye
+    // calisip ilk sekmede takili kalirdi). cwd'ye dusuyoruz, o her platformda var.
+    tabForTty: (tty, cwd) => (tty ? tabs.find((t) => t.tty === tty) : tabs.find((t) => t.cwd === cwd && !t.dead)) || null,
     // Panel bir sekmede hangi oturumun kostugunu biliyor; geri yuklemede
     // `--resume <id>` diyebilmek icin onu sekmeye yaziyoruz.
     // Ofiste el kaldiran kisi neyse, sekmede amber baslik o: bu sekmedeki
     // oturum senden input bekliyor. Ofiste masasinda mi lounge'da mi oturdugu
     // (atDesk, bkz. office3d.js) sekmede de ayni ayrimla gorunsun istedik.
-    noteStatus: (tty, status) => {
-      const t = tabs.find((x) => x.tty === tty);
+    noteStatus: (tty, cwd, status) => {
+      const t = tty ? tabs.find((x) => x.tty === tty) : tabs.find((x) => x.cwd === cwd && !x.dead);
       if (!t) return;
       const waiting = status === 'waiting';
       const lounge = status === 'idle' || status === 'unknown';
@@ -600,8 +604,8 @@ function start() {
         t.status = status; t.waiting = waiting; t.lounge = lounge; drawStrip();
       }
     },
-    noteSession: (tty, sessionId) => {
-      const t = tabs.find((x) => x.tty === tty);
+    noteSession: (tty, cwd, sessionId) => {
+      const t = tty ? tabs.find((x) => x.tty === tty) : tabs.find((x) => x.cwd === cwd && !x.dead);
       if (t && sessionId && t.sessionId !== sessionId) { t.sessionId = sessionId; saveRestore(); }
     },
     pendingCount: () => pending.length,
