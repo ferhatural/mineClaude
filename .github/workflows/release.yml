@@ -289,15 +289,16 @@ jobs:
       - name: rpmbuild kur
         run: sudo apt-get update && sudo apt-get install -y rpm
 
-      # AppImage kendi kendini electron-updater ile guncelleyebiliyor; deb/rpm
-      # icin boyle bir mekanizma yok (kullanici paket yoneticisiyle guncelliyor),
-      # ama yine de daha genis dagitim destegi icin uretip Release'e ekliyoruz.
-      - name: AppImage/deb/rpm uret ve yayinla
+      # AppImage kendi kendini electron-updater ile guncelleyebiliyor; deb/rpm/
+      # pacman icin boyle bir mekanizma yok (kullanici paket yoneticisiyle
+      # guncelliyor), ama yine de daha genis dagitim destegi icin uretip
+      # Release'e ekliyoruz.
+      - name: AppImage/deb/rpm/pacman uret ve yayinla
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npx electron-builder --linux AppImage deb rpm --publish always
+        run: npx electron-builder --linux AppImage deb rpm pacman --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sadece derle (etiketsiz calistirma)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: npx electron-builder --linux AppImage deb rpm --publish never
+        run: npx electron-builder --linux AppImage deb rpm pacman --publish never
