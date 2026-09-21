@@ -284,10 +284,11 @@ jobs:
       # Electron icinde de sorunsuz calisiyor, npmRebuild:false yeterli.
       - run: npm ci
 
-      # deb icin dpkg araclari Ubuntu runner'da hazir geliyor; rpm icin rpmbuild
-      # varsayilan olarak kurulu degil, elle ekliyoruz.
-      - name: rpmbuild kur
-        run: sudo apt-get update && sudo apt-get install -y rpm
+      # deb icin dpkg araclari Ubuntu runner'da hazir geliyor; rpm icin rpmbuild,
+      # pacman icin ise fpm'in .MTREE uretirken cagirdigi bsdtar (libarchive-tools
+      # icinde) varsayilan olarak kurulu degil, elle ekliyoruz.
+      - name: rpmbuild ve bsdtar kur
+        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools
 
       # AppImage kendi kendini electron-updater ile guncelleyebiliyor; deb/rpm/
       # pacman icin boyle bir mekanizma yok (kullanici paket yoneticisiyle
