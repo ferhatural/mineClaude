@@ -135,7 +135,8 @@
       "category": "Development",
       "icon": "icons/icon-512.png",
       "synopsis": "Claude Code CLI oturumlari icin masaustu paneli",
-      "syncDesktopName": true
+      "syncDesktopName": true,
+      "maintainer": "hakanngok <hakan.gok@carv.ist>"
     }
   },
   "optionalDependencies": {
