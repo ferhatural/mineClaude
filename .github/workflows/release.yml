@@ -1,7 +1,7 @@
 name: release
 
 # Bir surum etiketi push edilince macOS DMG, Windows NSIS kurulumcusu ve Linux
-# AppImage'ini uretip ayni Release'e ekler.
+# AppImage/deb/rpm paketlerini uretip ayni Release'e ekler.
 #
 #   npm version 1.1.0 && git push --follow-tags
 #
@@ -284,14 +284,20 @@ jobs:
       # Electron icinde de sorunsuz calisiyor, npmRebuild:false yeterli.
       - run: npm ci
 
-      # Sadece AppImage hedefi electron-updater ile kendini guncelleyebiliyor;
-      # deb/rpm icin boyle bir mekanizma yok, o yuzden baska hedef eklemiyoruz.
-      - name: AppImage uret ve yayinla
+      # deb icin dpkg araclari Ubuntu runner'da hazir geliyor; rpm icin rpmbuild
+      # varsayilan olarak kurulu degil, elle ekliyoruz.
+      - name: rpmbuild kur
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      # AppImage kendi kendini electron-updater ile guncelleyebiliyor; deb/rpm
+      # icin boyle bir mekanizma yok (kullanici paket yoneticisiyle guncelliyor),
+      # ama yine de daha genis dagitim destegi icin uretip Release'e ekliyoruz.
+      - name: AppImage/deb/rpm uret ve yayinla
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npx electron-builder --linux AppImage --publish always
+        run: npx electron-builder --linux AppImage deb rpm --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sadece derle (etiketsiz calistirma)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: npx electron-builder --linux AppImage --publish never
+        run: npx electron-builder --linux AppImage deb rpm --publish never
