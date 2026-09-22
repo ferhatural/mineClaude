@@ -42,4 +42,10 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   theme: {
     onChange: (fn) => ipcRenderer.on('mineclaude:theme-changed', () => fn()),
   },
+
+  // Otomatik guncelleme indirilip hazir olunca sayfanin kendi modalini gostermesi icin.
+  update: {
+    onReady: (fn) => ipcRenderer.on('mineclaude:update-ready', (_e, info) => fn(info)),
+    restart: () => ipcRenderer.send('mineclaude:update-restart'),
+  },
 });
