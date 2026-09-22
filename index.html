@@ -775,18 +775,6 @@ function showUpdateReady(info){
   }
   updateModal.hidden = false;
 }
-// GECICI ONIZLEME: gercek guncelleme akisini beklemeden tasarimi gormek icin.
-// http://localhost:PORT/#test-update ile acilir. Onay sonrasi kaldirilacak.
-if(location.hash === '#test-update'){
-  showUpdateReady({
-    version: '1.4.0',
-    notes: [
-      'Terminal sekmelerine durum rengi eklendi',
-      "Ctrl/Cmd+V ile Ctrl+C yapıştırma çakışması giderildi",
-      'Panoya yapıştırma davranışı düzeltildi',
-    ],
-  });
-}
 
 let allTasksSnapshot = null; // son cizilen veri: degismediyse yeniden kurmuyoruz
 let allTasksReq = 0; // gecikip gelen eski bir istek daha yeni veriyi ezmesin

@@ -102,12 +102,6 @@ function initL() {
   qMessage:  (n) => (TR
     ? `${n} terminal açık — hepsi kapanacak`
     : `${n} terminal${n > 1 ? 's are' : ' is'} open — all of them will close`),
-  updateTitle:   TR ? 'Güncelleme hazır'      : 'Update ready',
-  updateMessage: (v) => (TR
-    ? `mineClaude ${v} indirildi. Şimdi yeniden başlatıp kurulsun mu?`
-    : `mineClaude ${v} has been downloaded. Restart now to install it?`),
-  updateRestart: TR ? 'Şimdi yeniden başlat'  : 'Restart now',
-  updateLater:   TR ? 'Sonra'                 : 'Later',
   };
 }
 
@@ -667,21 +661,29 @@ function showAbout() {
 // Yeni bir surum orada yayinlandiginda (electron-builder --publish always ile)
 // buradaki her kurulu kopya acilista ve sonra periyodik olarak kontrol edip
 // indiriyor, kullaniciya sorup onay alinca yeniden baslatip kuruyor.
+// electron-updater releaseNotes, GitHub Release govdesinden geliyor (prepare-release
+// isi Release'i "gh release create --generate-notes" ile aciyor). Birden fazla
+// surum atlanmissa (ör. 1.3.5 -> 1.4.0) dizi olarak da gelebiliyor — her ikisini de
+// sayfanin kendi <li> listesine uygun duz satirlara ceviriyoruz.
+function parseReleaseNotes(raw) {
+  const text = Array.isArray(raw) ? raw.map((r) => r && r.note).filter(Boolean).join('\n') : raw;
+  if (!text || typeof text !== 'string') return [];
+  return text
+    .split('\n')
+    .map((l) => l.replace(/^#+\s*/, '').replace(/^[-*]\s+/, '').trim())
+    .filter((l) => l && !l.startsWith('**Full Changelog**'));
+}
+
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // gelistirme sirasinda (npm run app) anlamsiz, hata basar
   autoUpdater.autoDownload = true;
   autoUpdater.on('update-downloaded', (info) => {
-    dialog.showMessageBox(win, {
-      type: 'info',
-      title: L.updateTitle,
-      message: L.updateMessage(info.version),
-      buttons: [L.updateRestart, L.updateLater],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-    }).then((r) => {
-      if (r.response === 0) autoUpdater.quitAndInstall();
-    });
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('mineclaude:update-ready', {
+        version: info.version,
+        notes: parseReleaseNotes(info.releaseNotes),
+      });
+    }
   });
   autoUpdater.on('error', (err) => {
     console.error('[mineClaude] guncelleme kontrolu basarisiz:', err.message || err);
@@ -775,6 +777,8 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.on('mineclaude:status', (_e, s) => setTrayStatus(s || {}));
   ipcMain.on('mineclaude:show', showWindow);
+  // Sayfanin kendi guncelleme-hazir modalindaki "Simdi yeniden baslat" butonu.
+  ipcMain.on('mineclaude:update-restart', () => autoUpdater.quitAndInstall());
   ipcMain.handle('mineclaude:focus-terminal', (_e, s) => focusTerminal(s || {}));
 
   // ---- gomulu terminaller
