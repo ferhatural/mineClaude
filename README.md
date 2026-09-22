@@ -212,6 +212,24 @@ that tab was running, falling back to a fresh `claude` in the same folder when t
 longer exists. `claude --resume` picks a
 session back up.
 
+### Light theme
+
+In light mode the terminal is cream (`#fbf7ee`), not white, and the text is a warm dark grey
+rather than black — a white page is tiring to read against for long, and reverse video (`SGR 7`)
+uses the foreground colour as its background, so a softer foreground turns "white on a black
+block" into something you can actually look at. The sixteen ANSI colours get their own light
+palette, because the defaults are picked for a dark canvas: on cream, yellow, cyan and magenta
+are the first to become unreadable. Every colour in it clears 4.5:1 against the background.
+Dark mode is untouched — no palette is sent there at all, so xterm keeps its own defaults.
+
+Claude Code is a separate problem. It reads its theme from `~/.claude/settings.json` and writes
+its colours as 24-bit escapes, which no palette can override — so with `theme: "dark"` its pale
+purple accents land unreadable on cream. Two things handle it: xterm's `minimumContrastRatio`
+is set to 4.5 in light mode, which darkens any foreground that falls below it, and sessions the
+app starts itself get `--settings '{"theme":"light"}'`. That flag binds only that one session;
+your global setting is left alone, and a session you start by typing `claude` in the shell
+yourself keeps whatever theme you configured.
+
 Three sessions side by side in tile view, right after `claude` started in each:
 
 ![Terminals view](docs/terminals.png)
