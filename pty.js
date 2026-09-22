@@ -86,22 +86,35 @@ function childEnv() {
   return env;
 }
 
-function create({ cwd, cols, rows, command, resumeSessionId } = {}) {
+function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   if (!pty) throw new Error('node-pty yok: ' + (loadError || 'kurulu degil'));
   const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
   const shell = loginShell();
   const isWin = process.platform === 'win32';
+  const ps = isWin && isPowerShell(shell);
+
+  // Oturum kimligi kabuk komutuna giriyor: kalibina uymayani hic gecirmiyoruz.
+  // (Ag uzerinden terminal acikken -- --terminals -- bu payload disaridan geliyor.)
+  const resume = /^[A-Za-z0-9-]{6,80}$/.test(String(resumeSessionId || '')) ? resumeSessionId : null;
+
+  // Claude Code temasini ~/.claude/settings.json'dan okuyor ve renklerini 24-bit
+  // basiyor, yani xterm paletiyle ezilemiyorlar: uygulama acik temadayken onun
+  // koyu tema renkleri krem zeminde okunmuyor. --settings yalniz bu oturumu
+  // baglıyor, kullanicinin global ayarina dokunmuyoruz. Tek tirnak cmd.exe'de
+  // calismadigi icin orada kacisli cift tirnak kullaniyoruz.
+  const temaArg = !light ? ''
+    : (isWin && !ps ? ' --settings "{\\"theme\\":\\"light\\"}"' : ` --settings '{"theme":"light"}'`);
+  const claude = (extra = '') => `claude${extra}${temaArg}`;
 
   // Oturum kimligi verilmisse ona don, bulunamazsa (silinmis, hic konusulmamis)
   // taze bir claude ac. POSIX ve cmd.exe'de `||` bunu tek satirda hallediyor;
   // Windows'ta hazir gelen powershell.exe (5.1) `||`/`&&` bilmiyor (PowerShell
   // 7'de var), o yuzden orada cikis koduna bakan bir if ile ayni seyi kuruyoruz.
-  const ps = isWin && isPowerShell(shell);
-  const cmd = resumeSessionId
+  const cmd = resume
     ? (ps
-        ? `claude --resume ${resumeSessionId}; if ($LASTEXITCODE -ne 0) { claude }`
-        : `claude --resume ${resumeSessionId} || claude`)
-    : (command || 'claude');
+        ? `${claude(' --resume ' + resume)}; if ($LASTEXITCODE -ne 0) { ${claude()} }`
+        : `${claude(' --resume ' + resume)} || ${claude()}`)
+    : (command || claude());
 
   // Varsayilan: claude'u calistir, o kapaninca kabuk acik kalsin. Session bitince
   // pencerenin kapanmasi yerine elinde bir kabuk kaliyor (resume, git, ne gerekirse).

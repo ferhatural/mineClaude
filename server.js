@@ -782,7 +782,11 @@ function attachTerminals(server) {
       if (m.t === 'create') {
         let info;
         try {
-          info = term.create({ cwd: m.cwd, cols: m.cols, rows: m.rows, command: m.command, resumeSessionId: m.resumeSessionId });
+          info = term.create({
+            cwd: m.cwd, cols: m.cols, rows: m.rows,
+            command: m.command, resumeSessionId: m.resumeSessionId,
+            light: !!m.light,
+          });
         } catch (e) {
           return send({ t: 'error', ref: m.ref, error: String(e.message || e) });
         }

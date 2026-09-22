@@ -1301,7 +1301,9 @@ function wireActions(root){
     // ayni seye mouse'la ulasmanin gorsel yolu.
     b.onclick = (e) => {
       if(b.dataset.termSession && !e.shiftKey){
-        goTerm(); MTerm.open(b.dataset.termCwd, `claude --resume ${b.dataset.termSession} || claude`);
+        // Komutu burada kurmuyoruz: claude'un nasil cagrildigina (platform farki,
+        // acik temada --settings) tek yerden pty.js karar veriyor.
+        goTerm(); MTerm.open(b.dataset.termCwd, undefined, b.dataset.termSession);
       } else openBlank();
     };
   });

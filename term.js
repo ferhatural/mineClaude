@@ -495,9 +495,11 @@ function start() {
   async function open(cwd, command, resumeSessionId) {
     if (!panes) return;
     // Ayni klasorde ikinci bir terminal (ikinci bir Claude sureci) ayni dosyalari
-    // ayni anda degistirmeye kalkabilir. Ozel bir komut istenmediyse (resume gibi)
-    // ve o klasor icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
-    if (!command) {
+    // ayni anda degistirmeye kalkabilir. Ozel bir sey istenmediyse ve o klasor
+    // icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
+    // Resume bunun disinda: belirli bir konusmaya donmek istenmis, mevcut
+    // sekmeye atlamak o istegi sessizce yutardi.
+    if (!command && !resumeSessionId) {
       const existing = tabs.find((t) => t.cwd === cwd && !t.dead);
       if (existing) { select(existing); return; }
     }
@@ -540,7 +542,12 @@ function start() {
 
     let info;
     try {
-      info = await T.create({ cwd, cols: term.cols, rows: term.rows, command, resumeSessionId });
+      // light: acik temada pty.js claude'u --settings '{"theme":"light"}' ile
+      // aciyor, yoksa Claude Code koyu tema renklerini krem zemine basiyor.
+      info = await T.create({
+        cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
+        light: !!cssVar('--term-light', ''),
+      });
     } catch (e) {
       term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
       return;
