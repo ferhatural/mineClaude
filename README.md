@@ -48,6 +48,29 @@ node server.js --json     # raw JSON, for scripting
 node server.js --port 7799 --no-open
 ```
 
+### Tasks from the command line
+
+A project's task list lives in `<project>/.mineclaude/tasks.json`, and the dashboard
+re-reads it on every poll — so anything that edits the file shows up within a second,
+with no restart. That includes the Claude session working in that project:
+
+```bash
+mineclaude --tasks                      # list this folder's tasks
+mineclaude --task-add "write the tests" # add one
+mineclaude --task-done "tests"          # tick it off (id or a piece of the text)
+mineclaude --task-undone "tests"        # untick
+mineclaude --task-rm "tests"            # remove
+mineclaude --tasks --cwd ~/code/other   # another project
+```
+
+The folder defaults to the current one, so a session already sitting in the project
+needs no path. If a text fragment matches more than one task the command stops and
+lists the candidates instead of guessing.
+
+`mineclaude` here is the `bin` from `package.json`; you get it with `npm link` in the
+repo (or a global install). Without that, call the script by path —
+`node /path/to/mineClaude/server.js --task-add "…"`.
+
 To call it from anywhere:
 
 ```bash
@@ -188,6 +211,24 @@ starting five Claude sessions on your behalf. Restoring runs `claude --resume` o
 that tab was running, falling back to a fresh `claude` in the same folder when that session no
 longer exists. `claude --resume` picks a
 session back up.
+
+### Light theme
+
+In light mode the terminal is cream (`#fbf7ee`), not white, and the text is a warm dark grey
+rather than black — a white page is tiring to read against for long, and reverse video (`SGR 7`)
+uses the foreground colour as its background, so a softer foreground turns "white on a black
+block" into something you can actually look at. The sixteen ANSI colours get their own light
+palette, because the defaults are picked for a dark canvas: on cream, yellow, cyan and magenta
+are the first to become unreadable. Every colour in it clears 4.5:1 against the background.
+Dark mode is untouched — no palette is sent there at all, so xterm keeps its own defaults.
+
+Claude Code is a separate problem. It reads its theme from `~/.claude/settings.json` and writes
+its colours as 24-bit escapes, which no palette can override — so with `theme: "dark"` its pale
+purple accents land unreadable on cream. Two things handle it: xterm's `minimumContrastRatio`
+is set to 4.5 in light mode, which darkens any foreground that falls below it, and sessions the
+app starts itself get `--settings '{"theme":"light"}'`. That flag binds only that one session;
+your global setting is left alone, and a session you start by typing `claude` in the shell
+yourself keeps whatever theme you configured.
 
 Three sessions side by side in tile view, right after `claude` started in each:
 

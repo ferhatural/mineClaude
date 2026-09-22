@@ -31,16 +31,20 @@ let nextId = 1;
 //
 // Windows'ta /bin/zsh yok: SHELL degiskeni de tanimli olmuyor, o yuzden
 // bu dal hep sabit '/bin/zsh'e dusup node-pty'ye "File not found" hatasi
-// attiriyordu. Orada PowerShell'i varsayilan aliyoruz (her Windows'ta hazir),
-// COMSPEC tanimliysa onu kullaniyoruz.
+// attiriyordu. Orada PowerShell'i varsayilan aliyoruz (her Windows'ta hazir).
 function loginShell() {
   if (process.platform === 'win32') {
     // powershell.exe her Windows'ta hazir gelir ve PATH'tedir; kullanicinin
     // $PROFILE'ini (alias, PATH eklemeleri) POSIX login shell'in .zshrc'si
     // gibi kendisi yukluyor. Eskiden buraya da /bin/zsh dusuyordu — node-pty
     // onu Windows'ta hic bulamiyor, terminal acma her seferinde patliyordu.
-    // COMSPEC tanimliysa (ör. kullanici cmd.exe'yi tercih ediyorsa) onu kullaniyoruz.
-    return process.env.COMSPEC || 'powershell.exe';
+    //
+    // COMSPEC'e bakmiyoruz: Windows'ta o degisken her zaman tanimli ve her
+    // zaman cmd.exe'yi gosteriyor, yani ona bakmak "varsayilan PowerShell"
+    // demenin degil "hep cmd" demenin baska bir yolu olurdu. cmd.exe yine de
+    // destekleniyor (asagidaki isPowerShell dallari) — sadece kendiliginden
+    // secilmiyor.
+    return 'powershell.exe';
   }
   const sh = process.env.SHELL || '/bin/zsh';
   try {
@@ -82,29 +86,44 @@ function childEnv() {
   return env;
 }
 
-function create({ cwd, cols, rows, command, resumeSessionId } = {}) {
+function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   if (!pty) throw new Error('node-pty yok: ' + (loadError || 'kurulu degil'));
   const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
   const shell = loginShell();
   const isWin = process.platform === 'win32';
+  const ps = isWin && isPowerShell(shell);
+
+  // Oturum kimligi kabuk komutuna giriyor: kalibina uymayani hic gecirmiyoruz.
+  // (Ag uzerinden terminal acikken -- --terminals -- bu payload disaridan geliyor.)
+  const resume = /^[A-Za-z0-9-]{6,80}$/.test(String(resumeSessionId || '')) ? resumeSessionId : null;
+
+  // Claude Code temasini ~/.claude/settings.json'dan okuyor ve renklerini 24-bit
+  // basiyor, yani xterm paletiyle ezilemiyorlar: uygulama acik temadayken onun
+  // koyu tema renkleri krem zeminde okunmuyor. --settings yalniz bu oturumu
+  // baglıyor, kullanicinin global ayarina dokunmuyoruz. Tek tirnak cmd.exe'de
+  // calismadigi icin orada kacisli cift tirnak kullaniyoruz.
+  const temaArg = !light ? ''
+    : (isWin && !ps ? ' --settings "{\\"theme\\":\\"light\\"}"' : ` --settings '{"theme":"light"}'`);
+  const claude = (extra = '') => `claude${extra}${temaArg}`;
 
   // Oturum kimligi verilmisse ona don, bulunamazsa (silinmis, hic konusulmamis)
-  // taze bir claude ac. POSIX'te `||` bunu tek satirda hallediyor; Windows'ta
-  // hazir gelen powershell.exe (5.1) `||`/`&&` bilmiyor (PowerShell 7'de var),
-  // o yuzden cikis koduna bakan bir if ile ayni seyi kuruyoruz.
-  const cmd = resumeSessionId
-    ? (isWin
-        ? `claude --resume ${resumeSessionId}; if ($LASTEXITCODE -ne 0) { claude }`
-        : `claude --resume ${resumeSessionId} || claude`)
-    : (command || 'claude');
+  // taze bir claude ac. POSIX ve cmd.exe'de `||` bunu tek satirda hallediyor;
+  // Windows'ta hazir gelen powershell.exe (5.1) `||`/`&&` bilmiyor (PowerShell
+  // 7'de var), o yuzden orada cikis koduna bakan bir if ile ayni seyi kuruyoruz.
+  const cmd = resume
+    ? (ps
+        ? `${claude(' --resume ' + resume)}; if ($LASTEXITCODE -ne 0) { ${claude()} }`
+        : `${claude(' --resume ' + resume)} || ${claude()}`)
+    : (command || claude());
 
+  // Varsayilan: claude'u calistir, o kapaninca kabuk acik kalsin. Session bitince
+  // pencerenin kapanmasi yerine elinde bir kabuk kaliyor (resume, git, ne gerekirse).
   // '-i' sart: zsh `-l -c` ile .zshrc'yi OKUMUYOR, yalniz .zprofile'i okuyor.
   // Kullanicilarin PATH eklemeleri (~/.local/bin, nvm, pyenv) genelde .zshrc'de
   // oturuyor; onsuz uygulama Finder'dan acildiginda `claude` bulunamiyor.
+  // Windows'ta kabugu acik tutan bayrak PowerShell'de -NoExit, cmd.exe'de /k.
   const args = isWin
-    ? isPowerShell(shell)
-      ? ['-NoLogo', '-NoExit', '-Command', cmd]
-      : ['/k', cmd]
+    ? (ps ? ['-NoLogo', '-NoExit', '-Command', cmd] : ['/k', cmd])
     : ['-l', '-i', '-c', `${cmd}; exec ${shell} -l`];
 
   const p = pty.spawn(shell, args, {

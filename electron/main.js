@@ -116,6 +116,7 @@ function initL() {
 const configFile = () => path.join(app.getPath('userData'), 'config.json');
 // lang: null = sistemin diline uy, 'tr'/'en' = kullanicinin Ayarlar > Dil'den sectigi zorlama.
 // theme: null = sistemin temasina uy, 'light'/'dark' = Ayarlar > Tema'dan secilen zorlama.
+// (Ayarlar mac'te uygulama menusunun, diger platformlarda ust seviye bir menunun altinda.)
 // lastTermDir: yeni terminal icin klasor secme diyalogu en son nereden secildiyse
 // orada acilsin diye — Windows'ta bu diyalog kendiliginden hatirlamiyor.
 const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null, lastTermDir: null };
@@ -523,12 +524,60 @@ function notifyThemeChanged() {
 }
 nativeTheme.on('updated', notifyThemeChanged);
 
+// Dil ve Tema her iki platformda da ayni iki alt menu; yalnizca nereye
+// asildiklari degisiyor (bkz. setAppMenu).
+function settingsSubmenu() {
+  return [
+    {
+      label: L.langMenu,
+      submenu: [
+        { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
+        { label: 'Türkçe', type: 'radio', checked: config.lang === 'tr', click: () => applyLangOverride('tr') },
+        { label: 'English', type: 'radio', checked: config.lang === 'en', click: () => applyLangOverride('en') },
+      ],
+    },
+    {
+      label: L.themeMenu,
+      submenu: [
+        { label: L.themeSystem, type: 'radio', checked: !config.theme, click: () => applyThemeOverride(null) },
+        { label: L.themeLight, type: 'radio', checked: config.theme === 'light', click: () => applyThemeOverride('light') },
+        { label: L.themeDark, type: 'radio', checked: config.theme === 'dark', click: () => applyThemeOverride('dark') },
+      ],
+    },
+  ];
+}
+
+const isMac = process.platform === 'darwin';
+
 function setAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    // appMenu (uygulama adiyla acilan ilk menu: About/Hide/Quit) sadece macOS'ta bir
-    // sey gosteriyor. Windows'ta zaten bomboş acılıyor, sadece kucuk harfli "mineclaude"
-    // yazan cirkin bir etiket olarak kalıyor — o yuzden orada hic eklemiyoruz.
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    // Uygulama adiyla acilan ilk menu yalniz macOS'ta bir sey gosteriyor; Windows'ta
+    // bomboş acilip kucuk harfli "mineclaude" etiketi olarak kaliyor, o yuzden orada
+    // hic eklemiyoruz.
+    //
+    // macOS'ta Hakkinda ve Ayarlar'in yeri burasi — sistem genelinde her uygulamada
+    // oyle, ⌘, oraya bakiyor. Windows/Linux'ta ise ayri "Ayarlar" ve "Yardim"
+    // menuleri olarak menu cubugunun sagina asiliyorlar (asagida).
+    //
+    // Rollerin etiketini mac'te biz yazmiyoruz: isletim sistemi Gizle/Servisler/Cik
+    // gibi ogeleri kendi dilinde veriyor, elle etiketlemek onlari sistemden ayirirdi.
+    ...(isMac ? [{
+      label: app.getName(),
+      submenu: [
+        { label: L.about, click: () => showAbout() },
+        { label: L.checkUpdates, click: () => checkForUpdatesManually() },
+        { type: 'separator' },
+        { label: L.settingsMenu, submenu: settingsSubmenu() },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    }] : []),
     {
       label: L.editMenu,
       submenu: [
@@ -538,7 +587,7 @@ function setAppMenu() {
         { role: 'cut', label: L.cut },
         { role: 'copy', label: L.copy },
         { role: 'paste', label: L.paste },
-        ...(process.platform === 'darwin' ? [{ role: 'pasteAndMatchStyle', label: L.pasteStyle }] : []),
+        ...(isMac ? [{ role: 'pasteAndMatchStyle', label: L.pasteStyle }] : []),
         { role: 'delete', label: L.delete },
         { type: 'separator' },
         { role: 'selectAll', label: L.selectAll },
@@ -581,41 +630,18 @@ function setAppMenu() {
         },
       ],
     },
-    {
-      label: L.settingsMenu,
-      submenu: [
-        {
-          label: L.themeMenu,
-          submenu: [
-            { label: L.themeSystem, type: 'radio', checked: !config.theme, click: () => applyThemeOverride(null) },
-            { label: L.themeLight, type: 'radio', checked: config.theme === 'light', click: () => applyThemeOverride('light') },
-            { label: L.themeDark, type: 'radio', checked: config.theme === 'dark', click: () => applyThemeOverride('dark') },
-          ],
-        },
-        {
-          label: L.langMenu,
-          submenu: [
-            { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
-            { label: 'Türkçe', type: 'radio', checked: config.lang === 'tr', click: () => applyLangOverride('tr') },
-            { label: 'English', type: 'radio', checked: config.lang === 'en', click: () => applyLangOverride('en') },
-          ],
-        },
-      ],
-    },
-    {
-      label: L.helpMenu,
-      submenu: [
-        {
-          label: L.checkUpdates,
-          click: () => checkForUpdatesManually(),
-        },
-        { type: 'separator' },
-        {
-          label: L.about,
-          click: () => showAbout(),
-        },
-      ],
-    },
+    // mac'te bu ikisi yukarida uygulama menusunun icinde.
+    ...(isMac ? [] : [
+      { label: L.settingsMenu, submenu: settingsSubmenu() },
+      {
+        label: L.helpMenu,
+        submenu: [
+          { label: L.checkUpdates, click: () => checkForUpdatesManually() },
+          { type: 'separator' },
+          { label: L.about, click: () => showAbout() },
+        ],
+      },
+    ]),
   ]));
 }
 
@@ -637,7 +663,7 @@ function showAbout() {
 
 // ---------------------------------------------------------------- otomatik guncelleme
 //
-// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (fork'un).
+// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (ferhatural/mineClaude).
 // Yeni bir surum orada yayinlandiginda (electron-builder --publish always ile)
 // buradaki her kurulu kopya acilista ve sonra periyodik olarak kontrol edip
 // indiriyor, kullaniciya sorup onay alinca yeniden baslatip kuruyor.

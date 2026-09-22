@@ -905,7 +905,11 @@ function attachTerminals(server) {
       if (m.t === 'create') {
         let info;
         try {
-          info = term.create({ cwd: m.cwd, cols: m.cols, rows: m.rows, command: m.command, resumeSessionId: m.resumeSessionId });
+          info = term.create({
+            cwd: m.cwd, cols: m.cols, rows: m.rows,
+            command: m.command, resumeSessionId: m.resumeSessionId,
+            light: !!m.light,
+          });
         } catch (e) {
           return send({ t: 'error', ref: m.ref, error: String(e.message || e) });
         }
@@ -1120,15 +1124,20 @@ function serve() {
     console.log(`\n  mineClaude calisiyor -> ${url}`);
     console.log(`  durdurmak icin Ctrl+C\n`);
     if (!hasFlag('--no-open')) {
+      // macOS'ta `open`, Linux'ta `xdg-open`, Windows'ta cmd'nin dahili `start`
+      // komutu (ayri bir exe degil, o yuzden `cmd /c` ile). start'in ilk tirnakli
+      // argumani pencere basligi sayiliyor; bos gecmezsek URL'yi baslik sanip
+      // tarayiciyi hic acmiyor.
+      const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
       try {
-        const opener =
-          process.platform === 'win32' ? 'start' : process.platform === 'linux' ? 'xdg-open' : 'open';
         const child =
           process.platform === 'win32'
             ? spawn('cmd', ['/c', 'start', '""', url], { stdio: 'ignore', detached: true, windowsHide: true })
             : spawn(opener, [url], { stdio: 'ignore', detached: true });
+        // Baslikli bir masaustu yoksa (sunucu, konteyner, ssh) xdg-open kurulu
+        // olmayabilir. Sunucu ayakta kalsin, kullanici da adresi kendi acsin.
         child.on('error', () => {
-          /* tarayici acilamadi (komut yok vb.) - sunucu yine de ayakta kalsin */
+          console.error(`  tarayici acilamadi (${opener} yok) - yukaridaki adresi elle ac`);
         });
         child.unref();
       } catch {
@@ -1262,9 +1271,109 @@ function agentStatus() {
   console.log('  log      : ' + AGENT_LOG + '\n');
 }
 
+// ---------------------------------------------------------------- gorevler (CLI)
+//
+// Gorevler zaten projenin kendi klasorunde (<cwd>/.mineclaude/tasks.json) ve
+// panel her anketinde dosyayi taze okuyor. Yani o projede calisan bir Claude
+// oturumu listeyi dogrudan yonetebilir; eksik olan tek sey elle JSON kurcalamadan
+// yazmanin yoluydu. Varsayilan klasor process.cwd(): oturum zaten proje icinde
+// oldugu icin yol vermeye gerek kalmiyor.
+
+let taskUid = 0;
+const newTaskId = () => 'n' + Date.now() + '-' + (taskUid++);
+
+function taskCwd() {
+  return path.resolve(flagValue('--cwd', process.cwd()));
+}
+
+// Claude'un id'leri aklinda tutmasi gerekmesin: metin parcasiyla da eslesiyor.
+function findTask(tasks, ref) {
+  const byId = tasks.find((t) => t.id === ref);
+  if (byId) return byId;
+  const alt = ref.toLowerCase();
+  const eslesen = tasks.filter((t) => t.text.toLowerCase().includes(alt));
+  if (eslesen.length > 1) return { belirsiz: eslesen };
+  return eslesen[0] || null;
+}
+
+function printTasks(cwd, tasks) {
+  console.log('\n  ' + projectName(cwd) + '  ' + cwd);
+  if (!tasks.length) {
+    console.log('  (gorev yok)\n');
+    return;
+  }
+  for (const t of tasks) console.log(`  ${t.done ? '[x]' : '[ ]'} ${t.text}   \x1b[2m${t.id}\x1b[0m`);
+  console.log('');
+}
+
+function taskCommand(kind, arg) {
+  const cwd = taskCwd();
+  if (!fs.existsSync(cwd)) {
+    console.error(`  klasor yok: ${cwd}`);
+    process.exitCode = 1;
+    return;
+  }
+  const tasks = notesFor(cwd);
+
+  if (kind === 'list') return printTasks(cwd, tasks);
+
+  if (!arg) {
+    console.error('  metin eksik. ornek: mineclaude --task-add "testleri yaz"');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (kind === 'add') {
+    const text = arg.trim().slice(0, 500);
+    if (!text) {
+      console.error('  bos gorev eklenmez');
+      process.exitCode = 1;
+      return;
+    }
+    tasks.push({ id: newTaskId(), text, done: false });
+    saveTasks(cwd, tasks);
+    console.log(`  + ${text}`);
+    return printTasks(cwd, tasks);
+  }
+
+  const hedef = findTask(tasks, arg);
+  if (!hedef) {
+    console.error(`  eslesen gorev yok: ${arg}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (hedef.belirsiz) {
+    console.error(`  ${hedef.belirsiz.length} gorev esletti, hangisi belli degil:`);
+    for (const t of hedef.belirsiz) console.error(`    ${t.id}  ${t.text}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (kind === 'done' || kind === 'undone') {
+    hedef.done = kind === 'done';
+    saveTasks(cwd, tasks);
+    console.log(`  ${hedef.done ? '[x]' : '[ ]'} ${hedef.text}`);
+  } else if (kind === 'rm') {
+    tasks.splice(tasks.indexOf(hedef), 1);
+    saveTasks(cwd, tasks);
+    console.log(`  - ${hedef.text}`);
+  }
+  printTasks(cwd, tasks);
+}
+
 // ---------------------------------------------------------------- giris
 
-if (hasFlag('--install')) {
+if (hasFlag('--tasks')) {
+  taskCommand('list');
+} else if (hasFlag('--task-add')) {
+  taskCommand('add', flagValue('--task-add', ''));
+} else if (hasFlag('--task-done')) {
+  taskCommand('done', flagValue('--task-done', ''));
+} else if (hasFlag('--task-undone')) {
+  taskCommand('undone', flagValue('--task-undone', ''));
+} else if (hasFlag('--task-rm')) {
+  taskCommand('rm', flagValue('--task-rm', ''));
+} else if (hasFlag('--install')) {
   installAgent();
 } else if (hasFlag('--uninstall')) {
   uninstallAgent();

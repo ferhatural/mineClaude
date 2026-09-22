@@ -118,16 +118,35 @@ function start() {
     try { localStorage.setItem(RESTORE_KEY, JSON.stringify(snap)); } catch { /* dolu olabilir */ }
   }
 
+  // xterm'in 16 rengi (ve varsayilanlari) koyu zemin icin secilmis. Acik temada
+  // ayni degerler krem uzerinde okunmuyor — ozellikle sari, cyan ve mor. O yuzden
+  // renkler CSS'te yasiyor (bkz. index.html :root) ve tema degisince buradan
+  // yeniden okunuyor. Koyu temada palet hic gonderilmiyor: xterm'in kendi
+  // varsayilanlari zaten dogru, dokunmak gorunumu bosuna degistirirdi.
+  const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+    'brightBlack', 'brightRed', 'brightGreen', 'brightYellow',
+    'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'];
+
+  const cssVar = (n, d) => (getComputedStyle(document.body).getPropertyValue(n) || d).trim();
+
   const theme = () => {
     const cs = getComputedStyle(document.body);
     const v = (n, d) => (cs.getPropertyValue(n) || d).trim();
-    return {
-      background: v('--panel', '#16191e'),
-      foreground: v('--text', '#e7eaef'),
+    const t = {
+      background: v('--term-bg', '#16191e'),
+      foreground: v('--term-fg', '#e7eaef'),
       cursor: v('--idle', '#5b9cf0'),
-      selectionBackground: 'rgba(91,156,240,.30)',
+      selectionBackground: v('--term-sel', 'rgba(91,156,240,.30)'),
     };
+    if (v('--term-light', '')) ANSI.forEach((ad, i) => { t[ad] = v('--t' + i, ''); });
+    return t;
   };
+
+  // Claude Code renklerini 24-bit basiyor (pty.js COLORTERM=truecolor), yani
+  // paletle ezilemiyorlar: koyu tema icin secilmis soluk mor/mavi vurgular krem
+  // zeminde okunmuyor. xterm bu oranin altinda kalan her on plan rengini zemine
+  // gore koyulastiriyor — acik temayi okunur yapan sey bu. Koyu temada 1 (kapali).
+  const minContrast = () => parseFloat(cssVar('--term-min-contrast', '1')) || 1;
 
   function mount(container, translate) {
     if (translate) T2 = translate;
@@ -424,9 +443,11 @@ function start() {
   async function open(cwd, command, resumeSessionId) {
     if (!panes) return;
     // Ayni klasorde ikinci bir terminal (ikinci bir Claude sureci) ayni dosyalari
-    // ayni anda degistirmeye kalkabilir. Ozel bir komut istenmediyse (resume gibi)
-    // ve o klasor icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
-    if (!command) {
+    // ayni anda degistirmeye kalkabilir. Ozel bir sey istenmediyse ve o klasor
+    // icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
+    // Resume bunun disinda: belirli bir konusmaya donmek istenmis, mevcut
+    // sekmeye atlamak o istegi sessizce yutardi.
+    if (!command && !resumeSessionId) {
       const existing = tabs.find((t) => t.cwd === cwd && !t.dead);
       if (existing) { select(existing); return; }
     }
@@ -442,6 +463,7 @@ function start() {
       scrollback: 10000,
       allowProposedApi: true,
       theme: theme(),
+      minimumContrastRatio: minContrast(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -452,7 +474,12 @@ function start() {
 
     let info;
     try {
-      info = await T.create({ cwd, cols: term.cols, rows: term.rows, command, resumeSessionId });
+      // light: acik temada pty.js claude'u --settings '{"theme":"light"}' ile
+      // aciyor, yoksa Claude Code koyu tema renklerini krem zemine basiyor.
+      info = await T.create({
+        cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
+        light: !!cssVar('--term-light', ''),
+      });
     } catch (e) {
       term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
       return;
@@ -542,6 +569,7 @@ function start() {
       const altta = b.viewportY >= b.baseY;
       t.fit.fit();
       if (altta) t.term.scrollToBottom();
+      // Hakan'in olcu onbellegi (bkz. yukaridaki erken cikis) + bizim transport.
       t._fitW = t.el.clientWidth;
       t._fitH = t.el.clientHeight;
       T.resize(t.id, t.term.cols, t.term.rows);
@@ -617,7 +645,14 @@ function start() {
     setLayout,
     setTasksOpen: (v) => { tasksOpen = !!v; if (strip) drawStrip(); },
     fit: fitAll,
-    retheme: () => { for (const t of tabs) t.term.options.theme = theme(); },
+    retheme: () => {
+      // Sira onemli: kontrast orani on plan renklerini zemine gore hesapliyor,
+      // o yuzden once yeni zemin/palet girsin.
+      for (const t of tabs) {
+        t.term.options.theme = theme();
+        t.term.options.minimumContrastRatio = minContrast();
+      }
+    },
   };
   window.dispatchEvent(new Event('mterm-ready'));
 }

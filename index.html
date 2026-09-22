@@ -20,12 +20,37 @@
     --text:#e7eaef; --dim:#9aa3b0; --faint:#6b7482;
     --wait:#f2b53b; --busy:#41c46a; --idle:#5b9cf0; --unknown:#8b93a1; --ended:#5c636e;
     --radius:14px; --gtc:repeat(auto-fill,minmax(min(340px,100%),1fr));
+    /* Terminal kendi degiskenlerini kullaniyor: panel rengiyle ayni olmasi
+       gerekmiyor (bkz. term.js theme()). Koyu temada xterm'in kendi 16 rengine
+       hic dokunmuyoruz, cunku onlar zaten koyu zemin icin secilmis. */
+    --term-bg:#16191e; --term-fg:#e7eaef; --term-sel:rgba(91,156,240,.30);
+    --term-min-contrast:1;
   }
   @media (prefers-color-scheme: light){
     :root{
       --bg:#f4f5f7; --panel:#ffffff; --panel2:#f8f9fb; --line:#e3e6eb;
       --text:#171a1f; --dim:#5c6472; --faint:#8b94a3;
       --wait:#c8880c; --busy:#1c9c4b; --idle:#2a6fd4; --unknown:#7b838f; --ended:#98a0ac;
+      /* Terminal zemini bembeyaz degil krem: uzun okumada beyaz parlamasi
+         yoruyor. Yazi da saf siyah degil sicak koyu gri — ayrica ters video
+         (SGR 7) zemin olarak bunu kullandigi icin "siyah blok" yerine yumusak
+         koyu bir blok cikiyor. */
+      --term-bg:#fbf7ee; --term-fg:#33302a; --term-sel:rgba(42,111,212,.20);
+      /* Bu bayrak varsa term.js asagidaki paleti xterm'e geciriyor. */
+      --term-light:1;
+      /* xterm fg renklerini zemine gore otomatik koyulastiriyor. Claude Code
+         renklerini 24-bit basiyor (COLORTERM=truecolor), yani paletle
+         ezilemiyorlar; koyu tema icin secilmis soluk mor/mavi vurgular krem
+         zeminde ancak bu sekilde okunur hale geliyor. */
+      --term-min-contrast:4.5;
+      /* Acik zemin paleti: sari/mor/cyan koyu tema degerleriyle okunmuyor,
+         hepsi krem uzerinde en az 4.5:1 olacak sekilde koyulastirildi.
+         15 (parlak beyaz) acik temada neredeyse siyah olmali: koyu temada
+         vurgu icin kullanilan renk burada zemine karisirdi. */
+      --t0:#2b2620;  --t1:#b02a37; --t2:#2e7d32; --t3:#8a6d0f;
+      --t4:#1f5fbf;  --t5:#8b3fa8; --t6:#0f6f76; --t7:#5c5750;
+      --t8:#776f65;  --t9:#c0392b; --t10:#1e6f24; --t11:#7a5c00;
+      --t12:#1552a8; --t13:#7a2f96; --t14:#0b5f66; --t15:#35302a;
     }
   }
   *{box-sizing:border-box}
@@ -191,8 +216,10 @@
   @media (max-width:900px){ .term-tasks{display:none} }
 
   /* gomulu terminaller */
+  /* Zemin --term-bg: pane'in ic bosluğu xterm tuvalinin rengiyle ayni olsun,
+     yoksa krem terminalin etrafinda beyaz bir cerceve kaliyor. */
   .tm-host{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;
-    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+    background:var(--term-bg);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
   .tm-strip{display:flex;align-items:stretch;gap:2px;padding:6px 6px 0;flex-wrap:wrap;
     border-bottom:1px solid var(--line);background:var(--panel2)}
   /* Durum, dip yerine tabin ustundeki renkli seritte: nokta kucuk kaliyordu, bu daha net */
@@ -1112,8 +1139,8 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!setModal.hidden){ closeSettings(); return; }
-  if(hasTerm() && view === 'term' && MTerm.findClose()) return;
   if(!allTasksModal.hidden){ closeAllTasks(); return; }
+  if(hasTerm() && view === 'term' && MTerm.findClose()) return;
   if(picked){ closePick(); }
 });
 document.addEventListener('pointerdown', (e) => {
@@ -1157,9 +1184,11 @@ function applyLang(){
   if(es && es.readyState === 1) setConn(true, T('live'));
 }
 
-// Masaustu uygulamasinda dil Pencere > Dil menusunden geliyor (Ayarlar paneli sadece
-// session'a ozel ayarlar icin, uygulama geneli bir sey barindirmiyor); sayfa bu
-// secimi izleyip kendi metnini ona gore guncelliyor.
+// Masaustu uygulamasinda dil, uygulama menusundeki Ayarlar > Dil'den geliyor
+// (mac'te mineClaude menusunun altinda, Windows/Linux'ta menu cubugundaki ayri
+// Ayarlar menusunde). Sayfadaki Ayarlar paneli yalniz bu makineye ozel tercihler
+// icin, uygulama geneli bir sey barindirmiyor; sayfa menudeki secimi izleyip
+// kendi metnini ona gore guncelliyor.
 if(window.mineClaudeDesktop){
   window.mineClaudeDesktop.lang.get().then(l => {
     if((l === 'tr' || l === 'en') && l !== lang){
@@ -1333,7 +1362,9 @@ function wireActions(root){
     // ayni seye mouse'la ulasmanin gorsel yolu.
     b.onclick = (e) => {
       if(b.dataset.termSession && !e.shiftKey){
-        goTerm(); MTerm.open(b.dataset.termCwd, `claude --resume ${b.dataset.termSession} || claude`);
+        // Komutu burada kurmuyoruz: claude'un nasil cagrildigina (platform farki,
+        // acik temada --settings) tek yerden pty.js karar veriyor.
+        goTerm(); MTerm.open(b.dataset.termCwd, undefined, b.dataset.termSession);
       } else openBlank();
     };
   });

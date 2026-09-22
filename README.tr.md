@@ -22,6 +22,29 @@ node server.js --json     # ham JSON (script'lemek için)
 node server.js --port 7799 --no-open
 ```
 
+### Komut satırından görevler
+
+Bir projenin görev listesi `<proje>/.mineclaude/tasks.json` dosyasında duruyor ve panel
+her anketinde dosyayı yeniden okuyor — yani dosyayı değiştiren her şey bir saniye içinde
+panele düşüyor, yeniden başlatmaya gerek yok. O projede çalışan Claude oturumu da dahil:
+
+```bash
+mineclaude --tasks                       # bu klasörün görevleri
+mineclaude --task-add "testleri yaz"     # ekle
+mineclaude --task-done "testleri"        # işaretle (id ya da metnin bir parçası)
+mineclaude --task-undone "testleri"      # işareti kaldır
+mineclaude --task-rm "testleri"          # sil
+mineclaude --tasks --cwd ~/kod/baska     # başka bir proje
+```
+
+Klasör varsayılan olarak içinde bulunduğun klasör, yani zaten projenin içindeki bir
+oturumun yol vermesi gerekmiyor. Metin parçası birden fazla görevle eşleşirse komut
+tahmin etmiyor, adayları listeleyip duruyor.
+
+Buradaki `mineclaude`, `package.json`'daki `bin` — depoda `npm link` ile (ya da global
+kurulumla) geliyor. O yoksa script'i yoluyla çağır:
+`node /yol/mineClaude/server.js --task-add "…"`.
+
 İstersen her yerden çağırmak için:
 
 ```bash
@@ -158,6 +181,23 @@ yüklemeyi öneriyor, tarayıcının sekmeleri geri açmayı önermesi gibi: kla
 senin yerine beş Claude oturumu başlatmıyor. Geri yükleme o sekmede koşan oturum için
 `claude --resume` çalıştırıyor; oturum artık yoksa aynı klasörde taze bir `claude` açıyor.
 `claude --resume` ile kaldığın yerden devam edilir.
+
+### Açık tema
+
+Açık modda terminalin zemini beyaz değil krem (`#fbf7ee`), yazı da siyah değil sıcak koyu gri:
+beyaz sayfa uzun okumada yoruyor, ayrıca ters video (`SGR 7`) zemin olarak ön plan rengini
+kullandığı için yazıyı yumuşatmak "siyah blok üzeri beyaz yazı"yı da bakılabilir hale getiriyor.
+On altı ANSI rengi açık tema için ayrı bir palete geçiyor, çünkü varsayılanlar koyu zemin için
+seçilmiş: krem üzerinde ilk okunmaz olanlar sarı, cyan ve mor. Paletteki her renk zemine karşı
+4.5:1'i geçiyor. Koyu temaya dokunulmadı — orada palet hiç gönderilmiyor, xterm kendi
+varsayılanlarıyla çalışıyor.
+
+Claude Code ayrı bir mesele. Temasını `~/.claude/settings.json`'dan okuyor ve renklerini 24-bit
+basıyor, yani hiçbir palet onları ezemiyor — `theme: "dark"` ile soluk mor vurguları krem zeminde
+okunmuyor. İki şey bunu çözüyor: açık temada xterm'in `minimumContrastRatio`'su 4.5 (bu oranın
+altına düşen her ön plan rengini koyulaştırıyor) ve uygulamanın kendi başlattığı oturumlar
+`--settings '{"theme":"light"}'` ile açılıyor. Bu bayrak yalnız o oturumu bağlıyor; global ayarın
+olduğu gibi kalıyor, kabukta elle `claude` yazdığın oturumlar da senin seçtiğin temayla açılıyor.
 
 ## Durumlar
 
