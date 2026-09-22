@@ -281,6 +281,10 @@
   .tm-tasks-btn.on{color:var(--idle)}
   .tm-tasks-btn svg{width:15px;height:15px;display:block}
   .tm-pane .xterm{height:100%}
+  /* Hizalamayi yalniz ilk sag dugme (.tm-lay) yapiyor. Buna da margin-left:auto
+     kalsaydi flex bos alani iki auto arasinda bolusturur, duzen ve gorevler
+     dugmeleri seridin ortasinda asili kalirdi. */
+  .tm-findbtn{margin-left:0}
   .tm-findbtn.on{color:var(--idle)}
   /* Arama cubugu: seridin hemen altinda, terminalin ustune biner (yerlesimden
      yukseklik yemesin). Sayac 3/17; eslesme yoksa kutu kizarir. */
