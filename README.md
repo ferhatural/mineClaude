@@ -48,6 +48,25 @@ node server.js --json     # raw JSON, for scripting
 node server.js --port 7799 --no-open
 ```
 
+### Tasks from the command line
+
+A project's task list lives in `<project>/.mineclaude/tasks.json`, and the dashboard
+re-reads it on every poll — so anything that edits the file shows up within a second,
+with no restart. That includes the Claude session working in that project:
+
+```bash
+mineclaude --tasks                      # list this folder's tasks
+mineclaude --task-add "write the tests" # add one
+mineclaude --task-done "tests"          # tick it off (id or a piece of the text)
+mineclaude --task-undone "tests"        # untick
+mineclaude --task-rm "tests"            # remove
+mineclaude --tasks --cwd ~/code/other   # another project
+```
+
+The folder defaults to the current one, so a session already sitting in the project
+needs no path. If a text fragment matches more than one task the command stops and
+lists the candidates instead of guessing.
+
 To call it from anywhere:
 
 ```bash

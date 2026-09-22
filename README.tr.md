@@ -22,6 +22,25 @@ node server.js --json     # ham JSON (script'lemek için)
 node server.js --port 7799 --no-open
 ```
 
+### Komut satırından görevler
+
+Bir projenin görev listesi `<proje>/.mineclaude/tasks.json` dosyasında duruyor ve panel
+her anketinde dosyayı yeniden okuyor — yani dosyayı değiştiren her şey bir saniye içinde
+panele düşüyor, yeniden başlatmaya gerek yok. O projede çalışan Claude oturumu da dahil:
+
+```bash
+mineclaude --tasks                       # bu klasörün görevleri
+mineclaude --task-add "testleri yaz"     # ekle
+mineclaude --task-done "testleri"        # işaretle (id ya da metnin bir parçası)
+mineclaude --task-undone "testleri"      # işareti kaldır
+mineclaude --task-rm "testleri"          # sil
+mineclaude --tasks --cwd ~/kod/baska     # başka bir proje
+```
+
+Klasör varsayılan olarak içinde bulunduğun klasör, yani zaten projenin içindeki bir
+oturumun yol vermesi gerekmiyor. Metin parçası birden fazla görevle eşleşirse komut
+tahmin etmiyor, adayları listeleyip duruyor.
+
 İstersen her yerden çağırmak için:
 
 ```bash

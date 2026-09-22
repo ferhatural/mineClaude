@@ -114,16 +114,35 @@ function start() {
     try { localStorage.setItem(RESTORE_KEY, JSON.stringify(snap)); } catch { /* dolu olabilir */ }
   }
 
+  // xterm'in 16 rengi (ve varsayilanlari) koyu zemin icin secilmis. Acik temada
+  // ayni degerler krem uzerinde okunmuyor — ozellikle sari, cyan ve mor. O yuzden
+  // renkler CSS'te yasiyor (bkz. index.html :root) ve tema degisince buradan
+  // yeniden okunuyor. Koyu temada palet hic gonderilmiyor: xterm'in kendi
+  // varsayilanlari zaten dogru, dokunmak gorunumu bosuna degistirirdi.
+  const ANSI = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+    'brightBlack', 'brightRed', 'brightGreen', 'brightYellow',
+    'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'];
+
+  const cssVar = (n, d) => (getComputedStyle(document.body).getPropertyValue(n) || d).trim();
+
   const theme = () => {
     const cs = getComputedStyle(document.body);
     const v = (n, d) => (cs.getPropertyValue(n) || d).trim();
-    return {
-      background: v('--panel', '#16191e'),
-      foreground: v('--text', '#e7eaef'),
+    const t = {
+      background: v('--term-bg', '#16191e'),
+      foreground: v('--term-fg', '#e7eaef'),
       cursor: v('--idle', '#5b9cf0'),
-      selectionBackground: 'rgba(91,156,240,.30)',
+      selectionBackground: v('--term-sel', 'rgba(91,156,240,.30)'),
     };
+    if (v('--term-light', '')) ANSI.forEach((ad, i) => { t[ad] = v('--t' + i, ''); });
+    return t;
   };
+
+  // Claude Code renklerini 24-bit basiyor (pty.js COLORTERM=truecolor), yani
+  // paletle ezilemiyorlar: koyu tema icin secilmis soluk mor/mavi vurgular krem
+  // zeminde okunmuyor. xterm bu oranin altinda kalan her on plan rengini zemine
+  // gore koyulastiriyor — acik temayi okunur yapan sey bu. Koyu temada 1 (kapali).
+  const minContrast = () => parseFloat(cssVar('--term-min-contrast', '1')) || 1;
 
   function mount(container, translate) {
     if (translate) T2 = translate;
@@ -494,6 +513,7 @@ function start() {
       scrollback: 10000,
       allowProposedApi: true,
       theme: theme(),
+      minimumContrastRatio: minContrast(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -667,7 +687,14 @@ function start() {
     setLayout,
     setTasksOpen: (v) => { tasksOpen = !!v; if (strip) drawStrip(); },
     fit: fitAll,
-    retheme: () => { for (const t of tabs) t.term.options.theme = theme(); },
+    retheme: () => {
+      // Sira onemli: kontrast orani on plan renklerini zemine gore hesapliyor,
+      // o yuzden once yeni zemin/palet girsin.
+      for (const t of tabs) {
+        t.term.options.theme = theme();
+        t.term.options.minimumContrastRatio = minContrast();
+      }
+    },
   };
   window.dispatchEvent(new Event('mterm-ready'));
 }
