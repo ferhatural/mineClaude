@@ -663,7 +663,7 @@ function showAbout() {
 
 // ---------------------------------------------------------------- otomatik guncelleme
 //
-// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (ferhatural/mineClaude).
+// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (fork'un).
 // Yeni bir surum orada yayinlandiginda (electron-builder --publish always ile)
 // buradaki her kurulu kopya acilista ve sonra periyodik olarak kontrol edip
 // indiriyor, kullaniciya sorup onay alinca yeniden baslatip kuruyor.

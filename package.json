@@ -47,7 +47,7 @@
     "npmRebuild": false,
     "publish": {
       "provider": "github",
-      "owner": "ferhatural",
+      "owner": "hakanngok",
       "repo": "mineClaude",
       "releaseType": "release"
     },
