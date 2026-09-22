@@ -525,6 +525,100 @@ function allProjectTasks() {
   return out;
 }
 
+// ---------------------------------------------------------------- arama
+//
+// Tum konusmalarda metin arama — canli olanlar da, aylar once kapanmislar da.
+// Kartlardaki bilgi transcript'in yalnizca son parcasindan okunuyor (parseTail);
+// burada dosyanin tamamina bakmak gerekiyor.
+//
+// Maliyet: ~370 MB / 120 dosya. Her satiri JSON'a cevirmek pahali oldugu icin
+// once dosyanin tamaminda, sonra satirda ucuz bir test yapiyoruz; JSON.parse
+// yalnizca gercekten eslesen satirlar icin calisiyor.
+//
+// Test buyuk/kucuk harf duyarsiz regex ile, toLowerCase() ile degil: olculdu,
+// tum dizinde toLowerCase 2.7sn, /i regex 0.44sn (kopya ayirmadigi icin).
+// latin1 ile okumak 0.09sn'ye iniyor ama Turkce sorguyu tamamen kaciriyor
+// ("güncelleme" -> 0 sonuc), o yuzden utf8'de kaliyoruz.
+
+const SEARCH_MAX_PER_SESSION = 3;   // tek bir uzun konusma sonuclari doldurmasin
+const SEARCH_SNIPPET = 160;
+
+// Bir transcript satirindan okunabilir metni cikar. Icerik bazen duz dize,
+// bazen blok dizisi; tool ciktilarini disarida birakiyoruz, aramada ise
+// yarayan sey konusmanin kendisi.
+function messageText(d) {
+  const m = d && d.message;
+  if (!m) return null;
+  if (typeof m.content === 'string') return m.content;
+  if (!Array.isArray(m.content)) return null;
+  const parcalar = [];
+  for (const c of m.content) {
+    if (c && c.type === 'text' && c.text) parcalar.push(c.text);
+  }
+  return parcalar.length ? parcalar.join('\n') : null;
+}
+
+// Sorgu duz metin, desen degil: kullanici "fiyat (TL)" yazinca regex patlamasin.
+const regexKacis = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function snippetAround(text, re) {
+  const i = text.search(re);
+  if (i === -1) return plainText(text, SEARCH_SNIPPET);
+  const bas = Math.max(0, i - Math.floor(SEARCH_SNIPPET / 3));
+  const kesit = text.slice(bas, bas + SEARCH_SNIPPET);
+  return (bas > 0 ? '…' : '') + plainText(kesit, SEARCH_SNIPPET) + (bas + SEARCH_SNIPPET < text.length ? '…' : '');
+}
+
+function searchTranscripts(q, limit = 60) {
+  const needle = String(q || '').trim();
+  const sonuc = { q: needle, results: [], files: 0, hitFiles: 0, truncated: false };
+  if (needle.length < 2) return sonuc;
+
+  let re;
+  try { re = new RegExp(regexKacis(needle), 'i'); } catch { return sonuc; }
+
+  const idx = transcriptIndex();
+  for (const rec of idx.all) {          // idx.all mtime'a gore sirali: yeni konusmalar once
+    if (sonuc.results.length >= limit) { sonuc.truncated = true; break; }
+    let ham;
+    try { ham = fs.readFileSync(rec.file, 'utf8'); } catch { continue; }
+    sonuc.files++;
+    if (!re.test(ham)) continue;
+    sonuc.hitFiles++;
+
+    let cwd = null, baslik = null, bulundu = 0;
+    for (const line of ham.split('\n')) {
+      if (!line.startsWith('{')) continue;
+      // Dosyada eslesme var ama bu satirda yoksa parse etmeye degmez. cwd ve
+      // basligi yine de toplamak gerekiyor, onlar ayri (ucuz) satirlarda.
+      const satirdaVar = re.test(line);
+      if (!satirdaVar && cwd && baslik) continue;
+      let d;
+      try { d = JSON.parse(line); } catch { continue; }
+      if (d.cwd) cwd = d.cwd;
+      if (d.type === 'ai-title' && d.aiTitle) baslik = d.aiTitle;
+      if (!satirdaVar) continue;
+      if (d.type !== 'user' && d.type !== 'assistant') continue;
+      if (bulundu >= SEARCH_MAX_PER_SESSION) continue;
+
+      const text = messageText(d);
+      if (!text || !re.test(text)) continue;   // eslesme arac ciktisinda ya da ust verideymis
+      bulundu++;
+      sonuc.results.push({
+        sessionId: rec.sessionId,
+        project: cwd ? projectName(cwd) : rec.projectDir,
+        cwd,
+        title: baslik,
+        role: d.type,
+        at: d.timestamp ? Date.parse(d.timestamp) : rec.mtime,
+        snippet: snippetAround(text, re),
+      });
+    }
+  }
+  sonuc.results.sort((a, b) => b.at - a.at);
+  return sonuc;
+}
+
 // ---------------------------------------------------------------- toplayici
 
 function collect() {
@@ -890,6 +984,14 @@ function serve() {
       }
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       res.end(JSON.stringify({ enabled: TERMINALS, terminals: list }));
+      return;
+    }
+
+    if (url === '/api/search') {
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const limit = Math.min(200, Math.max(1, parseInt(sp.get('limit'), 10) || 60));
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(searchTranscripts(sp.get('q') || '', limit)));
       return;
     }
 
