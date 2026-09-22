@@ -41,6 +41,10 @@ Klasör varsayılan olarak içinde bulunduğun klasör, yani zaten projenin içi
 oturumun yol vermesi gerekmiyor. Metin parçası birden fazla görevle eşleşirse komut
 tahmin etmiyor, adayları listeleyip duruyor.
 
+Buradaki `mineclaude`, `package.json`'daki `bin` — depoda `npm link` ile (ya da global
+kurulumla) geliyor. O yoksa script'i yoluyla çağır:
+`node /yol/mineClaude/server.js --task-add "…"`.
+
 İstersen her yerden çağırmak için:
 
 ```bash

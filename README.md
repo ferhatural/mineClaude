@@ -67,6 +67,10 @@ The folder defaults to the current one, so a session already sitting in the proj
 needs no path. If a text fragment matches more than one task the command stops and
 lists the candidates instead of guessing.
 
+`mineclaude` here is the `bin` from `package.json`; you get it with `npm link` in the
+repo (or a global install). Without that, call the script by path —
+`node /path/to/mineClaude/server.js --task-add "…"`.
+
 To call it from anywhere:
 
 ```bash
