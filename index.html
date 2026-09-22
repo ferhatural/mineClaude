@@ -332,8 +332,13 @@
     border:1px solid var(--line);border-radius:9px;padding:8px 11px;outline:none}
   .tm-picker input:focus{border-color:var(--idle)}
   .tm-picker-list{display:flex;flex-direction:column;gap:2px;max-height:42vh;overflow:auto}
+  /* flex:none sart — liste sabit yukseklikli bir flex sutun. Onsuz cok sayida
+     klasorde (40+ proje) dugmeler flex-shrink ile iceriginin altina eziliyor ve
+     satirlar dikeyde birbirine giriyor. Masaustunde ekran yuksek oldugu icin
+     gorunmuyor, tablette hemen ciriyor. */
   .tm-picker-list button{font:inherit;font-size:12px;text-align:left;color:var(--dim);
-    background:none;border:0;border-radius:7px;padding:6px 9px;cursor:pointer;
+    background:none;border:0;border-radius:7px;padding:6px 9px;cursor:pointer;flex:none;
+    min-height:34px;line-height:1.5;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tm-picker-list button:hover{background:var(--panel2);color:var(--text)}
   .tm-picker-foot{display:flex;gap:8px;justify-content:flex-end}

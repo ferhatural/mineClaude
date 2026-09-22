@@ -86,9 +86,23 @@ function childEnv() {
   return env;
 }
 
+// Elle yol yazilan tek yer tarayicidaki klasor secici (Electron'da isletim
+// sisteminin secicisi var, oradan hep mutlak yol geliyor). Kullanici orada
+// dogal olarak "~/Projects/x" yaziyor, ama tilde'yi kabuk genisletiyor —
+// fs bilmiyor. Genisletmeden existsSync false donuyordu ve asagidaki geri
+// dusus sessizce ev dizininde terminal aciyordu: istedigin klasor yerine
+// kendini home'da buluyordun.
+function expandHome(p) {
+  const s = String(p || '').trim();
+  if (s === '~') return os.homedir();
+  if (s.startsWith('~/')) return path.join(os.homedir(), s.slice(2));
+  return s;
+}
+
 function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   if (!pty) throw new Error('node-pty yok: ' + (loadError || 'kurulu degil'));
-  const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
+  const istenen = expandHome(cwd);
+  const dir = istenen && fs.existsSync(istenen) ? istenen : os.homedir();
   const shell = loginShell();
   const isWin = process.platform === 'win32';
   const ps = isWin && isPowerShell(shell);
