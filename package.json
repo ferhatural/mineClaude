@@ -1,6 +1,6 @@
 {
   "name": "mineclaude",
-  "version": "1.2.9",
+  "version": "1.3.1",
   "description": "Local dashboard for every Claude Code CLI session on your machine, as a Minecraft-ish office: who is working, who is idle, and who is waiting for your input",
   "type": "commonjs",
   "license": "MIT",
@@ -30,6 +30,10 @@
     "watch": "node server.js --watch",
     "app": "electron .",
     "app:build": "electron-builder --mac",
+    "app:build:win": "electron-builder --win",
+    "app:publish:win": "electron-builder --win --publish always",
+    "app:build:linux": "electron-builder --linux",
+    "app:publish:linux": "electron-builder --linux --publish always",
     "tray-icons": "node electron/make-tray-icons.js"
   },
   "devDependencies": {
@@ -40,6 +44,12 @@
     "appId": "com.github.ferhatural.mineclaude",
     "productName": "mineClaude",
     "asar": false,
+    "npmRebuild": false,
+    "publish": {
+      "provider": "github",
+      "owner": "ferhatural",
+      "repo": "mineClaude"
+    },
     "directories": {
       "output": "dist",
       "buildResources": "icons"
@@ -82,6 +92,37 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "icon": "icons/icon-512.png",
+      "synopsis": "Claude Code CLI oturumlari icin masaustu paneli",
+      "syncDesktopName": true
     }
   },
   "optionalDependencies": {
@@ -91,5 +132,8 @@
   "allowScripts": {
     "node-pty@1.1.0": true,
     "electron-winstaller": false
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

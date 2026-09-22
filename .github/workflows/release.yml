@@ -1,11 +1,25 @@
 name: release
 
-# Bir surum etiketi push edilince macOS DMG'lerini uretip Release'e ekler.
+# Bir surum etiketi push edilince macOS DMG, Windows NSIS kurulumcusu ve Linux
+# AppImage'ini uretip ayni Release'e ekler.
 #
 #   npm version 1.1.0 && git push --follow-tags
 #
-# Imzalama yok: Apple Developer hesabi gerektiriyor. Imzasiz uygulama indirilince
-# Gatekeeper karantinaya aliyor, install.sh onu temizliyor.
+# macOS'ta imzalama yok: Apple Developer hesabi gerektiriyor. Imzasiz uygulama
+# indirilince Gatekeeper karantinaya aliyor, install.sh onu temizliyor.
+# Windows'ta da imzalama yok: indiren kisi SmartScreen uyarisini gecmek zorunda.
+#
+# Uc platform da package.json > build.publish (fork'u hedefliyor) sayesinde
+# guncelleme metadata dosyasini (latest.yml / latest-mac.yml / latest-linux.yml)
+# Release'e ekliyor — kurulu uygulamalar buradan guncelleme arıyor (bkz.
+# electron/main.js > setupAutoUpdate). Linux tarafinda sadece AppImage hedefi
+# electron-updater ile kendini guncelleyebiliyor (deb/rpm desteklenmiyor).
+#
+# Uc is de ayni etikete Release yazdigi icin once "prepare-release" tek basina
+# Release kaydini olusturuyor (veya var olani onayliyor); macOS/Windows/Linux
+# isleri ona "needs" ile bagli calisip sadece kendi dosyalarini ekliyor. Boylece
+# uc is ayni anda "bu etiket icin Release yok, ben olustureyim" yarisina girip
+# birbirini ezmiyor.
 
 on:
   push:
@@ -16,7 +30,26 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Release var mi, yoksa olustur
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release zaten var: $tag"
+          else
+            gh release create "$tag" --title "$tag" --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   macos:
+    needs: [prepare-release]
+    if: always() && (needs.prepare-release.result == 'success' || needs.prepare-release.result == 'skipped')
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v5
@@ -147,12 +180,97 @@ jobs:
         run: |
           for app in dist/mac-*/mineClaude.app; do spctl -a -vvv -t exec "$app"; done
 
-      - name: Release olustur
+      # --publish never olsa da build.publish tanimliysa electron-builder
+      # latest-mac.yml'yi dist/ icine yaziyor, sadece yuklemiyor. Once imza/
+      # Gatekeeper dogrulamasi bittigi icin burada guvenle var olan Release'e
+      # ekliyoruz — mac'i tekrar derleyip notarize etmeye gerek kalmiyor.
+      - name: Release'e ekle
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          ls -lh dist/*.dmg
-          gh release create "${GITHUB_REF#refs/tags/}" dist/*.dmg \
-            --title "${GITHUB_REF#refs/tags/}" \
-            --generate-notes
+          ls -lh dist/*.dmg dist/latest-mac.yml dist/*.blockmap
+          gh release upload "${GITHUB_REF#refs/tags/}" \
+            dist/*.dmg dist/latest-mac.yml dist/*.blockmap \
+            --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows:
+    needs: [prepare-release]
+    if: always() && (needs.prepare-release.result == 'success' || needs.prepare-release.result == 'skipped')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Etiket ve surum ayni mi
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "etiket v$tag ile package.json surumu $pkg ayni degil" >&2
+            exit 1
+          fi
+
+      - run: npm ci
+
+      # electron-builder burada hem NSIS kurulumcuyu uretiyor hem de --publish always
+      # ile GitHub Release'e (package.json > build.publish, fork'un hedefliyor)
+      # dosyayi ve otomatik guncelleme icin gereken latest.yml'yi kendisi yukluyor.
+      # Imzalama sertifikasi yok: indiren kisi SmartScreen'de "Daha fazla bilgi ->
+      # yine de calistir" demek zorunda kalir, bu beklenen bir durum.
+      - name: NSIS uret ve yayinla
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sadece derle (etiketsiz calistirma)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npx electron-builder --win --publish never
+
+  linux:
+    needs: [prepare-release]
+    if: always() && (needs.prepare-release.result == 'success' || needs.prepare-release.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Etiket ve surum ayni mi
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "etiket v$tag ile package.json surumu $pkg ayni degil" >&2
+            exit 1
+          fi
+
+      # node-pty icin hazir bir linux prebuild yok (repo sadece win32/darwin
+      # tasiyor): npm ci burada node-gyp ile kaynaktan derliyor. Ubuntu runner'i
+      # gcc/make/python3 ile geldigi icin ekstra bir sey kurmaya gerek yok.
+      # node-pty N-API kullandigi icin (ABI surumden bagimsiz) bu ikili
+      # Electron icinde de sorunsuz calisiyor, npmRebuild:false yeterli.
+      - run: npm ci
+
+      # Sadece AppImage hedefi electron-updater ile kendini guncelleyebiliyor;
+      # deb/rpm icin boyle bir mekanizma yok, o yuzden baska hedef eklemiyoruz.
+      - name: AppImage uret ve yayinla
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx electron-builder --linux AppImage --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sadece derle (etiketsiz calistirma)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npx electron-builder --linux AppImage --publish never

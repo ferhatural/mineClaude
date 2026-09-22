@@ -8,12 +8,14 @@
 //
 // Dock'ta ikon yok (LSUIElement). Cikis tray menusunden ya da Cmd+Q ile.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen, dialog, nativeTheme } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain, screen, dialog, nativeTheme, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const net = require('net');
 const http = require('http');
 const { spawn, execFile } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 const term = require('../pty');
 
 const ROOT = path.join(__dirname, '..');
@@ -93,6 +95,12 @@ function initL() {
   qMessage:  (n) => (TR
     ? `${n} terminal açık — hepsi kapanacak`
     : `${n} terminal${n > 1 ? 's are' : ' is'} open — all of them will close`),
+  updateTitle:   TR ? 'Güncelleme hazır'      : 'Update ready',
+  updateMessage: (v) => (TR
+    ? `mineClaude ${v} indirildi. Şimdi yeniden başlatıp kurulsun mu?`
+    : `mineClaude ${v} has been downloaded. Restart now to install it?`),
+  updateRestart: TR ? 'Şimdi yeniden başlat'  : 'Restart now',
+  updateLater:   TR ? 'Sonra'                 : 'Later',
   };
 }
 
@@ -102,7 +110,9 @@ const configFile = () => path.join(app.getPath('userData'), 'config.json');
 // lang: null = sistemin diline uy, 'tr'/'en' = kullanicinin Ayarlar > Dil'den sectigi zorlama.
 // theme: null = sistemin temasina uy, 'light'/'dark' = Ayarlar > Tema'dan secilen zorlama.
 // (Ayarlar mac'te uygulama menusunun, diger platformlarda ust seviye bir menunun altinda.)
-const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null };
+// lastTermDir: yeni terminal icin klasor secme diyalogu en son nereden secildiyse
+// orada acilsin diye — Windows'ta bu diyalog kendiliginden hatirlamiyor.
+const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null, lastTermDir: null };
 
 function loadConfig() {
   try {
@@ -482,6 +492,15 @@ function applyThemeOverride(newTheme) {
   setAppMenu();
 }
 
+// Sayfa nativeTheme degisince prefers-color-scheme uzerinden kendi renklerini
+// otomatik guncelliyor, ama terminal (xterm) renkleri acilista bir kere
+// okunup sabitleniyor — tema degisince sayfaya haber verip xterm'i de
+// yeniden boyatmasini istiyoruz (bkz. index.html: MTerm.retheme()).
+function notifyThemeChanged() {
+  if (win && !win.isDestroyed()) win.webContents.send('mineclaude:theme-changed');
+}
+nativeTheme.on('updated', notifyThemeChanged);
+
 // Dil ve Tema her iki platformda da ayni iki alt menu; yalnizca nereye
 // asildiklari degisiyor (bkz. setAppMenu).
 function settingsSubmenu() {
@@ -611,6 +630,36 @@ function showAbout() {
   });
 }
 
+// ---------------------------------------------------------------- otomatik guncelleme
+//
+// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (ferhatural/mineClaude).
+// Yeni bir surum orada yayinlandiginda (electron-builder --publish always ile)
+// buradaki her kurulu kopya acilista ve sonra periyodik olarak kontrol edip
+// indiriyor, kullaniciya sorup onay alinca yeniden baslatip kuruyor.
+function setupAutoUpdate() {
+  if (!app.isPackaged) return; // gelistirme sirasinda (npm run app) anlamsiz, hata basar
+  autoUpdater.autoDownload = true;
+  autoUpdater.on('update-downloaded', (info) => {
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: L.updateTitle,
+      message: L.updateMessage(info.version),
+      buttons: [L.updateRestart, L.updateLater],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    }).then((r) => {
+      if (r.response === 0) autoUpdater.quitAndInstall();
+    });
+  });
+  autoUpdater.on('error', (err) => {
+    console.error('[mineClaude] guncelleme kontrolu basarisiz:', err.message || err);
+  });
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, 4 * 3600e3); // uygulama uzun sure acik kalabiliyor: 4 saatte bir tekrar bak
+}
+
 // ---------------------------------------------------------------- giris
 
 if (!app.requestSingleInstanceLock()) {
@@ -632,6 +681,7 @@ if (!app.requestSingleInstanceLock()) {
     serverUrl = `http://127.0.0.1:${port}`;
     createWindow();
     showWindow(); // ilk acilista pencereyi goster; sonraki acilislar tray'den
+    setupAutoUpdate();
   });
 
   ipcMain.on('mineclaude:status', (_e, s) => setTrayStatus(s || {}));
@@ -657,8 +707,32 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle('mineclaude:get-lang', () => (config.lang === 'tr' || config.lang === 'en' ? config.lang : null));
   ipcMain.on('mineclaude:set-lang', (_e, l) => applyLangOverride(l === 'tr' || l === 'en' ? l : null, false));
   ipcMain.handle('mineclaude:pick-folder', async () => {
-    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], message: L.pickDir });
-    return r.canceled ? null : r.filePaths[0];
+    const opts = { properties: ['openDirectory'], message: L.pickDir };
+    if (config.lastTermDir) opts.defaultPath = config.lastTermDir;
+    const r = await dialog.showOpenDialog(win, opts);
+    if (r.canceled) return null;
+    // Secilen klasorun kendisini degil bir ustunu hatirliyoruz: ayni klasorde
+    // (ornegin ~/Projects) baska bir proje daha secmek isteyince oradan
+    // basliyor, secilenin icine gomulu kalmiyor.
+    config.lastTermDir = path.dirname(r.filePaths[0]);
+    saveConfig();
+    return r.filePaths[0];
+  });
+  // Gomulu terminalde Ctrl/Cmd+V: navigator.clipboard.readText() Electron'da izin
+  // istegine takilabiliyor, dogrudan native panoyu okumak her zaman calisiyor.
+  // Panoda metin yoksa (ekran goruntusu gibi bir gorsel varsa) onu gecici bir
+  // PNG dosyasina kaydedip yolunu donuyoruz — Claude Code mesajda gecen bir
+  // gorsel dosya yolunu kendisi tanıyip ekliyor.
+  ipcMain.handle('mineclaude:clipboard-read', () => {
+    const text = clipboard.readText();
+    if (text) return { text, imagePath: null };
+    const image = clipboard.readImage();
+    if (image.isEmpty()) return { text: '', imagePath: null };
+    const dir = path.join(os.tmpdir(), 'mineclaude-paste');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `paste-${Date.now()}.png`);
+    fs.writeFileSync(file, image.toPNG());
+    return { text: '', imagePath: file };
   });
 
   app.on('activate', showWindow);
