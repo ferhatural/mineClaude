@@ -86,6 +86,18 @@ function childEnv() {
   return env;
 }
 
+// Acik tema oturumu icin --settings'e verilecek JSON'u bir kere yazip yolunu
+// onbellekliyoruz: her terminal acilisinda yeniden yazmaya gerek yok, icerik
+// hic degismiyor.
+let lightSettingsPath = null;
+function lightThemeSettingsFile() {
+  if (!lightSettingsPath) {
+    lightSettingsPath = path.join(os.tmpdir(), 'mineclaude-light-theme-settings.json');
+    fs.writeFileSync(lightSettingsPath, '{"theme":"light"}');
+  }
+  return lightSettingsPath;
+}
+
 function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   if (!pty) throw new Error('node-pty yok: ' + (loadError || 'kurulu degil'));
   const dir = cwd && fs.existsSync(cwd) ? cwd : os.homedir();
@@ -100,10 +112,16 @@ function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   // Claude Code temasini ~/.claude/settings.json'dan okuyor ve renklerini 24-bit
   // basiyor, yani xterm paletiyle ezilemiyorlar: uygulama acik temadayken onun
   // koyu tema renkleri krem zeminde okunmuyor. --settings yalniz bu oturumu
-  // baglıyor, kullanicinin global ayarina dokunmuyoruz. Tek tirnak cmd.exe'de
-  // calismadigi icin orada kacisli cift tirnak kullaniyoruz.
-  const temaArg = !light ? ''
-    : (isWin && !ps ? ' --settings "{\\"theme\\":\\"light\\"}"' : ` --settings '{"theme":"light"}'`);
+  // baglıyor, kullanicinin global ayarina dokunmuyoruz.
+  //
+  // JSON'u dogrudan komut satirina gomup kabuga gore tirnaklamaya guvenmiyoruz:
+  // PowerShell native komutlara arguman aktarirken ic ice cift tirnaklari
+  // bozuyor (bkz. PowerShell/PowerShell#1995) ve "Invalid JSON provided to
+  // --settings" hatasi veriyordu. Bunun yerine JSON'u bir dosyaya yazip
+  // --settings <dosya yolu> veriyoruz: tek kacis sorunu path'i kabuga gore
+  // tirnaklamak, ki bu her kabukta guvenilir calisiyor.
+  const q = isWin && !ps ? '"' : "'";
+  const temaArg = !light ? '' : ` --settings ${q}${lightThemeSettingsFile()}${q}`;
   const claude = (extra = '') => `claude${extra}${temaArg}`;
 
   // Oturum kimligi verilmisse ona don, bulunamazsa (silinmis, hic konusulmamis)
