@@ -51,7 +51,9 @@ function webTransport() {
 
   return {
     kind: 'web',
-    available: () => fetch('/api/terminals').then((r) => r.json()).then((d) => !!d.enabled).catch(() => false),
+    // .catch(() => false) bilerek yok: ag hatasiyla "terminaller kapali"
+    // cevabini ayirt etmek gerekiyor. Ilki gecici, ikincisi kalici.
+    available: () => fetch('/api/terminals').then((r) => r.json()).then((d) => !!d.enabled),
     create: (opt) => new Promise((resolve, reject) => {
       const ref = nextRef++;
       waiting.set(ref, { resolve, reject });
@@ -79,7 +81,20 @@ function webTransport() {
 const D = window.mineClaudeDesktop;
 const T = D && D.term ? electronTransport(D.term) : webTransport();
 
-T.available().then((ok) => { if (ok) start(); }).catch(() => {});
+// Acilista ag kopuksa bu istek basarisiz oluyordu ve terminal destegi o sayfa
+// omru boyunca kapali kaliyordu: sag ustteki terminal dugmesi hic gelmiyor,
+// baglanti geri gelse bile gelmiyor, tek care uygulamayi kapatip acmak. Tabletten
+// calisirken ag kopmasi kural, istisna degil — o yuzden vazgecmiyoruz.
+//
+// Ayrim onemli: istek REDDEDILIRSE ag sorunu, tekrar deniyoruz. FALSE donerse
+// sunucu --terminals'siz calisiyor demektir, beklemenin anlami yok.
+// start() basariyla calisinca mterm-ready olayi sayfaya haber veriyor ve
+// gorunum anahtari kendiliginde yeniden ciziliyor (bkz. index.html).
+(function yoklaVeBasla(gecikme = 2000) {
+  T.available()
+    .then((ok) => { if (ok) start(); })
+    .catch(() => setTimeout(() => yoklaVeBasla(Math.min(30000, gecikme * 1.6)), gecikme));
+})();
 
 function start() {
   const tabs = [];              // { id, cwd, title, term, fit, el, dead }
