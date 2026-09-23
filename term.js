@@ -530,12 +530,27 @@ function start() {
 
   async function open(cwd, command, resumeSessionId) {
     if (!panes) return;
-    // Ayni klasorde ikinci bir terminal (ikinci bir Claude sureci) ayni dosyalari
-    // ayni anda degistirmeye kalkabilir. Ozel bir sey istenmediyse ve o klasor
-    // icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
-    // Resume bunun disinda: belirli bir konusmaya donmek istenmis, mevcut
-    // sekmeye atlamak o istegi sessizce yutardi.
-    if (!command && !resumeSessionId) {
+    // Ikinci bir kopyayi acmamak icin iki ayri tekillestirme var:
+    //
+    // - Resume istenmisse: ayni konusma zaten bir sekmede acikSA ona geciyoruz.
+    //   Iki `claude --resume <ayni id>` sureci ayni transcript'e yazar. Sahada
+    //   boyle oldu: baglanti olduyken dugmeye ust uste dokunuldu, dokunuslar
+    //   kuyrukta bekledi, baglanti gelince hepsi birden calisti — tek
+    //   konusmadan 8 surec cikti.
+    // - Duz "burada terminal ac" istenmisse: ayni klasorde ikinci bir Claude
+    //   sureci ayni dosyalari ayni anda degistirmeye kalkabilir, o yuzden
+    //   varolan sekmeye geciyoruz.
+    //
+    // Ozel bir komut verilmisse (command) hicbirine bakmiyoruz: ne istendigini
+    // bilmiyoruz, karar cagiranin.
+    if (resumeSessionId) {
+      // Iki alana birden bakiyoruz: resumeSessionId acilista belli oluyor,
+      // t.sessionId'yi ise panel tty eslestirmesiyle sonradan yaziyor
+      // (noteSession). Hizli ust uste dokunusta ikincisi henuz dolmamis olur.
+      const ayni = tabs.find((t) => !t.dead &&
+        (t.resumeSessionId === resumeSessionId || t.sessionId === resumeSessionId));
+      if (ayni) { select(ayni); return; }
+    } else if (!command) {
       const existing = tabs.find((t) => t.cwd === cwd && !t.dead);
       if (existing) { select(existing); return; }
     }
@@ -589,7 +604,7 @@ function start() {
       return;
     }
 
-    const t = { ...info, term, fit, search, el, dead: false };
+    const t = { ...info, term, fit, search, el, dead: false, resumeSessionId: resumeSessionId || null };
     // Sayac yalniz etkin sekme icin: izgarada digerlerinden gelen sonuc ustune yazmasin
     search.onDidChangeResults((r) => { if (t === active) showCount(r); });
     // Bazi tarayicilar Ctrl+C'yi "kopyala" diye yorumlayip terminale hic vermiyor.
