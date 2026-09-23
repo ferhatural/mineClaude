@@ -23,6 +23,24 @@ function webTransport() {
   const openFns = [];
   let connecting = null;
   let tries = 0;
+  let sonMesaj = 0;
+
+  // Mobil agda kopan bir baglanti cogu zaman onclose uretmiyor: FIN/RST hic
+  // gelmedigi icin TCP yari acik kaliyor, tarayici soketi canli saniyor ve
+  // yukaridaki yeniden baglanma mantigi hic tetiklenmiyor. Sonuc: yazdigin
+  // komut gidiyor, cevabi hic gelmiyor, uygulama da sana kopuk oldugunu
+  // soylemiyor. Gercek kullanimda (5G, disarida) tam olarak bu yasandi.
+  //
+  // Bu yuzden canliligi kendimiz olcuyoruz: 10sn'de bir ping, 25sn boyunca
+  // hicbir mesaj gelmezse soketi biz kapatiyoruz. Kapaninca onclose zinciri
+  // devreye girip yeniden baglaniyor ve sekmeler yeniden eslestiriliyor
+  // (bkz. T.onReconnect).
+  const PING_MS = 10000, SESSIZLIK_MS = 25000;
+  setInterval(() => {
+    if (!ws || ws.readyState !== 1) return;
+    if (sonMesaj && Date.now() - sonMesaj > SESSIZLIK_MS) { try { ws.close(); } catch {} return; }
+    try { ws.send(JSON.stringify({ t: 'ping' })); } catch {}
+  }, PING_MS);
 
   const connect = () => {
     if (ws && ws.readyState === 1) return Promise.resolve(ws);
@@ -30,7 +48,9 @@ function webTransport() {
     connecting = new Promise((resolve, reject) => {
       ws = new WebSocket(`${proto}://${location.host}/terminals`);
       ws.onmessage = (e) => {
+        sonMesaj = Date.now();
         let m; try { m = JSON.parse(e.data); } catch { return; }
+        if (m.t === 'pong') return;          // yalniz canlilik kaniti, islenecek bir sey yok
         if (m.t === 'created' || m.t === 'attached' || m.t === 'error') {
           const w = waiting.get(m.ref);
           if (w) { waiting.delete(m.ref); m.t === 'error' ? w.reject(new Error(m.error)) : w.resolve(m); }
@@ -38,11 +58,12 @@ function webTransport() {
         else if (m.t === 'exit') for (const f of exitFns) f({ id: m.id, code: m.code });
         else if (m.t === 'gone') for (const f of exitFns) f({ id: m.id, code: null, gone: true });
       };
-      ws.onopen = () => { connecting = null; tries++; resolve(ws); for (const f of openFns) f(); };
+      ws.onopen = () => { connecting = null; tries++; sonMesaj = Date.now(); resolve(ws); for (const f of openFns) f(); };
       ws.onerror = () => { connecting = null; reject(new Error('terminal baglantisi kurulamadi')); };
       // Tunel dusunce, tablet uyuyunca, ag degisince: PTY'ler sunucuda yasiyor,
       // tek yapmamiz gereken geri baglanip sekmeleri yeniden eslestirmek.
       ws.onclose = () => { connecting = null; setTimeout(() => connect().catch(() => {}), 1500); };
+      sonMesaj = Date.now();
     });
     return connecting;
   };

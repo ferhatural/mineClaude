@@ -866,13 +866,34 @@ function attachTerminals(server) {
   }
 
   const wss = new WebSocketServer({ server, path: '/terminals' });
+
+  // Olu soketleri toplamak: istemci kaybolunca (tablet uykuya daldi, ag gitti)
+  // TCP yari acik kalabiliyor ve sunucu PTY ciktisini bosluga yazmaya devam
+  // ediyor. Protokol seviyesinde ping atip cevap vermeyeni dusuruyoruz.
+  const OLCUM_MS = 30000;
+  const canli = new WeakSet();
+  const kalpAtisi = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (!canli.has(ws)) { ws.terminate(); continue; }
+      canli.delete(ws);
+      try { ws.ping(); } catch { /* zaten kapanmis */ }
+    }
+  }, OLCUM_MS);
+  wss.on('close', () => clearInterval(kalpAtisi));
+
   wss.on('connection', (ws) => {
+    canli.add(ws);
+    ws.on('pong', () => canli.add(ws));
     const mine = new Set();
     const send = (m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
 
     ws.on('message', (raw) => {
       let m;
       try { m = JSON.parse(raw); } catch { return; }
+      // Istemci 10sn'de bir yokluyor; cevap gelmezse soketi kendisi kapatip
+      // yeniden bagliyor (bkz. term.js). Mobil agda kopan baglanti cogu zaman
+      // onclose uretmedigi icin bu tek canlilik kaniti.
+      if (m.t === 'ping') return send({ t: 'pong' });
       if (m.t === 'create') {
         let info;
         try {
