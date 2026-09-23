@@ -29,8 +29,7 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   setCloseIntercept: (on) => ipcRenderer.send('mineclaude:close-intercept', !!on),
   onCloseTerminal: (fn) => ipcRenderer.on('mineclaude:close-terminal', () => fn()),
 
-  // Menudeki Ayarlar > Dil ile sayfanin metni ayni ayari paylasiyor: tek kaynak
-  // main surec (config.json), sayfa da onChange ile pesinden geliyor.
+  // Ayarlar > Dil ile Pencere > Dil ayni ayari paylasiyor: main surec tek kaynak.
   lang: {
     get: () => ipcRenderer.invoke('mineclaude:get-lang'),
     set: (l) => ipcRenderer.send('mineclaude:set-lang', l),

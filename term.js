@@ -474,8 +474,8 @@ function start() {
 
     let info;
     try {
-      // light: acik temada pty.js claude'u --settings '{"theme":"light"}' ile
-      // aciyor, yoksa Claude Code koyu tema renklerini krem zemine basiyor.
+      // light: acik temada pty.js claude'u --settings ile aciyor, yoksa
+      // Claude Code koyu tema renklerini krem zemine basiyor.
       info = await T.create({
         cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
         light: !!cssVar('--term-light', ''),
@@ -645,9 +645,14 @@ function start() {
     setLayout,
     setTasksOpen: (v) => { tasksOpen = !!v; if (strip) drawStrip(); },
     fit: fitAll,
+    // Tema degisince sadece YENI yazilan icerik dogru renklenir. Ekranda
+    // zaten duran metni terminali sifirlayip yeniden yazarak duzeltmeyi
+    // denedik: gorunumu duzeltiyor ama xterm'in tamponuyla gercek surecin
+    // (kabuk/claude) kendi imlec/mod takibi birbirinden kopuyor — ardindan
+    // yazilan karakterler yanlis yerde beliriyor (denendi, dogrulandi, hem
+    // duz kabukta hem tam ekranda). Bu yuzden burada sadece ayarlari
+    // guncelliyoruz; ekranda halihazirda duran metin eski renginde kalir.
     retheme: () => {
-      // Sira onemli: kontrast orani on plan renklerini zemine gore hesapliyor,
-      // o yuzden once yeni zemin/palet girsin.
       for (const t of tabs) {
         t.term.options.theme = theme();
         t.term.options.minimumContrastRatio = minContrast();

@@ -25,6 +25,7 @@
        hic dokunmuyoruz, cunku onlar zaten koyu zemin icin secilmis. */
     --term-bg:#16191e; --term-fg:#e7eaef; --term-sel:rgba(91,156,240,.30);
     --term-min-contrast:1;
+    --you-bg-mix:12%;
   }
   @media (prefers-color-scheme: light){
     :root{
@@ -43,6 +44,9 @@
          ezilemiyorlar; koyu tema icin secilmis soluk mor/mavi vurgular krem
          zeminde ancak bu sekilde okunur hale geliyor. */
       --term-min-contrast:4.5;
+      /* %12 karisim koyu zeminde belirgindi ama acik (beyaza yakin) zeminde
+         soluyordu — acik temada oraninı yukseltiyoruz. */
+      --you-bg-mix:34%;
       /* Acik zemin paleti: sari/mor/cyan koyu tema degerleriyle okunmuyor,
          hepsi krem uzerinde en az 4.5:1 olacak sekilde koyulastirildi.
          15 (parlak beyaz) acik temada neredeyse siyah olmali: koyu temada
@@ -163,7 +167,7 @@
   .pk-task .rm svg{width:13px;height:13px}
   .pk-body{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
   .pk-msg{border-left:2px solid var(--line);padding-left:11px}
-  .pk-msg.you{border-left-color:var(--idle);background:color-mix(in srgb,var(--idle) 12%,transparent);
+  .pk-msg.you{border-left-color:var(--idle);background:color-mix(in srgb,var(--idle) var(--you-bg-mix),transparent);
     border-radius:0 8px 8px 0;padding:8px 11px}
   .pk-who{font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--faint);margin-bottom:3px}
   .pk-msg.you .pk-who{color:red}
@@ -1127,8 +1131,8 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!setModal.hidden){ closeSettings(); return; }
-  if(!allTasksModal.hidden){ closeAllTasks(); return; }
   if(hasTerm() && view === 'term' && MTerm.findClose()) return;
+  if(!allTasksModal.hidden){ closeAllTasks(); return; }
   if(picked){ closePick(); }
 });
 document.addEventListener('pointerdown', (e) => {
@@ -1172,11 +1176,9 @@ function applyLang(){
   if(es && es.readyState === 1) setConn(true, T('live'));
 }
 
-// Masaustu uygulamasinda dil, uygulama menusundeki Ayarlar > Dil'den geliyor
-// (mac'te mineClaude menusunun altinda, Windows/Linux'ta menu cubugundaki ayri
-// Ayarlar menusunde). Sayfadaki Ayarlar paneli yalniz bu makineye ozel tercihler
-// icin, uygulama geneli bir sey barindirmiyor; sayfa menudeki secimi izleyip
-// kendi metnini ona gore guncelliyor.
+// Masaustu uygulamasinda dil Pencere > Dil menusunden geliyor (Ayarlar paneli sadece
+// session'a ozel ayarlar icin, uygulama geneli bir sey barindirmiyor); sayfa bu
+// secimi izleyip kendi metnini ona gore guncelliyor.
 if(window.mineClaudeDesktop){
   window.mineClaudeDesktop.lang.get().then(l => {
     if((l === 'tr' || l === 'en') && l !== lang){
@@ -1191,9 +1193,13 @@ if(window.mineClaudeDesktop){
     }
   });
   // Tema degisince sayfa CSS'i (prefers-color-scheme) kendiliginden guncelleniyor
-  // ama xterm renkleri acilista sabitlendigi icin terminalleri ayrica boyuyoruz.
+  // ama xterm renkleri ve 3D ofis sahnesi acilista sabitlendigi icin ikisini de
+  // ayrica boyuyoruz. 3D ofis sahneyi bastan kurdugu icin (bkz. office3d.js:
+  // retheme()) masalar/kisiler bosaliyor — hemen ardindan render() cagirip
+  // gorunuyorsa Office3D.render'i tekrar tetikleyerek doldurma.
   window.mineClaudeDesktop.theme.onChange(() => {
     if(hasTerm()) MTerm.retheme();
+    if(has3d()){ Office3D.retheme(); render(); }
   });
   // Otomatik guncelleme indirilip kuruluma hazir olunca ana surec bunu gonderiyor
   // (bkz. electron/main.js: 'update-downloaded'). Native OS dialogu yerine

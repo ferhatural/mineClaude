@@ -196,7 +196,9 @@ Claude Code ayrı bir mesele. Temasını `~/.claude/settings.json`'dan okuyor ve
 basıyor, yani hiçbir palet onları ezemiyor — `theme: "dark"` ile soluk mor vurguları krem zeminde
 okunmuyor. İki şey bunu çözüyor: açık temada xterm'in `minimumContrastRatio`'su 4.5 (bu oranın
 altına düşen her ön plan rengini koyulaştırıyor) ve uygulamanın kendi başlattığı oturumlar
-`--settings '{"theme":"light"}'` ile açılıyor. Bu bayrak yalnız o oturumu bağlıyor; global ayarın
+`--settings <yol>` ile, içinde `{"theme":"light"}` olan küçük bir JSON dosyasının yoluyla
+açılıyor (JSON'u doğrudan komut satırına gömmek PowerShell'in native argüman tırnaklamasında
+bozuluyordu, o yüzden bir dosyadan geçiyor). Bu bayrak yalnız o oturumu bağlıyor; global ayarın
 olduğu gibi kalıyor, kabukta elle `claude` yazdığın oturumlar da senin seçtiğin temayla açılıyor.
 
 ## Durumlar

@@ -226,9 +226,10 @@ Claude Code is a separate problem. It reads its theme from `~/.claude/settings.j
 its colours as 24-bit escapes, which no palette can override — so with `theme: "dark"` its pale
 purple accents land unreadable on cream. Two things handle it: xterm's `minimumContrastRatio`
 is set to 4.5 in light mode, which darkens any foreground that falls below it, and sessions the
-app starts itself get `--settings '{"theme":"light"}'`. That flag binds only that one session;
-your global setting is left alone, and a session you start by typing `claude` in the shell
-yourself keeps whatever theme you configured.
+app starts itself get `--settings <path>`, pointing at a small JSON file with `{"theme":"light"}`
+(passing the JSON inline broke on PowerShell's native-argument quoting, so it goes through a
+file instead). That flag binds only that one session; your global setting is left alone, and a
+session you start by typing `claude` in the shell yourself keeps whatever theme you configured.
 
 Three sessions side by side in tile view, right after `claude` started in each:
 
