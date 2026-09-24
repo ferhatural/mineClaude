@@ -175,6 +175,18 @@
   .pk-msg.you .pk-text{color:color-mix(in srgb,red 55%,var(--dim));font-weight:500}
   .pk-msg.you:last-child .pk-text{color:red;font-weight:600}
   .pk-empty{color:var(--faint);font-size:12.5px}
+  .pk-msg.pending{opacity:.6}
+  /* Gecmis sekmesinde mesaj kutusu (bkz. wireCompose): tek satir baslar, yazdikca buyur */
+  .pk-compose{border-top:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end}
+  .pk-compose textarea{flex:1;min-width:0;font:inherit;font-size:12.5px;line-height:18px;color:var(--text);
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 10px;height:28px;
+    max-height:130px;outline:none;resize:none;overflow-y:auto;transition:border-color .12s}
+  .pk-compose textarea:focus{border-color:var(--idle)}
+  .pk-compose textarea::placeholder{color:var(--faint)}
+  .pk-compose.ok textarea{border-color:var(--busy)} .pk-compose.err textarea{border-color:#d0524a}
+  .pk-compose.off textarea,.pk-compose.off .iconbtn{cursor:not-allowed;opacity:.5;border-style:dashed}
+  .pk-compose .pk-note{flex-basis:100%;font-size:11.5px;color:var(--faint);line-height:1.45}
+  .pk-compose .pk-note:empty{display:none}
   .pk-foot{border-top:1px solid var(--line);padding:12px 16px 14px}
   .pk-foot .meta{border-top:0;padding-top:0;margin-bottom:10px}
   .pick-x{
@@ -240,6 +252,10 @@
   .tm-tab.waiting .tm-avatar{animation:blink 1s steps(2,start) infinite}
   /* Ofiste masasinda degil, lounge'da (atDesk false) — bkz. office3d.js stateOf/atDesk */
   .tm-tab.lounge{opacity:.65}
+  /* surukle-birak: birakilacak yer sekmenin sol/sag kenarinda cizgi */
+  .tm-tab.dragging{opacity:.4}
+  .tm-tab.drop-l{box-shadow:inset 2px 0 0 var(--idle)}
+  .tm-tab.drop-r{box-shadow:inset -2px 0 0 var(--idle)}
   .tm-x{flex:none;opacity:.5;font-size:14px;line-height:1}
   .tm-x:hover{opacity:1;color:#d0524a}
   .tm-plus{font:inherit;font-size:15px;line-height:1;color:var(--faint);background:none;border:0;
@@ -250,6 +266,18 @@
   .tm-pane.on{display:block}
   /* izgara kipi: hepsi ayni anda gorunur, etkin olanin cercevesi belli */
   .tm-panes.tiles{display:grid;gap:6px;padding:6px}
+  /* Izgara ayraclari (term.js makeGutter): kutularin arasindaki 6px bosluga oturuyor,
+     tutulacak alan biraz daha genis. Surukleme sirasinda webview imleci yutmasin. */
+  .tm-gut{position:absolute;z-index:3;background:transparent;transition:background .12s}
+  .tm-gut.v{top:6px;bottom:6px;width:10px;margin-left:-5px;cursor:col-resize}
+  .tm-gut.h{left:6px;right:6px;height:10px;margin-top:-5px;cursor:row-resize}
+  .tm-gut:hover,.tm-gut.on{background:color-mix(in srgb,var(--idle) 45%,transparent)}
+  .tm-gut.v:hover,.tm-gut.v.on{background-clip:content-box;padding:0 3px;box-sizing:border-box}
+  .tm-gut.h:hover,.tm-gut.h.on{background-clip:content-box;padding:3px 0;box-sizing:border-box}
+  .tm-panes.resizing webview,.tm-panes.resizing iframe,.tm-panes.resizing .xterm{pointer-events:none}
+  .tm-panes.resizing-v{cursor:col-resize}
+  .tm-panes.resizing-h{cursor:row-resize}
+  .tm-panes.resizing{user-select:none}
   .tm-panes.tiles .tm-pane{position:relative;inset:auto;display:block;min-width:0;min-height:0;
     padding:6px 8px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .tm-panes.tiles .tm-pane.on{border-color:var(--c,var(--idle))}
@@ -263,6 +291,33 @@
   .tm-tasks-btn.on{color:var(--idle)}
   .tm-tasks-btn svg{width:15px;height:15px;display:block}
   .tm-pane .xterm{height:100%}
+  /* Tarayici sekmesi (term.js openWeb): localhost'taki dev sunucusunu terminallerin
+     yaninda gormek icin. Pane'in kendi adres cubugu var, sayfa altinda tam boy. */
+  .tm-pane.tm-web{padding:0;flex-direction:column}
+  .tm-pane.tm-web.on,.tm-panes.tiles .tm-pane.tm-web{display:flex}
+  .tm-web-bar{flex:none;display:flex;gap:2px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line)}
+  .tm-web-bar button{display:flex;align-items:center;justify-content:center;color:var(--faint);
+    background:none;border:0;padding:4px 6px;cursor:pointer;border-radius:6px}
+  .tm-web-bar button:hover{color:var(--text);background:var(--panel2)}
+  .tm-web-bar svg{width:15px;height:15px;display:block}
+  .tm-web-bar input{flex:1;min-width:0;height:28px;margin:0 4px;padding:0 10px;border-radius:7px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;outline:none}
+  .tm-web-bar input:focus{border-color:var(--idle)}
+  .tm-web-body{flex:1;min-height:0;position:relative;background:#fff}
+  .tm-web-body webview,.tm-web-body iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .tm-web-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--panel);color:var(--faint);font-size:13px;padding:20px;text-align:center}
+  .tm-tab .tm-globe{flex:none;width:12px;height:12px;display:block;opacity:.8}
+  .tm-tab img.tm-globe{opacity:1;border-radius:2px}
+  .tm-web-bar button.on{color:var(--idle)}
+  .tm-tab.loading .tm-globe{animation:tmspin 1s linear infinite}
+  @keyframes tmspin{to{transform:rotate(360deg)}}
+  .tm-web-empty{flex-direction:column;gap:6px}
+  .tm-web-empty b{color:var(--text);font-size:14px;font-weight:600}
+  .tm-web-empty button{margin-top:6px;font:inherit;font-size:12.5px;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:6px 14px;cursor:pointer}
+  .tm-web-empty button:hover{border-color:var(--faint)}
   .tm-findbtn.on{color:var(--idle)}
   /* Arama cubugu: seridin hemen altinda, terminalin ustune biner (yerlesimden
      yukseklik yemesin). Sayac 3/17; eslesme yoksa kutu kizarir. */
@@ -381,7 +436,9 @@
   .update-btn-primary{background:var(--idle);border-color:var(--idle);color:#fff;font-weight:600}
   .update-btn-primary:hover{filter:brightness(1.08)}
 
-  .grid{display:grid;grid-template-columns:var(--gtc);gap:12px;align-items:start}
+  /* Butun kartlar ayni boyda (en uzunu kadar): grid-auto-rows 1fr satirlari esitliyor,
+     kart icinde meta + dugmeler margin-top:auto ile hep en altta — cizgiler hizali. */
+  .grid{display:grid;grid-template-columns:var(--gtc);grid-auto-rows:1fr;gap:12px}
   @media (max-width:720px){
     :root{--gtc:minmax(0,1fr) !important}
     .wrap{padding:18px 14px 40px}
@@ -390,7 +447,8 @@
 
   .card{
     background:var(--panel);border:2px solid var(--c);border-radius:var(--radius);
-    padding:14px 16px 12px;position:relative;overflow:hidden;transition:.15s;cursor:pointer
+    padding:14px 16px 12px;position:relative;overflow:hidden;transition:.15s;cursor:pointer;
+    display:flex;flex-direction:column;min-width:0
   }
   .card:hover{box-shadow:0 2px 10px rgba(0,0,0,.12)}
   .card.waiting{--c:var(--wait);box-shadow:0 0 0 1px color-mix(in srgb,var(--wait) 45%,transparent)}
@@ -426,7 +484,7 @@
   .banner .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
 
   .meta{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:11.5px;color:var(--faint);
-    border-top:1px solid var(--line);padding-top:9px;margin-top:2px}
+    border-top:1px solid var(--line);padding-top:9px;margin-top:auto}
   .meta span{white-space:nowrap}
   .meta b{color:var(--dim);font-weight:500}
 
@@ -496,6 +554,15 @@
           </span>
           <span class="opt-label" id="hideEmptyLabel"></span>
           <span class="switch"><input type="checkbox" id="hideEmpty" checked><span class="switch-track"></span></span>
+        </label>
+        <label class="opt-row" id="webAutoRow">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c1.8 1.8 2.6 3.9 2.6 6.2S9.8 12.4 8 14.2C6.2 12.4 5.4 10.3 5.4 8S6.2 3.6 8 1.8z"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="webAutoLabel"></span>
+          <span class="switch"><input type="checkbox" id="webAuto" checked><span class="switch-track"></span></span>
         </label>
         <div class="opt-row opt-row-static" id="colsWrap">
           <span class="opt-icon">
@@ -577,6 +644,7 @@ const I18N = {
     all:'Tümü', waiting:'İnput bekliyor', busy:'Çalışıyor', ready:'Beklemede', idle:'Boşta',
     unknown:'Bilinmiyor', ended:'Kapandı',
     notifyLabel:'İnput bekleyince bildirim gönder', soundLabel:'Durum değişince ses çal', hideEmptyLabel:'Boş/kullanılmayan süreçleri gizle',
+    webAutoLabel:'Proje açılınca sitesini aç, dev sunucusunu başlatıp tarayıcı sekmesinde aç',
     columns:'Kolon', waitsForYou:'Senden input bekliyor',
     'no-conversation':'Bu süreçte hiç konuşma yok', 'maybe-permission':'izin bekliyor olabilir',
     context:'bağlam', messages:'tur', openFor:'açık', permission:'İzin',
@@ -585,6 +653,12 @@ const I18N = {
     focusTty:(t)=>`Terminal sekmesine git (${t})`,
     focusTtyNone:'Sekme bulunamadı — terminal kapanmış olabilir',
     close:'Kapat', loading:'Yükleniyor…', noMessages:'Geçmiş bulunamadı', you:'Sen',
+    send:'Gönder (Enter · yeni satır Shift+Enter)', msgPlaceholder:'Claude’a mesaj yaz…',
+    msgWaiting:'Claude şu an senden bir yanıt bekliyor (izin/soru). Yanlışlıkla bir seçeneği onaylamamak için buradan gönderilmiyor — terminal sekmesinden cevapla.',
+    msgExternal:'Bu oturum mineClaude dışında açık (VS Code ya da başka bir terminal). Mesaj yalnızca mineClaude terminalindeki oturumlara gönderilebilir.',
+    msgEnded:'Oturum kapalı. Alttaki “devam ettir” düğmesiyle mineClaude’da açarsan buradan mesaj gönderebilirsin.',
+    msgNoTerm:'Mesaj göndermek için terminal desteği gerekiyor.',
+    msgFailed:'Gönderilemedi: terminal sekmesi kapanmış olabilir.',
     settings:'Ayarlar',
     allTasks:'Tüm görevler', noTasksAnywhere:'Hiçbir projede görev yok.',
     clientNotePh:'Yeni görev ekle…',
@@ -594,6 +668,11 @@ const I18N = {
     termClosed:'Kapandı', termHere:'Burada terminal aç', termResume:'Bu konuşmayı burada devam ettir',
     termTiles:'Izgara görünümü', termTabs:'Sekme görünümü',
     termGoTab:'Sekmesine git', termInApp:'mineClaude terminali',
+    webNew:'Yeni tarayıcı sekmesi', webTab:'Tarayıcı', webBack:'Geri', webFwd:'İleri', webReload:'Yenile',
+    webExt:'Varsayılan tarayıcıda aç', webEmpty:'Kod beklerken gez: yukarıya ara ya da bir adres yaz.',
+    webPin:(n)=>`Bu adresi “${n}” projesinin sitesi yap (proje açılınca burada açılır)`, webPinned:(n)=>`“${n}” projesinin sitesi bu`,
+    webPinDev:(n)=>`Bu adresi “${n}” projesinin dev adresi yap (dev sunucusu kalkınca bu açılır)`, webPinnedDev:(n)=>`“${n}” projesinin dev adresi bu`,
+    webPh:'Google’da ara veya adres yaz', webStop:'Durdur', webFail:'Sayfa açılamadı', webRetry:'Tekrar dene',
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'Geri yükle', termRestoreNo:'Yoksay',
     termPick:'Terminal hangi klasörde açılsın?', termPickGo:'Aç', termGone:'Oturum artık yok',
@@ -620,6 +699,7 @@ const I18N = {
     all:'All', waiting:'Waiting for input', busy:'Working', ready:'Standing by', idle:'Idle',
     unknown:'Unknown', ended:'Ended',
     notifyLabel:'Notify me when a session wants input', soundLabel:'Play a sound on status changes', hideEmptyLabel:'Hide unused processes',
+    webAutoLabel:'Open a project’s site, start its dev server and open it in a browser tab',
     columns:'Columns', waitsForYou:'Waiting for your input',
     'no-conversation':'No conversation in this process', 'maybe-permission':'may be waiting for permission',
     context:'context', messages:'turns', openFor:'open', permission:'Perm',
@@ -628,6 +708,12 @@ const I18N = {
     focusTty:(t)=>`Go to the terminal tab (${t})`,
     focusTtyNone:'Tab not found — the terminal may have been closed',
     close:'Close', loading:'Loading…', noMessages:'No history found', you:'You',
+    send:'Send (Enter · new line Shift+Enter)', msgPlaceholder:'Message Claude…',
+    msgWaiting:'Claude is waiting for your answer (permission/question). To avoid confirming an option by accident, sending is disabled here — answer in the terminal tab.',
+    msgExternal:'This session is open outside mineClaude (VS Code or another terminal). Messages can only be sent to sessions in a mineClaude terminal.',
+    msgEnded:'This session has ended. Resume it in mineClaude with the button below to send messages here.',
+    msgNoTerm:'Sending messages needs terminal support.',
+    msgFailed:'Couldn’t send: the terminal tab may have closed.',
     settings:'Settings',
     allTasks:'All tasks', noTasksAnywhere:'No tasks in any project.',
     clientNotePh:'Add a task…',
@@ -637,6 +723,11 @@ const I18N = {
     termClosed:'Closed', termHere:'Open a terminal here', termResume:'Resume this conversation here',
     termTiles:'Tile view', termTabs:'Tab view',
     termGoTab:'Go to its tab', termInApp:'mineClaude terminal',
+    webNew:'New browser tab', webTab:'Browser', webBack:'Back', webFwd:'Forward', webReload:'Reload',
+    webExt:'Open in default browser', webEmpty:'Browse while the code runs: search or type an address above.',
+    webPin:(n)=>`Make this “${n}”’s site (opens here when the project opens)`, webPinned:(n)=>`This is “${n}”’s site`,
+    webPinDev:(n)=>`Make this “${n}”’s dev address (opens when its dev server is up)`, webPinnedDev:(n)=>`This is “${n}”’s dev address`,
+    webPh:'Search Google or type an address', webStop:'Stop', webFail:'Couldn’t open the page', webRetry:'Try again',
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'Restore', termRestoreNo:'Dismiss',
     termPick:'Which folder should the terminal open in?', termPickGo:'Open', termGone:'Session is gone',
@@ -684,6 +775,7 @@ const ICON = {
   gear:'<circle cx="8" cy="8" r="2.3"/><path d="M8 1.6l1 1.7 1.9-.5.5 1.9 1.7 1-1 1.7 1 1.7-1.7 1-.5 1.9-1.9-.5-1 1.7-1-1.7-1.9.5-.5-1.9-1.7-1 1-1.7-1-1.7 1.7-1 .5-1.9 1.9.5z"/>',
   trash:'<path d="M2.8 4.4h10.4M6.2 4.4V3.1c0-.6.5-1.1 1.1-1.1h1.4c.6 0 1.1.5 1.1 1.1v1.3M4.3 4.4l.6 8.3c.05.7.6 1.2 1.3 1.2h3.6c.7 0 1.25-.5 1.3-1.2l.6-8.3M6.5 7v4M9.5 7v4"/>',
   arrowUp:'<path d="M8 13V3M4 7l4-4 4 4"/>',
+  send:'<path d="M14 2.2L1.9 7.6l4.4 1.6M14 2.2L8.9 14l-2.6-4.8M14 2.2L6.3 9.2"/>',
   checklist:'<rect x="1.8" y="2.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 4h7.4"/><rect x="1.8" y="6.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 8h7.4"/><rect x="1.8" y="10.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 12h7.4"/>',
 };
 const svg = (k) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
@@ -700,6 +792,10 @@ notifyBox.onchange = () => {
   if (notifyBox.checked && Notification.permission === 'default') Notification.requestPermission();
 };
 hideEmptyBox.onchange = () => { localStorage.setItem('cc.hideEmpty', hideEmptyBox.checked ? '1':'0'); render(); };
+// term.js terminal çıktısında localhost adresi görünce bakıyor (bkz. sniffUrl)
+const webAutoBox = $('#webAuto');
+webAutoBox.checked = localStorage.getItem('cc.webAuto') !== '0';
+webAutoBox.onchange = () => localStorage.setItem('cc.webAuto', webAutoBox.checked ? '1' : '0');
 
 // --- ses: dosya yok, iki nota WebAudio ile sentezleniyor ---
 const soundBox = $('#sound');
@@ -988,6 +1084,7 @@ function wirePickTabs(pop){
     pop.querySelector('.pk-note').hidden = tab !== 'tasks';
     const body = pop.querySelector('.pk-body');
     body.hidden = tab !== 'history';
+    pop.querySelector('.pk-compose').hidden = tab !== 'history';
     // Mesajlar gizliyken (tasks sekmesindeyken) yuklenmis olabilir: o an scrollTop
     // ayari isliyor gorunse de hidden elemanda tutmuyor. Sekme goruntulenince yeniden uygula.
     if(tab === 'history') body.scrollTop = body.scrollHeight;
@@ -1008,6 +1105,11 @@ function buildPick(pop, s){
     </div>
     ${noteHtml(s)}
     <div class="pk-body" hidden><div class="pk-empty">${T('loading')}</div></div>
+    <form class="pk-compose" hidden>
+      <textarea rows="1" autocomplete="off" spellcheck="false" placeholder="${T('msgPlaceholder')}"></textarea>
+      <button type="submit" class="iconbtn" title="${T('send')}">${svg('send')}</button>
+      <div class="pk-note"></div>
+    </form>
     <div class="pk-foot">
       <div class="meta"></div>
       <div class="bottom">${actionBtns(s).join('')}</div>
@@ -1016,6 +1118,73 @@ function buildPick(pop, s){
   wireActions(pop);
   wireNote(pop, s);
   wirePickTabs(pop);
+  wireCompose(pop, s);
+}
+
+// --- Geçmiş sekmesinden mesaj gönderme ---
+// Mesaj, oturumun mineClaude terminaline yazılıyor (MTerm.sendText): elle yazmakla
+// birebir aynı, her sürümde ve platformda çalışıyor. Eskiden Claude Code'un oturum
+// soketine yazılıyordu; o kanal belgesiz, anahtarla korunuyor ve sürümle değişiyor.
+// Dışarıdaki (VS Code, başka terminal) oturuma bu yüzden göndermiyoruz; nedenini söylüyoruz.
+const drafts = new Map();               // sessionId -> yazılmakta olan metin (panel yeniden kurulsa da)
+const composeKey = (s) => String(s.sessionId || s.pid);
+
+// Şu an gönderilebilir mi, değilse neden? { tab } ya da { why }
+function composeTarget(s){
+  if(!hasTerm()) return { why: T('msgNoTerm') };
+  if(s.kind !== 'live') return { why: T('msgEnded') };
+  const tab = inAppTab(s);
+  if(!tab || tab.dead) return { why: T('msgExternal') };
+  // İzin/soru ekranındayken metin + Enter bir seçeneği onaylayabilir
+  if(disp(s) === 'waiting') return { why: T('msgWaiting') };
+  return { tab };
+}
+
+function syncCompose(pop, s){
+  const form = pop.querySelector('.pk-compose');
+  if(!form) return;
+  const tg = composeTarget(s);
+  const off = !tg.tab;
+  form.classList.toggle('off', off);
+  form.querySelector('textarea').disabled = off;
+  form.querySelector('button').disabled = off;
+  form.querySelector('.pk-note').textContent = off ? tg.why : '';
+}
+
+function wireCompose(pop, s){
+  const form = pop.querySelector('.pk-compose');
+  const input = form.querySelector('textarea');
+  const key = composeKey(s);
+  const grow = () => {
+    input.style.height = 'auto';
+    input.style.height = Math.max(28, Math.min(input.scrollHeight, 130)) + 'px';
+  };
+  input.value = drafts.get(key) || '';
+  if(input.value) requestAnimationFrame(grow);
+  input.oninput = () => { drafts.set(key, input.value); grow(); };
+  input.onkeydown = (e) => {
+    if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); form.requestSubmit(); }
+  };
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if(!text) return;
+    // Göndermeden hemen önce yeniden bak: 2 sn'lik yenilemeden beri durum değişmiş olabilir
+    const cur = (state && state.live.find(x => composeKey(x) === key)) || s;
+    const tg = composeTarget(cur);
+    if(!tg.tab){ syncCompose(pop, cur); flash(form, 'err'); return; }
+    if(!MTerm.sendText(tg.tab.id, text)){ form.querySelector('.pk-note').textContent = T('msgFailed'); flash(form, 'err'); return; }
+    input.value = ''; drafts.delete(key); grow(); flash(form, 'ok');
+    // Transcript birkaç yüz ms sonra güncelleniyor; o ana kadar mesaj burada görünsün
+    const body = pop.querySelector('.pk-body');
+    const empty = body.querySelector('.pk-empty');
+    if(empty) empty.remove();
+    body.insertAdjacentHTML('beforeend',
+      `<div class="pk-msg you pending"><div class="pk-who">${T('you')}</div><div class="pk-text">${esc(text)}</div></div>`);
+    body.scrollTop = body.scrollHeight;
+    input.focus();
+  };
+  syncCompose(pop, s);
 }
 
 function fillMessages(pop, msgs){
@@ -1041,6 +1210,7 @@ function updatePick(pop, s, now){
   path.textContent = s.cwdShort || s.cwd || '';
   path.title = s.cwd || '';
   pop.querySelector('.meta').innerHTML = metaBits(s, now);
+  syncCompose(pop, s);
 
   // Mesajları /api/state ile taşımıyoruz (her session için kilobaytlarca metin
   // olurdu); panel açıkken ve konuşma ilerlediğinde ayrıca istiyoruz.
@@ -1164,6 +1334,7 @@ function applyLang(){
   $('#appTitle').textContent = T('appTitle');
   $('#notifyLabel').textContent = T('notifyLabel');
   $('#hideEmptyLabel').textContent = T('hideEmptyLabel');
+  $('#webAutoLabel').textContent = T('webAutoLabel');
   $('#soundLabel').textContent = T('soundLabel');
   $('#colsLabel').textContent = T('columns');
   $('#endedLabel').textContent = T('recentlyClosed');
@@ -1606,6 +1777,13 @@ function connect(){
   es = new EventSource('/events');
   es.onopen = () => setConn(true, T('live'));
   es.onmessage = (e) => { state = JSON.parse(e.data); checkNotify(); render(); setConn(true, T('live')); };
+  // `mineclaude --open` (Claude'a "tarayıcıda aç" denince): terminal görünümüne geç, sekmeyi aç
+  es.addEventListener('web-open', (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if(!hasTerm() || !m || !m.url) return;
+    if(view !== 'term'){ view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render(); }
+    MTerm.openUrl(m);
+  });
   es.onerror = () => {
     setConn(false, T('disconnected'));
     if(!state) showDown();

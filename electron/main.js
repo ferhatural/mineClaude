@@ -17,6 +17,7 @@ const http = require('http');
 const { spawn, execFile } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const term = require('../pty');
+const browser = require('./browser');
 
 const ROOT = path.join(__dirname, '..');
 const SERVER_JS = path.join(ROOT, 'server.js');
@@ -262,8 +263,10 @@ function createWindow() {
       nodeIntegration: false,
       backgroundThrottling: false, // gizliyken de SSE'yi dinlesin, bildirimler gecikmesin
       spellcheck: false,
+      webviewTag: true, // terminallerin yanindaki tarayici sekmesi (bkz. browser.js)
     },
   });
+  browser.attach(win, () => TR);
 
   win.loadURL(serverUrl);
 
@@ -744,6 +747,7 @@ if (!app.requestSingleInstanceLock()) {
 
     const port = await ensureServer();
     serverUrl = `http://127.0.0.1:${port}`;
+    process.env.MINECLAUDE_PORT = String(port);   // gomulu terminaldeki `mineclaude --open` bu portu bulsun
     createWindow();
     showWindow(); // ilk acilista pencereyi goster; sonraki acilislar tray'den
     setupAutoUpdate();

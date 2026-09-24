@@ -59,6 +59,7 @@
     "files": [
       "electron/main.js",
       "electron/preload.js",
+      "electron/browser.js",
       "electron/assets/tray*.png",
       "term.js",
       "pty.js",

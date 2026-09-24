@@ -83,7 +83,75 @@ function childEnv() {
   }
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
+  // `mineclaude` komutu gomulu terminalde hep hazir olsun (bkz. taskBinDir)
+  const pk = Object.keys(env).find((k) => /^path$/i.test(k)) || 'PATH';
+  try { env[pk] = taskBinDir() + path.delimiter + (env[pk] || ''); } catch { /* yazilamadi: komut yalniz eksik kalir */ }
   return env;
+}
+
+// --- gorevler: Claude'a "sunu gorevlere ekle" demek yetsin ---
+// Gorev CLI'i server.js'te (--task-add/--task-done/...; <proje>/.mineclaude/tasks.json,
+// panel ~1 sn'de goruyor). Iki eksigi burada kapatiyoruz:
+//   1) `mineclaude` komutu PATH'te olmayabilir (npm link yapilmamis, paketli uygulama).
+//      Gomulu terminalin PATH'ine kucuk bir sarmalayici koyuyoruz: uygulamanin kendi
+//      calistirilabilirini ELECTRON_RUN_AS_NODE ile server.js'e yonlendiriyor. Paketli
+//      uygulamada server.js asar icinde; Electron-as-node onu okuyabiliyor, duz node okuyamaz.
+//      Windows'ta iki kopya: Git Bash (Claude'un Bash araci) icin sh, PowerShell/cmd icin .cmd.
+//   2) Claude bu komutu kendiliginden bilmiyor: acarken --append-system-prompt-file ile
+//      kisa bir talimat veriyoruz. --settings'teki gibi dosya yolu: tirnaklama derdi yok.
+let binDir = null;
+function taskBinDir() {
+  if (binDir) return binDir;
+  const dir = path.join(os.tmpdir(), 'mineclaude-bin');
+  fs.mkdirSync(dir, { recursive: true });
+  const exe = process.execPath;
+  const server = path.join(__dirname, 'server.js');
+  const fwd = (p) => p.replace(/\\/g, '/');
+  fs.writeFileSync(path.join(dir, 'mineclaude'),
+    `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${fwd(exe)}" "${fwd(server)}" "$@"\n`, { mode: 0o755 });
+  if (process.platform === 'win32') {
+    // chcp 65001: "gorev" gibi Turkce metin cmd'den gecerken bozulmasin
+    fs.writeFileSync(path.join(dir, 'mineclaude.cmd'),
+      `@echo off\r\nsetlocal\r\nchcp 65001 >nul\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${exe}" "${server}" %*\r\n`);
+  }
+  binDir = dir;
+  return dir;
+}
+
+// Iki ayri, birbirinden bagimsiz ozellik; talimatta da ayri duruyorlar.
+const TASKS_PROMPT = [
+  '## mineClaude task list',
+  'mineClaude shows a per-project task list (stored in .mineclaude/tasks.json).',
+  'When the user asks you to add, note or remember a task / to-do (Turkish: "görev ekle", "görevlere ekle",',
+  '"yapılacaklara ekle", "not al", "şunu görev olarak yaz"...), add it with the shell command',
+  'mineclaude --task-add "<short task text>" run from the project folder, in the user\'s language,',
+  'one command per task, then confirm briefly. It shows up in the mineClaude panel within a second.',
+  'Other commands: mineclaude --tasks (list), mineclaude --task-done "<id or part of text>",',
+  'mineclaude --task-undone "<...>", mineclaude --task-rm "<...>". Mark a task done only when',
+  'the user says it is done or asks you to. Do not edit tasks.json by hand.',
+].join('\n');
+
+const BROWSER_PROMPT = [
+  '## mineClaude browser',
+  'mineClaude has its own built-in browser tabs, next to this terminal. When the user asks you to open',
+  'or show something in a browser (Turkish: "tarayıcıda aç", "projeyi aç", "siteyi aç", "önizlemeyi göster",',
+  '"localhost\'u aç"...), open it there with the shell command mineclaude --open "<url>" — never an external',
+  'browser (no start/open/xdg-open/explorer, no Playwright for this). mineclaude --open with no URL opens this',
+  'project itself: its running dev server if one is up, otherwise its live site. Relative forms work too:',
+  'mineclaude --open 8100, mineclaude --open localhost:5173/admin. If you start a dev server, pass its',
+  '"don\'t open a browser" flag (ionic serve --no-open, ng serve without --open, vite without --open) —',
+  'mineClaude notices the server and opens it itself.',
+].join('\n');
+
+const TASK_PROMPT = ['You are running inside mineClaude.', TASKS_PROMPT, BROWSER_PROMPT].join('\n\n');
+
+let taskPromptPath = null;
+function taskPromptFile() {
+  if (!taskPromptPath) {
+    taskPromptPath = path.join(os.tmpdir(), 'mineclaude-task-prompt.txt');
+    fs.writeFileSync(taskPromptPath, TASK_PROMPT);
+  }
+  return taskPromptPath;
 }
 
 // Acik tema oturumu icin --settings'e verilecek JSON'u bir kere yazip yolunu
@@ -122,7 +190,14 @@ function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   // tirnaklamak, ki bu her kabukta guvenilir calisiyor.
   const q = isWin && !ps ? '"' : "'";
   const temaArg = !light ? '' : ` --settings ${q}${lightThemeSettingsFile()}${q}`;
-  const claude = (extra = '') => `claude${extra}${temaArg}`;
+  let gorevArg = '';
+  // Yalniz `mineclaude` komutuna onceden izin: "gorev ekle" her seferinde izin sormasin.
+  // --allowedTools degisken sayida arguman aliyor; en sonda duruyor ki baska bir seyi yutmasin.
+  try {
+    gorevArg = ` --append-system-prompt-file ${q}${taskPromptFile()}${q}`
+      + ` --allowedTools ${q}Bash(mineclaude:*)${q} ${q}PowerShell(mineclaude:*)${q}`;
+  } catch { /* yazilamadi: talimatsiz ac */ }
+  const claude = (extra = '') => `claude${extra}${temaArg}${gorevArg}`;
 
   // Oturum kimligi verilmisse ona don, bulunamazsa (silinmis, hic konusulmamis)
   // taze bir claude ac. POSIX ve cmd.exe'de `||` bunu tek satirda hallediyor;
