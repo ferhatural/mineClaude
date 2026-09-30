@@ -286,7 +286,7 @@ function start() {
   if (!Array.isArray(pending)) pending = [];
 
   function saveRestore() {
-    const snap = tabs.filter((t) => !t.dead && !t.web && !t.devTab).map((t) => ({ cwd: t.cwd, title: t.title, sessionId: t.sessionId || null }));
+    const snap = tabs.filter((t) => !t.dead && !t.web && !t.devTab).map((t) => ({ cwd: t.cwd, title: t.title, sessionId: t.sessionId || null, tty: t.tty || null }));
     try { localStorage.setItem(RESTORE_KEY, JSON.stringify(snap)); } catch { /* dolu olabilir */ }
   }
 
@@ -403,9 +403,30 @@ function start() {
       // ve bos kabukla degil. Fallback mantigi burada bir shell string olarak
       // kurulmuyor artik: POSIX ve Windows'ta sozdizimi farkli (`||` PowerShell
       // 5.1'de yok), o karari resumeSessionId ile pty.js platforma gore veriyor.
+      // Once sunucuda o PTY hala yasiyor mu diye bakiyoruz. Yasiyorsa
+      // devraliyoruz — `claude --resume` ile yeni bir surec acmak, ayni
+      // konusmaya ikinci bir claude baglamak demek. Tablette bu her kapat-ac'ta
+      // bir kopya uretiyordu: kullanicinin elinde birikmesini onleyecek bir yol
+      // yoktu, cunku kopyalari uygulama kendisi aciyordu.
+      if (await adoptLive(r)) continue;
       await open(r.cwd, undefined, r.sessionId || undefined);
     }
     saveRestore();
+  }
+
+  // Geri yuklenecek kayit icin sunucuda hala calisan bir PTY var mi? Once tty
+  // (kayitta duruyorsa, en kesin esleme), sonra ayni klasordeki canli bir
+  // terminal. Bulunursa create degil attach.
+  async function adoptLive(r) {
+    if (!T.list) return false;
+    let canli;
+    try { canli = await T.list(); } catch { return false; }
+    const uygun = canli.filter((x) => !x.dead);
+    const hedef = (r.tty && uygun.find((x) => x.tty === r.tty))
+      || uygun.find((x) => x.cwd === r.cwd && !tabs.some((t) => t.id === x.id));
+    if (!hedef) return false;
+    await open(hedef.cwd, undefined, null, { adopt: hedef });
+    return true;
   }
 
   // --- sekmeleri elle siralama (surukle-birak) ---
