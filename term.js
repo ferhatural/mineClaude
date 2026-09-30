@@ -155,6 +155,72 @@ function start() {
   const FONT_KEY = 'cc.termFont';
   let fontSize = Math.min(22, Math.max(9, parseFloat(localStorage.getItem(FONT_KEY)) || 12.5));
 
+  // Tarayici yakinlastirmasi terminale gecmiyor (xterm kendi olcusunu tutuyor),
+  // o yuzden yazi boyutunu kendimiz degistiriyoruz. Web sekmelerinde term yok.
+  function setFont(delta) {
+    fontSize = Math.min(22, Math.max(9, fontSize + delta));
+    localStorage.setItem(FONT_KEY, String(fontSize));
+    for (const t of tabs) if (t.term) t.term.options.fontSize = fontSize;
+    fitAll();
+  }
+
+  // Dokunmatik tus seridi. Tablette fiziksel klavye olsa bile esc/^C/oklar
+  // her zaman rahat degil; kopyala-yapistir ise dokunmatikte metin secmekten
+  // cok daha guvenilir.
+  //
+  // Yerlesim bilerek sagda: seridin eski hali alt kenari bastan basa kapliyordu
+  // (left:0;right:0) ve Claude'un cevap alanini ortuyordu. Yazi soldan basladigi
+  // icin sag taraf zaten bos duruyor — dugme orada durup sola dogru aciliyor.
+  const KEYS = [
+    ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'], ['^D', '\x04'], ['^Z', '\x1a'],
+    ['\u2191', '\x1b[A'], ['\u2193', '\x1b[B'], ['\u2190', '\x1b[D'], ['\u2192', '\x1b[C'],
+  ];
+  let keyWrap = null;
+
+  function buildKeys() {
+    const wrap = document.createElement('div');
+    wrap.className = 'tm-keywrap' + (localStorage.getItem('cc.termKeys') === '1' ? '' : ' off');
+
+    const tog = document.createElement('button');
+    tog.className = 'tm-keytoggle';
+    tog.textContent = '\u2328';
+    tog.title = T2('termKeys');
+    tog.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      wrap.classList.toggle('off');
+      localStorage.setItem('cc.termKeys', wrap.classList.contains('off') ? '0' : '1');
+    });
+
+    const bar = document.createElement('div');
+    bar.className = 'tm-keys';
+    const ekle = (ad, fn, cls) => {
+      const b = document.createElement('button');
+      b.textContent = ad;
+      if (cls) b.className = cls;
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); if (active && active.term) active.term.focus(); });
+      bar.appendChild(b);
+    };
+    const yaz = (dizi) => { if (active && !active.web) T.write(active.id, dizi); };
+
+    for (const [ad, dizi] of KEYS) ekle(ad, () => yaz(dizi));
+    // Clipboard API guvenli baglam istiyor; Tailscale HTTPS verdigi icin calisiyor.
+    ekle(T2('termCopy'), async () => {
+      if (!active || !active.term) return;
+      const sel = active.term.getSelection();
+      if (sel) { try { await navigator.clipboard.writeText(sel); } catch {} }
+    }, 'wide');
+    ekle(T2('termPaste'), async () => {
+      if (!active || active.web) return;
+      try { const t = await navigator.clipboard.readText(); if (t) T.write(active.id, t); } catch {}
+    }, 'wide');
+    ekle('A\u2212', () => setFont(-1));
+    ekle('A+', () => setFont(1));
+
+    wrap.append(tog, bar);
+    keyWrap = wrap;
+    return wrap;
+  }
+
   const RESTORE_KEY = 'cc.termRestore';
   // Tarayici sekmeleri geri yuklenmiyor: terminaller geri gelince projelerin
   // siteleri zaten kendiliginden aciliyor (openProjectWeb). Eski surumun kaydi:
@@ -210,6 +276,11 @@ function start() {
     panes = document.createElement('div');
     panes.className = 'tm-panes';
     host.append(strip, panes);
+    // Serit host'a asili, panes'e degil: showEmpty() panes.innerHTML yazdiginda
+    // silinmesin. Yalniz dokunmatik cihazlarda — masaustunde yeri yok.
+    if (matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) {
+      host.appendChild(buildKeys());
+    }
     container.appendChild(host);
     drawStrip();
     applyLayout();

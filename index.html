@@ -295,6 +295,30 @@
      kalsaydi flex bos alani iki auto arasinda bolusturur, duzen ve gorevler
      dugmeleri seridin ortasinda asili kalirdi. */
   .tm-findbtn{margin-left:0}
+  /* Dokunmatik tus seridi. Sagda duruyor ve sola dogru aciliyor: tablette yazi
+     soldan basladigi icin sag taraf bos kaliyor. Eski hali alt kenari bastan
+     basa kapliyordu (left:0;right:0) ve Claude'un cevap alanini ortuyordu.
+     row-reverse: ilk cocuk (dugme) en sagda, serit onun soluna aciliyor. */
+  .tm-keywrap{display:flex;position:absolute;right:8px;bottom:8px;z-index:3;
+    flex-direction:row-reverse;align-items:center;gap:6px;
+    max-width:calc(100% - 16px);pointer-events:none}
+  .tm-keywrap > *{pointer-events:auto}
+  .tm-keytoggle{flex:0 0 auto;font:inherit;font-size:15px;line-height:1;
+    color:var(--dim);background:color-mix(in srgb,var(--panel) 88%,transparent);
+    border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer;
+    backdrop-filter:blur(6px);touch-action:manipulation}
+  .tm-keytoggle:active{border-color:var(--idle);color:var(--text)}
+  .tm-keys{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;min-width:0;
+    background:color-mix(in srgb,var(--panel) 88%,transparent);
+    border:1px solid var(--line);border-radius:10px;padding:5px;backdrop-filter:blur(6px)}
+  .tm-keys::-webkit-scrollbar{display:none}
+  .tm-keywrap.off .tm-keys{display:none}
+  .tm-keys button{flex:0 0 auto;font:inherit;font-size:13px;min-width:44px;
+    color:var(--text);background:var(--panel2);border:1px solid var(--line);
+    border-radius:7px;padding:7px 9px;cursor:pointer;touch-action:manipulation}
+  .tm-keys button.wide{min-width:auto;font-size:12px}
+  .tm-keys button:active{background:var(--panel);border-color:var(--idle)}
+
   /* Tarayici sekmesi (term.js openWeb): localhost'taki dev sunucusunu terminallerin
      yaninda gormek icin. Pane'in kendi adres cubugu var, sayfa altinda tam boy. */
   .tm-pane.tm-web{padding:0;flex-direction:column}
@@ -715,6 +739,7 @@ const I18N = {
     termTiles:'Izgara görünümü', termTabs:'Sekme görünümü',
     termGoTab:'Sekmesine git', termInApp:'mineClaude terminali',
     webNew:'Yeni tarayıcı sekmesi', webTab:'Tarayıcı', webBack:'Geri', webFwd:'İleri', webReload:'Yenile',
+    termKeys:'Tuş şeridi', termCopy:'kopyala', termPaste:'yapıştır',
     webExt:'Varsayılan tarayıcıda aç', webEmpty:'Kod beklerken gez: yukarıya ara ya da bir adres yaz.',
     webPin:(n)=>`Bu adresi “${n}” projesinin sitesi yap (proje açılınca burada açılır)`, webPinned:(n)=>`“${n}” projesinin sitesi bu`,
     webPinDev:(n)=>`Bu adresi “${n}” projesinin dev adresi yap (dev sunucusu kalkınca bu açılır)`, webPinnedDev:(n)=>`“${n}” projesinin dev adresi bu`,
@@ -775,6 +800,7 @@ const I18N = {
     termTiles:'Tile view', termTabs:'Tab view',
     termGoTab:'Go to its tab', termInApp:'mineClaude terminal',
     webNew:'New browser tab', webTab:'Browser', webBack:'Back', webFwd:'Forward', webReload:'Reload',
+    termKeys:'Key bar', termCopy:'copy', termPaste:'paste',
     webExt:'Open in default browser', webEmpty:'Browse while the code runs: search or type an address above.',
     webPin:(n)=>`Make this “${n}”’s site (opens here when the project opens)`, webPinned:(n)=>`This is “${n}”’s site`,
     webPinDev:(n)=>`Make this “${n}”’s dev address (opens when its dev server is up)`, webPinnedDev:(n)=>`This is “${n}”’s dev address`,
