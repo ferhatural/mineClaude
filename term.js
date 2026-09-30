@@ -928,6 +928,22 @@ function start() {
           return false;
         }
       }
+      // Genel Ctrl+<harf>. Normalde xterm bunu kendisi kontrol karakterine
+      // ceviriyor, ama tablette calismiyordu: tarayici Ctrl+S'yi "sayfayi
+      // kaydet", Ctrl+X'i "kes" sanip kendi isliyor ve terminale hic
+      // birakmiyor. Burada erken yakalayip hem kontrol karakterini
+      // gonderiyoruz hem tarayicinin kisayolunu iptal ediyoruz.
+      //
+      // Ctrl+C ve Ctrl+V yukarida ozel olarak ele alindi (secim/pano), bu dal
+      // onlardan SONRA geliyor, yani onlarin davranisini degistirmiyor.
+      if (e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.length === 1) {
+        const kod = e.key.toUpperCase().charCodeAt(0);
+        if (kod >= 64 && kod <= 95) {
+          T.write(t.id, String.fromCharCode(kod & 31));
+          e.preventDefault();
+          return false;
+        }
+      }
       return true;
     });
     // Olcumu elle zamanlamak tutmuyordu: izgaraya gecince rAF, grid yerlesmeden
