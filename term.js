@@ -203,15 +203,6 @@ function start() {
   }
 
   let keyWrap = null;
-  // Tablette fiziksel Ctrl yok: yazilim klavyesinden Ctrl+J (Claude Code'da alt
-  // satir) gibi bir sey yazilamiyordu. Serittteki "ctrl" yapiskan bir
-  // degistirici: bir kez basilir, sonraki harf kontrol karakterine cevrilir.
-  let ctrlSticky = false;
-  let ctrlBtn = null;
-  function setCtrl(v) {
-    ctrlSticky = !!v;
-    if (ctrlBtn) ctrlBtn.classList.toggle('on', ctrlSticky);
-  }
 
   function buildKeys() {
     const wrap = document.createElement('div');
@@ -239,9 +230,6 @@ function start() {
     };
     const yaz = (dizi) => { if (active && !active.web) T.write(active.id, dizi); };
 
-    // Yapiskan: basinca yanar, sonraki harfe uygulanip soner. Tekrar basmak iptal.
-    ctrlBtn = ekle('ctrl', () => setCtrl(!ctrlSticky), 'wide');
-    ctrlBtn.classList.toggle('on', ctrlSticky);
     for (const [ad, dizi] of KEYS) ekle(ad, () => yaz(dizi));
     // Clipboard API guvenli baglam istiyor; Tailscale HTTPS verdigi icin calisiyor.
     const kopyaBtn = ekle(T2('termCopy'), async () => {
@@ -928,18 +916,6 @@ function start() {
     // "kopyala" saniyor) tek isleyicide birlesti.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
-      // Yapiskan ctrl aciksa bir sonraki harfi kontrol karakterine ceviriyoruz.
-      // 64-95 araligi: @ A-Z [ \ ] ^ _ — &31 ile kontrol karakterine dusuyor
-      // (J -> 0x0A, yani Ctrl+J).
-      if (ctrlSticky && e.key && e.key.length === 1) {
-        const kod = e.key.toUpperCase().charCodeAt(0);
-        setCtrl(false);
-        if (kod >= 64 && kod <= 95) {
-          T.write(t.id, String.fromCharCode(kod & 31));
-          e.preventDefault();
-          return false;
-        }
-      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault();
         e.stopPropagation();
