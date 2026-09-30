@@ -18,6 +18,7 @@ const path = require('path');
 const http = require('http');
 const net = require('net');
 const { execFileSync, spawn } = require('child_process');
+const crypto = require('crypto');
 let SftpClient = null;
 try {
   SftpClient = require('ssh2-sftp-client');
@@ -702,7 +703,21 @@ function sftpConfigFor(cwd) {
       username: raw.username,
       password: raw.password,
       privateKey: raw.privateKeyPath ? fs.readFileSync(raw.privateKeyPath) : undefined,
-      remoteDir: String(raw.remotePath).replace(/\/+$/, '') + '/.mineclaude',
+      // Gorev dosyasi web kokune YAZILMAMALI. remotePath cogu kurulumda
+      // dogrudan yayin klasoru (htdocs/..., /var/www/html, kimi zaman /) ve
+      // oraya yazilan .mineclaude/tasks.json'u Apache de nginx de varsayilan
+      // olarak servis ediyor: gorev metinleri https://site/.mineclaude/... ile
+      // herkese acik okunur hale geliyordu.
+      //
+      // Bunun yerine SFTP kullanicisinin ev dizinine yaziyoruz — baglanti
+      // zaten orada basliyor, goreli yol yeterli. "Ayni proje -> ayni dosya"
+      // ozelligi kaybolmasin diye dosya adini host+remotePath ozetinden
+      // turetiyoruz: farkli makinelerdeki farkli yerel yollar ayni uzak
+      // dosyaya denk gelmeye devam ediyor.
+      remoteDir: '.mineclaude',
+      remoteFile: '.mineclaude/tasks-' + crypto.createHash('sha256')
+        .update(raw.host + '\n' + String(raw.remotePath).replace(/\/+$/, ''))
+        .digest('hex').slice(0, 16) + '.json',
     };
   } catch {
     return null; // sftp.json yok ya da bozuk: sessizce yerel dosyaya duser
@@ -732,7 +747,7 @@ async function withSftp(cfg, fn) {
 async function fetchRemoteTasks(cfg) {
   return withSftp(cfg, async (client) => {
     try {
-      const buf = await client.get(cfg.remoteDir + '/tasks.json');
+      const buf = await client.get(cfg.remoteFile);
       const raw = JSON.parse(buf.toString('utf8'));
       return Array.isArray(raw) ? raw : [];
     } catch (e) {
@@ -746,7 +761,13 @@ async function fetchRemoteTasks(cfg) {
 async function uploadRemoteTasks(cfg, tasks) {
   return withSftp(cfg, async (client) => {
     await client.mkdir(cfg.remoteDir, true);
-    await client.put(Buffer.from(JSON.stringify(tasks, null, 2)), cfg.remoteDir + '/tasks.json');
+    // Kemer + askı: bazi barindirmalarda SFTP kullanicisi dogrudan web kokune
+    // chroot'lanmis oluyor, yani "ev dizini" ile yayin klasoru ayni yer.
+    // Apache'de bu dosya klasoru disariya kapatiyor; maliyeti bir kucuk put.
+    try {
+      await client.put(Buffer.from('Require all denied\nDeny from all\n'), cfg.remoteDir + '/.htaccess');
+    } catch { /* sunucu izin vermedi: ana koruma zaten dosyanin yeri */ }
+    await client.put(Buffer.from(JSON.stringify(tasks, null, 2)), cfg.remoteFile);
   });
 }
 
