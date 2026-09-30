@@ -1218,7 +1218,19 @@ function start() {
       if (!desktop) { t.view.src = t.url; return; }
       if (t.loading) t.view.stop(); else t.view.reload();
     };
-    q('.tm-web-ext').onclick = () => { if (t.url) window.open(t.url, '_blank'); };
+    // "Disarida ac". Android sarmalayicisinda disari degil, uygulamanin kendi
+    // tarayici katmanina veriyoruz: sekmeler <iframe> oldugu icin bazi siteler
+    // (theverge, techcrunch...) X-Frame-Options ile cerceveyi reddediyor ve bos
+    // kaliyor. WebView'da acilan sayfa cerceve degil ust seviye yukleme, o
+    // kisit yok — yani bu dugme orada "engeli as" anlamina geliyor.
+    q('.tm-web-ext').onclick = () => {
+      if (!t.url) return;
+      if (window.mineClaudeAndroid && window.mineClaudeAndroid.openUrl) {
+        window.mineClaudeAndroid.openUrl(t.url);
+        return;
+      }
+      window.open(t.url, '_blank');
+    };
     // 📌 bu adresi (sadece kok: https://site/) soldaki terminalin projesine yaz
     t.pinBtn = q('.tm-web-pin');
     t.pinBtn.onclick = () => {

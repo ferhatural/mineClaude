@@ -1522,7 +1522,15 @@ function renderTermTasks(){
 // Terminal kısayolları — yalnız terminal görünümü açıkken ve yazarken değilken.
 // ⌘W menüde "Kapat"a bağlı olduğu için burada değil, ana süreçten IPC ile geliyor.
 document.addEventListener('keydown', (e) => {
-  if(!e.metaKey || e.ctrlKey || e.altKey) return;
+  if(e.altKey) return;
+  // Kisayollar ⌘ ile yazilmisti; tablet klavyesinde ⌘ yok, dolayisiyla hicbiri
+  // calismiyordu — sekmeler arasi gecis dahil. Ctrl'u de kabul ediyoruz ama
+  // YALNIZ RAKAMLAR icin: Ctrl+T, Ctrl+W, Ctrl+F terminalde gercek anlam
+  // tasiyor (^T, ^W kelime silme, ^F) ve onlari kapmak yaziyi bozardi.
+  // Ctrl+<rakam> ise terminalde bir sey ifade etmiyor, bos duruyor.
+  const rakam = e.key >= '1' && e.key <= '9';
+  if(!e.metaKey && !(e.ctrlKey && rakam)) return;
+  if(e.metaKey && e.ctrlKey) return;
   // ⌘⇧F her görünümde çalışıyor: terminal ⌘F'i o anki tamponda arar, bu ise
   // makinedeki tüm konuşmalarda. Terminal kısayollarının önünde, çünkü onlar
   // yalnız terminal görünümünde geçerli.
