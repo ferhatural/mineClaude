@@ -364,6 +364,7 @@ function start() {
          </div>`
       : '';
     panes.innerHTML = `<div class="tm-empty">
+      <div class="tm-live" hidden></div>
       ${teklif}
       <div>${T2('termEmpty')}</div>
       <button class="tm-open">${T2('termNew')}</button>
@@ -374,6 +375,32 @@ function start() {
       yes.onclick = () => restoreAll();
       panes.querySelector('.tm-no').onclick = () => { pending = []; saveRestore(); showEmpty(); };
     }
+    cizCanliListe(panes.querySelector('.tm-live'));
+  }
+
+  // Sayfa kapanip acilinca tabs bos basliyor, ama sunucudaki PTY'ler yasamaya
+  // devam ediyor — ekran bos goruniyordu ve terminallerine donmenin yolu
+  // yoktu. Bunlari listeliyoruz; kendiliginden acmiyoruz, tiklayinca
+  // devraliyoruz (yeni surec degil, calisan PTY'ye baglanma).
+  //
+  // pending (localStorage) ayri bir sey: o, ARTIK YASAMAYAN oturumlari
+  // `claude --resume` ile geri getirme teklifi. Canli olani iki kere teklif
+  // etmemek icin listeden dusuyoruz.
+  async function cizCanliListe(kutu) {
+    if (!kutu || !T.list) return;
+    let canli;
+    try { canli = (await T.list()).filter((x) => !x.dead); } catch { return; }
+    canli = canli.filter((x) => !tabs.some((t) => t.id === x.id));
+    if (!canli.length || !kutu.isConnected) return;
+    kutu.hidden = false;
+    kutu.innerHTML = `<span>${esc(T2('termLiveAsk', canli.length))}</span>`
+      + canli.map((x) => `<button data-id="${esc(x.id)}">${esc(x.title)}</button>`).join('');
+    kutu.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        const x = canli.find((y) => y.id === b.dataset.id);
+        if (x) open(x.cwd, undefined, null, { adopt: x });
+      };
+    });
   }
 
   async function restoreAll() {
