@@ -1522,14 +1522,23 @@ function renderTermTasks(){
 // Terminal kısayolları — yalnız terminal görünümü açıkken ve yazarken değilken.
 // ⌘W menüde "Kapat"a bağlı olduğu için burada değil, ana süreçten IPC ile geliyor.
 document.addEventListener('keydown', (e) => {
-  if(e.altKey) return;
   // Kisayollar ⌘ ile yazilmisti; tablet klavyesinde ⌘ yok, dolayisiyla hicbiri
-  // calismiyordu — sekmeler arasi gecis dahil. Ctrl'u de kabul ediyoruz ama
-  // YALNIZ RAKAMLAR icin: Ctrl+T, Ctrl+W, Ctrl+F terminalde gercek anlam
-  // tasiyor (^T, ^W kelime silme, ^F) ve onlari kapmak yaziyi bozardi.
-  // Ctrl+<rakam> ise terminalde bir sey ifade etmiyor, bos duruyor.
+  // calismiyordu — sekmeler arasi gecis dahil.
+  //
+  // Sekme secimi icin Ctrl ve Alt de kabul ediliyor, ama YALNIZ RAKAMLARLA.
+  // Harfler bilerek disarida: Ctrl+T/W/F/C ve Alt+<harf> (ESC<harf> olarak
+  // gider) terminalde gercek anlam tasiyor, onlari kapmak yaziyi bozardi.
+  // Ctrl+<rakam> terminalde atil; Alt+<rakam> ESC<rakam> uretir ama pratikte
+  // kullanilmiyor ve tablet klavyesinde Alt, ⌘'nin durdugu yerde — basparmakla
+  // en kolay ulasilan tus.
+  //
+  // macOS istisnasi: orada Alt = Option ve Option+3 gibi kombinasyonlar gercek
+  // karakter yaziyor (£, ¢...). Mac'te Alt'i hic kapmiyoruz, zaten ⌘ var.
   const rakam = e.key >= '1' && e.key <= '9';
-  if(!e.metaKey && !(e.ctrlKey && rakam)) return;
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+  const altGecerli = !mac && e.altKey && rakam;
+  if(e.altKey && !altGecerli) return;
+  if(!e.metaKey && !(e.ctrlKey && rakam) && !altGecerli) return;
   if(e.metaKey && e.ctrlKey) return;
   // ⌘⇧F her görünümde çalışıyor: terminal ⌘F'i o anki tamponda arar, bu ise
   // makinedeki tüm konuşmalarda. Terminal kısayollarının önünde, çünkü onlar
