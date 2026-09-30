@@ -1376,6 +1376,23 @@ function start() {
     }
   });
 
+  // Uygulama arka plana alininca tarayici requestAnimationFrame'i askiya
+  // aliyor: veri WebSocket'ten gelmeye devam ediyor ve xterm tamponuna
+  // yaziliyor, ama tuval cizilmiyor. Geri donuldugunde xterm kendiliginden
+  // yeniden cizmiyor, bir sonraki yazimi bekliyor — sahada goruldugu gibi
+  // "Claude tekrar yazmaya baslayinca butun mesajlar bir anda beliriyor".
+  //
+  // Gorunur olur olmaz tamponu ekrana zorluyoruz. fitAll da cagriliyor cunku
+  // arka plandayken pencere boyutu degismis olabilir (donme, klavye).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    for (const t of tabs) {
+      if (!t.term || t.dead || t.web) continue;
+      try { t.term.refresh(0, t.term.rows - 1); } catch { /* sekme kapanmis olabilir */ }
+    }
+    fitAll();
+  });
+
   window.addEventListener('resize', () => fitAll());
 
   window.MTerm = {

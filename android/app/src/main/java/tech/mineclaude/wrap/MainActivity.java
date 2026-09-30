@@ -5,9 +5,11 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -16,6 +18,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -38,8 +41,11 @@ public class MainActivity extends Activity {
 
   private static final String PREFS = "mineclaude";
   private static final String KEY_URL = "url";
+  private static final String KEY_ZOOM = "zoom";   // yuzde
 
   private TermWebView web;
+  /** Yakinlastirma yuzdesi. Tarayicidaki Ctrl +/- yerine gecen sey; kalici. */
+  private int zoom = 100;
   /**
    * Tus teshisi. Kapali: eslesen kombinasyonlar zaten sessizce calisiyor,
    * her basista bildirim gostermek gunluk kullanimda rahatsiz ediyor. Acmak
@@ -114,7 +120,14 @@ public class MainActivity extends Activity {
     s.setDomStorageEnabled(true);
     // Durum sesleri kullanici dokunmadan calabilsin.
     s.setMediaPlaybackRequiresUserGesture(false);
-    s.setSupportZoom(false);
+    // Tarayici kabugu olmadigi icin Ctrl +/- yok; yakinlastirmayi kendimiz
+    // isliyoruz (bkz. dispatchKeyEventPreIme). Dahili destek acik olmali,
+    // ama ekranda +/- dugmeleri istemiyoruz.
+    s.setSupportZoom(true);
+    s.setBuiltInZoomControls(true);
+    s.setDisplayZoomControls(false);
+    zoom = prefs().getInt(KEY_ZOOM, 100);
+    web.setInitialScale(zoom);
     web.setBackgroundColor(Color.parseColor("#0e1013"));
 
     // Baglantilari disari atmiyoruz: panel kendi icinde geziyor.
@@ -129,6 +142,11 @@ public class MainActivity extends Activity {
     });
     // Konsol/izin koprusu: pano ve bildirim gibi seyler icin gerekli.
     web.setWebChromeClient(new WebChromeClient());
+    // Panelin mini tarayicisi icin kopru. Tarayicida o sekmeler <iframe> ile
+    // aciliyor ve cogu site X-Frame-Options ile cerceveyi reddediyor —
+    // "blocked". Burada gercek bir WebView actigimiz icin o kisit yok:
+    // cerceve degil, ust seviye yukleme.
+    web.addJavascriptInterface(new Kopru(), "mineClaudeAndroid");
 
     setContentView(web, new ViewGroup.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -171,6 +189,13 @@ public class MainActivity extends Activity {
         int kc = e.getKeyCode();
         boolean ctrlTusu = kc == KeyEvent.KEYCODE_CTRL_LEFT || kc == KeyEvent.KEYCODE_CTRL_RIGHT;
         if (!ctrlTusu) {
+          // Yakinlastirma: tarayicidaki Ctrl+- / Ctrl++ / Ctrl+0'in karsiligi.
+          // '-' (45) ve '=' (61) zaten kontrol karakteri araliginin (64-95)
+          // disinda, yani asagidaki esleme ile catismiyorlar.
+          if (kc == KeyEvent.KEYCODE_MINUS)  { olcekle(0.9f); return true; }
+          if (kc == KeyEvent.KEYCODE_EQUALS) { olcekle(1.1f); return true; }
+          if (kc == KeyEvent.KEYCODE_0)      { olcekle(0f);   return true; }
+
           int u = e.getUnicodeChar(0);              // degistiricisiz temel karakter
           int buyuk = u > 0 ? Character.toUpperCase(u) : 0;
           if (buyuk >= 64 && buyuk <= 95) {         // @ A-Z ve bitisik isaretler
@@ -188,15 +213,115 @@ public class MainActivity extends Activity {
     }
   }
 
+  /**
+   * Yakinlastirmayi degistirir ve hatirlar. carpan 0 ise sifirlar (%100).
+   * zoomBy anlik etki icin; kalici olmasi icin yuzdeyi saklayip acilista
+   * setInitialScale ile veriyoruz — WebView olcegi kendisi hatirlamiyor.
+   */
+  private void olcekle(float carpan) {
+    if (web == null) return;
+    zoom = carpan == 0f ? 100 : Math.max(50, Math.min(300, Math.round(zoom * carpan)));
+    prefs().edit().putInt(KEY_ZOOM, zoom).apply();
+    if (carpan == 0f) web.zoomBy(100f / Math.max(1, olcekTahmini));
+    else web.zoomBy(carpan);
+    olcekTahmini = zoom;
+  }
+
+  /** zoomBy goreli calisiyor; sifirlamak icin nerede oldugumuzu takip ediyoruz. */
+  private int olcekTahmini = 100;
+
   /** Kontrol karakterini sayfaya, DOM olayina hic dokunmadan veriyoruz. */
   private void yazTerminale(int kod) {
     web.evaluateJavascript(
         "window.MTerm && MTerm.sendKey(String.fromCharCode(" + kod + "))", null);
   }
 
+  /** Sayfadan cagrilan tek yontem: bir adresi ust katmanda ac. */
+  private class Kopru {
+    @JavascriptInterface
+    public void openUrl(final String url) {
+      if (url == null || url.isEmpty()) return;
+      runOnUiThread(() -> miniTarayiciAc(url));
+    }
+  }
+
+  private FrameLayout ustKatman;
+
+  /**
+   * Panelin uzerine tam ekran bir tarayici katmani. Yan yana degil ust uste:
+   * tablette yan yana zaten dar kaliyor, ustelik yan yana olmasi icin WebView'i
+   * pane'in geometrisiyle surekli hizalamak gerekirdi.
+   */
+  private void miniTarayiciAc(String url) {
+    miniTarayiciKapat();
+
+    ustKatman = new FrameLayout(this);
+    ustKatman.setBackgroundColor(Color.parseColor("#0e1013"));
+
+    LinearLayout kok = new LinearLayout(this);
+    kok.setOrientation(LinearLayout.VERTICAL);
+
+    LinearLayout cubuk = new LinearLayout(this);
+    cubuk.setOrientation(LinearLayout.HORIZONTAL);
+    cubuk.setGravity(Gravity.CENTER_VERTICAL);
+    cubuk.setPadding(24, 16, 24, 16);
+    cubuk.setBackgroundColor(Color.parseColor("#16191e"));
+
+    Button kapat = new Button(this);
+    kapat.setText("✕");
+    kapat.setOnClickListener(v -> miniTarayiciKapat());
+    cubuk.addView(kapat);
+
+    TextView adres = new TextView(this);
+    adres.setText(url);
+    adres.setTextColor(Color.parseColor("#9aa3b0"));
+    adres.setSingleLine(true);
+    adres.setPadding(16, 0, 0, 0);
+    cubuk.addView(adres);
+
+    final WebView mini = new WebView(this);
+    mini.getSettings().setJavaScriptEnabled(true);
+    mini.getSettings().setDomStorageEnabled(true);
+    mini.setWebViewClient(new WebViewClient() {
+      @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return false; }
+    });
+    mini.setWebChromeClient(new WebChromeClient());
+
+    kok.addView(cubuk, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    kok.addView(mini, new LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+    ustKatman.addView(kok);
+
+    addContentView(ustKatman, new ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    mini.loadUrl(url);
+  }
+
+  private void miniTarayiciKapat() {
+    if (ustKatman == null) return;
+    ViewGroup ebeveyn = (ViewGroup) ustKatman.getParent();
+    if (ebeveyn != null) ebeveyn.removeView(ustKatman);
+    ustKatman = null;
+  }
+
+  /**
+   * Arka plandan donunce WebView'i ve zamanlayicilarini acikca uyandiriyoruz.
+   * Android bazi durumlarda arka plandaki WebView'in JS zamanlayicilarini
+   * durduruyor; o zaman WebSocket sessizlesiyor ve sayfa kaldigi yerde
+   * donuyor. Sayfa tarafinda ayrica visibilitychange ile tuval yeniden
+   * ciziliyor (bkz. term.js) — ikisi farkli katmanlar, ikisi de gerekiyor.
+   */
+  @Override
+  protected void onResume() {
+    super.onResume();
+    if (web != null) { web.onResume(); web.resumeTimers(); }
+  }
+
   /** Geri tusu sayfada geri gitsin, uygulamadan cikmasin. */
   @Override
   public void onBackPressed() {
+    if (ustKatman != null) { miniTarayiciKapat(); return; }
     if (web != null && web.canGoBack()) web.goBack();
     else super.onBackPressed();
   }
