@@ -164,7 +164,17 @@ function start() {
   function setFont(delta) {
     fontSize = Math.min(22, Math.max(9, fontSize + delta));
     localStorage.setItem(FONT_KEY, String(fontSize));
-    for (const t of tabs) if (t.term) t.term.options.fontSize = fontSize;
+    for (const t of tabs) {
+      if (!t.term) continue;
+      t.term.options.fontSize = fontSize;
+      // fitOne "kutu boyutu degismediyse yeniden olcme" diye erken cikiyor.
+      // Yazi boyutu degisince kutu ayni kaliyor ama satir/sutun sayisi
+      // degismek zorunda — onbellegi gecersiz kilmazsak fit hic calismiyor ve
+      // terminal eski olcusunde kaliyor (Claude Code'un giris alani yukari
+      // kayiyordu). Olculeri sifirlayip gercek bir olcume zorluyoruz.
+      t._fitW = 0;
+      t._fitH = 0;
+    }
     fitAll();
   }
 
