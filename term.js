@@ -7,6 +7,16 @@ import { Terminal } from './vendor/xterm.module.js';
 import { FitAddon } from './vendor/xterm-addon-fit.module.js';
 import { SearchAddon } from './vendor/xterm-addon-search.module.js';
 
+// Karttaki filtre renkleriyle ayni dil (bkz. index.html .count.waiting/.busy/.ready/.idle):
+// calisiyor=yesil, input bekliyor=sari, bekliyor=mavi, bosta/bilinmiyor=gri.
+function statusColor(status) {
+  if (status === 'waiting') return 'var(--wait)';
+  if (status === 'busy') return 'var(--busy)';
+  if (status === 'ready') return 'var(--idle)';
+  if (status === 'idle' || status === 'unknown') return 'var(--ended)';
+  return 'var(--line)';
+}
+
 // Iki tasima, tek arayuz. Electron'da PTY'ler ana surecte ve IPC ile konusuluyor;
 // tarayicida ayni PTY'ler sunucunun icinde ve WebSocket ile. term.js ikisini de
 // ayni sekilli nesne olarak goruyor, geri kalan kod farki bilmiyor.
@@ -117,6 +127,17 @@ const T = D && D.term ? electronTransport(D.term) : webTransport();
     .catch(() => setTimeout(() => yoklaVeBasla(Math.min(30000, gecikme * 1.6)), gecikme));
 })();
 
+const GLOBE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c1.8 1.8 2.6 3.9 2.6 6.2S9.8 12.4 8 14.2C6.2 12.4 5.4 10.3 5.4 8S6.2 3.6 8 1.8z"/></svg>';
+const ico = (d) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICONS = {
+  back: ico('<path d="M10 3L5 8l5 5"/>'),
+  fwd: ico('<path d="M6 3l5 5-5 5"/>'),
+  reload: ico('<path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.6v2.8h-2.8"/>'),
+  pin: ico('<path d="M9.8 1.8l4.4 4.4-2 .6-2.4 2.4.2 3-1.4 1.4-2.6-2.6L2.6 14.4M5.2 8.2L2.6 5.6 4 4.2l3 .2 2.4-2.4z"/>'),
+  stop: ico('<path d="M4 4l8 8M12 4l-8 8"/>'),
+  external: ico('<path d="M9.5 2.5h4v4M13.5 2.5L7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/>'),
+};
+
 function start() {
   const tabs = [];              // { id, cwd, title, term, fit, el, dead }
   let active = null;
@@ -133,20 +154,18 @@ function start() {
   // Kendiliginden acmiyoruz: bes sekme, bes Claude oturumu demek.
   const FONT_KEY = 'cc.termFont';
   let fontSize = Math.min(22, Math.max(9, parseFloat(localStorage.getItem(FONT_KEY)) || 12.5));
-  function setFont(delta) {
-    fontSize = Math.min(22, Math.max(9, fontSize + delta));
-    localStorage.setItem(FONT_KEY, String(fontSize));
-    for (const t of tabs) t.term.options.fontSize = fontSize;
-    fitAll();
-  }
 
   const RESTORE_KEY = 'cc.termRestore';
+  // Tarayici sekmeleri geri yuklenmiyor: terminaller geri gelince projelerin
+  // siteleri zaten kendiliginden aciliyor (openProjectWeb). Eski surumun kaydi:
+  try { localStorage.removeItem('cc.termWeb'); } catch { /* */ }
+  let webSeq = 0;
   let pending = [];
   try { pending = JSON.parse(localStorage.getItem(RESTORE_KEY) || '[]'); } catch { pending = []; }
   if (!Array.isArray(pending)) pending = [];
 
   function saveRestore() {
-    const snap = tabs.filter((t) => !t.dead).map((t) => ({ cwd: t.cwd, title: t.title, sessionId: t.sessionId || null }));
+    const snap = tabs.filter((t) => !t.dead && !t.web && !t.devTab).map((t) => ({ cwd: t.cwd, title: t.title, sessionId: t.sessionId || null }));
     try { localStorage.setItem(RESTORE_KEY, JSON.stringify(snap)); } catch { /* dolu olabilir */ }
   }
 
@@ -192,9 +211,6 @@ function start() {
     panes.className = 'tm-panes';
     host.append(strip, panes);
     container.appendChild(host);
-    // Serit host'a asili, panes'e degil: showEmpty() panes.innerHTML yazdiginda
-    // silinmesin. Konumu yine panes'in ustune denk geliyor (host position:relative).
-    host.appendChild(buildKeys());
     drawStrip();
     applyLayout();
     if (!tabs.length) showEmpty();
@@ -239,15 +255,82 @@ function start() {
     saveRestore();
   }
 
+  // --- sekmeleri elle siralama (surukle-birak) ---
+  // Proje sitesi / dev sunucusu sekmeleri kendiliginden terminalin yanina geliyor;
+  // yerini begenmeyen tasiyabilsin. Yalniz tabs dizisinin sirasi degisiyor:
+  // pane'leri DOM'da tasimiyoruz, cunku <webview> DOM'da yer degistirince sayfa
+  // bastan yukleniyor. Izgaradaki sira CSS order ile (bkz. applyLayout).
+  let drag = null;                 // { t } surukleme surerken
+  let redrawLater = false;         // surukleme sirasinda gelen drawStrip istekleri
+
+  function moveTab(t, to) {
+    const from = tabs.indexOf(t);
+    if (from < 0) return;
+    tabs.splice(from, 1);
+    tabs.splice(to > from ? to - 1 : to, 0, t);
+    saveRestore();
+    applyLayout();
+    drawStrip();
+  }
+
+  function wireDrag(b, t) {
+    b.draggable = true;
+    b.addEventListener('dragstart', (e) => {
+      drag = { t };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', t.title || '');
+      b.classList.add('dragging');
+    });
+    b.addEventListener('dragend', () => {
+      drag = null;
+      b.classList.remove('dragging');
+      strip.querySelectorAll('.drop-l,.drop-r').forEach((x) => x.classList.remove('drop-l', 'drop-r'));
+      if (redrawLater) { redrawLater = false; drawStrip(); }
+    });
+    // Imlec sekmenin sol yarisindaysa oncesine, sag yarisindaysa sonrasina
+    const side = (e) => { const r = b.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? 'l' : 'r'; };
+    b.addEventListener('dragover', (e) => {
+      if (!drag || drag.t === t) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const s = side(e);
+      b.classList.toggle('drop-l', s === 'l');
+      b.classList.toggle('drop-r', s === 'r');
+    });
+    b.addEventListener('dragleave', () => b.classList.remove('drop-l', 'drop-r'));
+    b.addEventListener('drop', (e) => {
+      if (!drag || drag.t === t) return;
+      e.preventDefault();
+      const moving = drag.t;
+      const at = tabs.indexOf(t) + (side(e) === 'r' ? 1 : 0);
+      drag = null;
+      redrawLater = false;
+      moveTab(moving, at);
+    });
+  }
+
   function drawStrip() {
+    if (drag) { redrawLater = true; return; }
     strip.innerHTML = '';
+    for (const w of tabs) if (w.web && w.pinBtn) {
+      const p = projectOf(w);
+      const dev = isLocal(w.url);
+      const on = !!(p && w.url && (dev ? p.devUrl === w.url : (p.site && sameSite(p.site, w.url))));
+      w.pinBtn.hidden = !p || !/^https?:/i.test(w.url || '');
+      w.pinBtn.classList.toggle('on', on);
+      if (p) w.pinBtn.title = T2(dev ? (on ? 'webPinnedDev' : 'webPinDev') : (on ? 'webPinned' : 'webPin'), baseName(p.cwd));
+    }
     for (const t of tabs) {
       const b = document.createElement('button');
-      b.className = 'tm-tab' + (t === active ? ' on' : '') + (t.dead ? ' dead' : '')
-        + (t.waiting ? ' waiting' : '');
-      b.title = t.cwd;
-      b.innerHTML = `<span>${esc(t.title)}</span>`;
+      b.className = 'tm-tab' + (t === active ? ' on' : '') + (t.dead ? ' dead' : '') + (t.loading ? ' loading' : '')
+        + (t.waiting ? ' waiting' : '') + (t.lounge && !t.waiting && !t.dead ? ' lounge' : '');
+      b.title = t.web ? (t.url || T2('webTab')) : t.cwd;
+      b.style.setProperty('--c', statusColor(t.status));
+      if (t.el) t.el.style.setProperty('--c', statusColor(t.status)); // izgara kipinde etkin cercevenin rengi
+      const ic = !t.web ? '' : (t.icon && !t.loading ? `<img class="tm-globe" src="${esc(t.icon)}" alt="">` : GLOBE.replace('<svg', '<svg class="tm-globe"'));
+      b.innerHTML = ic + `<span class="tm-tab-title">${esc(t.title)}</span>`;
       b.onclick = () => select(t);
+      wireDrag(b, t);
       const x = document.createElement('span');
       x.className = 'tm-x';
       x.textContent = '×';
@@ -262,14 +345,21 @@ function start() {
     plus.onclick = () => openPicked();
     strip.appendChild(plus);
 
-    const lay = document.createElement('button');
-    lay.className = 'tm-lay';
-    lay.title = layout === 'tabs' ? T2('termTiles') : T2('termTabs');
-    lay.innerHTML = layout === 'tabs'
-      ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="9" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="1.8" y="9" width="5.2" height="5.2" rx="1"/><rect x="9" y="9" width="5.2" height="5.2" rx="1"/></svg>'
-      : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
-    lay.onclick = () => setLayout(layout === 'tabs' ? 'tiles' : 'tabs');
-    strip.appendChild(lay);
+    const web = document.createElement('button');
+    web.className = 'tm-lay';
+    web.title = T2('webNew');
+    web.innerHTML = GLOBE;
+    web.onclick = () => openWeb('');
+    strip.appendChild(web);
+
+    // Tablette ⌘F yok; ayni is icin bir dugme.
+    const fnd = document.createElement('button');
+    fnd.className = 'tm-lay tm-findbtn' + (find && !find.box.hidden ? ' on' : '');
+    fnd.title = T2('termFind') + '  (⌘F)';
+    fnd.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/></svg>';
+    fnd.onclick = () => (find && !find.box.hidden ? closeFind() : openFind());
+    fnd.style.marginLeft = '0';      // sag grubu 🌐 basliyor (margin-left:auto onda)
+    strip.appendChild(fnd);
 
     const tasksBtn = document.createElement('button');
     tasksBtn.className = 'tm-tasks-btn' + (tasksOpen ? ' on' : '');
@@ -281,13 +371,15 @@ function start() {
     tasksBtn.onclick = () => window.dispatchEvent(new Event('term-tasks-toggle'));
     strip.appendChild(tasksBtn);
 
-    // Tablette ⌘F yok; ayni is icin bir dugme.
-    const fnd = document.createElement('button');
-    fnd.className = 'tm-lay tm-findbtn' + (find && !find.box.hidden ? ' on' : '');
-    fnd.title = T2('termFind') + '  (⌘F)';
-    fnd.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/></svg>';
-    fnd.onclick = () => (find && !find.box.hidden ? closeFind() : openFind());
-    strip.appendChild(fnd);
+    const lay = document.createElement('button');
+    lay.className = 'tm-lay';
+    lay.title = layout === 'tabs' ? T2('termTiles') : T2('termTabs');
+    lay.innerHTML = layout === 'tabs'
+      ? '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="9" y="1.8" width="5.2" height="5.2" rx="1"/><rect x="1.8" y="9" width="5.2" height="5.2" rx="1"/><rect x="9" y="9" width="5.2" height="5.2" rx="1"/></svg>'
+      : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="3" width="12.4" height="10" rx="1.4"/><path d="M1.8 6.2h12.4"/></svg>';
+    lay.onclick = () => setLayout(layout === 'tabs' ? 'tiles' : 'tabs');
+    lay.style.marginLeft = '0';
+    strip.appendChild(lay);
   }
 
   // --- tampon icinde arama (⌘F) ---
@@ -338,7 +430,7 @@ function start() {
       // addon-search 0.16: findNext yeni secenekleri once "son secenek" diye
       // yaziyor, sonra degisti mi diye kendisiyle karsilastiriyor; secenek
       // degisince vurgular hic yenilenmiyor. Temizleyip onbellegini dusuruyoruz.
-      if (active) active.search.clearDecorations();
+      if (active && active.search) active.search.clearDecorations();
       runFind('incremental');
       input.focus();
     };
@@ -351,7 +443,7 @@ function start() {
   }
 
   function openFind() {
-    if (!host || !active) return false;
+    if (!host || !active || active.web) return false;
     if (!find) host.appendChild(buildFind());
     const wasHidden = find.box.hidden;
     find.box.hidden = false;
@@ -368,15 +460,15 @@ function start() {
   function closeFind() {
     if (!find || find.box.hidden) return false;
     find.box.hidden = true;
-    for (const t of tabs) t.search.clearDecorations();
+    for (const t of tabs) if (t.search) t.search.clearDecorations();
     showCount(null);
     drawStrip();
-    if (active) active.term.focus();
+    if (active) focusTab(active);
     return true;
   }
 
   function runFind(how) {
-    if (!find || !active) return;
+    if (!find || !active || !active.search) return;
     const q = find.input.value;
     const opts = { caseSensitive: find.caseSensitive, decorations: findDecor() };
     if (!q) { active.search.clearDecorations(); showCount(null); return; }
@@ -411,78 +503,119 @@ function start() {
   }
 
   // Izgarada kolon sayisi: kareye yakin bir duzen. 3 terminal -> 2x2'nin ucu dolu.
+  // --- izgarada boyutlandirma ---
+  // Kolon/satir sinirlarinda suruklenebilir ayraclar. Oranlar fr cinsinden ve
+  // izgaranin sekline gore ayri saklaniyor ("2x1", "2x2"...): iki terminalde
+  // ayarladigin bolme, ucuncusu acilinca bozulmasin; geri donunce yine gelsin.
+  // Cift tik: esitle. Terminaller boyutu ResizeObserver'la kendileri aliyor.
+  const SIZES_KEY = 'cc.termTileSizes';
+  let tileSizes = {};
+  try { tileSizes = JSON.parse(localStorage.getItem(SIZES_KEY) || '{}') || {}; } catch { tileSizes = {}; }
+  let grid = { cols: 1, rows: 1, c: [1], r: [1] };
+  const GAP = 6, PAD = 6, MIN_PX = 90;
+
+  const okFr = (a, n) => Array.isArray(a) && a.length === n && a.every((x) => x > 0 && isFinite(x));
+  function sizesFor(cols, rows) {
+    const s = tileSizes[cols + 'x' + rows] || {};
+    return { c: okFr(s.c, cols) ? s.c.slice() : Array(cols).fill(1), r: okFr(s.r, rows) ? s.r.slice() : Array(rows).fill(1) };
+  }
+  function saveSizes() {
+    tileSizes[grid.cols + 'x' + grid.rows] = { c: grid.c, r: grid.r };
+    try { localStorage.setItem(SIZES_KEY, JSON.stringify(tileSizes)); } catch { /* dolu */ }
+  }
+  const tpl = (a) => a.map((f) => `minmax(0,${+f.toFixed(4)}fr)`).join(' ');
+
+  // Ayraclarin yeri fr'lerden hesaplaniyor: izgaranin kendi olcusunu okumaya gerek yok.
+  function placeGutters() {
+    if (!panes) return;
+    const W = panes.clientWidth - 2 * PAD - (grid.cols - 1) * GAP;
+    const H = panes.clientHeight - 2 * PAD - (grid.rows - 1) * GAP;
+    const sc = grid.c.reduce((a, b) => a + b, 0), sr = grid.r.reduce((a, b) => a + b, 0);
+    let acc = 0;
+    panes.querySelectorAll('.tm-gut.v').forEach((g, i) => {
+      acc += grid.c[i];
+      g.style.left = (PAD + (acc / sc) * W + i * GAP + GAP / 2) + 'px';
+    });
+    acc = 0;
+    panes.querySelectorAll('.tm-gut.h').forEach((g, i) => {
+      acc += grid.r[i];
+      g.style.top = (PAD + (acc / sr) * H + i * GAP + GAP / 2) + 'px';
+    });
+  }
+
+  function makeGutter(kind, i) {
+    const g = document.createElement('div');
+    g.className = 'tm-gut ' + kind;
+    g.addEventListener('dblclick', () => {
+      if (kind === 'v') grid.c = grid.c.map(() => 1); else grid.r = grid.r.map(() => 1);
+      applySizes(); saveSizes();
+    });
+    g.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      g.setPointerCapture(e.pointerId);
+      const arr = kind === 'v' ? grid.c : grid.r;
+      const total = (kind === 'v' ? panes.clientWidth : panes.clientHeight)
+        - 2 * PAD - ((kind === 'v' ? grid.cols : grid.rows) - 1) * GAP;
+      const sum = arr.reduce((a, b) => a + b, 0);
+      const pxPerFr = total / sum;
+      const pair = arr[i] + arr[i + 1];               // ayracin iki yanindaki toplam
+      const startA = arr[i] * pxPerFr;
+      const start = kind === 'v' ? e.clientX : e.clientY;
+      // webview/iframe imleci yutmasin diye surukleme boyunca olaylari almasinlar
+      panes.classList.add('resizing', kind === 'v' ? 'resizing-v' : 'resizing-h');
+      g.classList.add('on');
+      const move = (ev) => {
+        const d = (kind === 'v' ? ev.clientX : ev.clientY) - start;
+        const pairPx = pair * pxPerFr;
+        const a = Math.min(pairPx - MIN_PX, Math.max(MIN_PX, startA + d));
+        arr[i] = a / pxPerFr;
+        arr[i + 1] = pair - arr[i];
+        applySizes();
+      };
+      const up = () => {
+        g.removeEventListener('pointermove', move);
+        g.removeEventListener('pointerup', up);
+        g.removeEventListener('pointercancel', up);
+        panes.classList.remove('resizing', 'resizing-v', 'resizing-h');
+        g.classList.remove('on');
+        saveSizes();
+      };
+      g.addEventListener('pointermove', move);
+      g.addEventListener('pointerup', up);
+      g.addEventListener('pointercancel', up);
+    });
+    return g;
+  }
+
+  function applySizes() {
+    panes.style.gridTemplateColumns = tpl(grid.c);
+    panes.style.gridTemplateRows = tpl(grid.r);
+    placeGutters();
+  }
+
+  let panesRO = null;
   function applyLayout() {
     if (!panes) return;
     panes.classList.toggle('tiles', layout === 'tiles');
+    panes.querySelectorAll('.tm-gut').forEach((g) => g.remove());
     if (layout === 'tiles') {
       const n = Math.max(1, tabs.length);
       const cols = Math.ceil(Math.sqrt(n));
       const rows = Math.ceil(n / cols);
-      panes.style.gridTemplateColumns = `repeat(${cols}, minmax(0,1fr))`;
-      panes.style.gridTemplateRows = `repeat(${rows}, minmax(0,1fr))`;
+      grid = { cols, rows, ...sizesFor(cols, rows) };
+      for (let i = 0; i < cols - 1; i++) panes.appendChild(makeGutter('v', i));
+      for (let i = 0; i < rows - 1; i++) panes.appendChild(makeGutter('h', i));
+      applySizes();
+      if (!panesRO) { panesRO = new ResizeObserver(() => { if (layout === 'tiles') placeGutters(); }); panesRO.observe(panes); }
       for (const t of tabs) t.el.classList.add('shown');
+      tabs.forEach((t, i) => { t.el.style.order = i; });
     } else {
       panes.style.gridTemplateColumns = '';
       panes.style.gridTemplateRows = '';
       for (const t of tabs) t.el.classList.remove('shown');
     }
     requestAnimationFrame(fitAll);
-  }
-
-  // Dokunmatik cihazda Ctrl gibi tuslar tarayiciya ya da klavye katmanina takiliyor;
-  // Android'de Ctrl+C sayfaya hic ulasmayabiliyor. Bu serit klavyeden bagimsiz:
-  // dogrudan denetim dizisini PTY'ye yaziyor. Fare/trackpad varsa gizli duruyor.
-  const KEYS = [
-    ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'], ['^D', '\x04'], ['^Z', '\x1a'],
-    ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['←', '\x1b[D'], ['→', '\x1b[C'],
-  ];
-
-  let keyWrap = null;
-
-  function buildKeys() {
-    const wrap = document.createElement('div');
-    wrap.className = 'tm-keywrap' + (localStorage.getItem('cc.termKeys') === '0' ? ' off' : '');
-
-    const tog = document.createElement('button');
-    tog.className = 'tm-keytoggle';
-    tog.textContent = '⌨';
-    tog.title = T2('termKeys');
-    tog.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      wrap.classList.toggle('off');
-      localStorage.setItem('cc.termKeys', wrap.classList.contains('off') ? '0' : '1');
-    });
-
-    const bar = document.createElement('div');
-    bar.className = 'tm-keys';
-    const ekle = (ad, fn, cls) => {
-      const b = document.createElement('button');
-      b.textContent = ad;
-      if (cls) b.className = cls;
-      b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); if (active) active.term.focus(); });
-      bar.appendChild(b);
-    };
-
-    for (const [ad, dizi] of KEYS) ekle(ad, () => { if (active) T.write(active.id, dizi); });
-
-    // Dokunmatikte metin secip kopyalamak zor; acik dugme daha guvenilir.
-    // Clipboard API guvenli baglam istiyor — localhost tunelinde saglaniyor.
-    ekle('kopyala', async () => {
-      if (!active) return;
-      const sel = active.term.getSelection();
-      if (sel) { try { await navigator.clipboard.writeText(sel); } catch {} }
-    }, 'wide');
-    ekle('yapıştır', async () => {
-      if (!active) return;
-      try { const t = await navigator.clipboard.readText(); if (t) T.write(active.id, t); } catch {}
-    }, 'wide');
-    // Tarayici yakinlastirmasi terminale gecmiyor; xterm'in kendi boyutu.
-    ekle('A−', () => setFont(-1));
-    ekle('A+', () => setFont(1));
-
-    wrap.append(tog, bar);
-    keyWrap = wrap;
-    return wrap;
   }
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -528,8 +661,10 @@ function start() {
     box.querySelectorAll('[data-dir]').forEach((b) => { b.onclick = () => git(b.dataset.dir); });
   }
 
-  async function open(cwd, command, resumeSessionId) {
-    if (!panes) return;
+  // opts.dev: projenin dev sunucusu icin mineClaude'un kendisinin actigi sekme
+  // (bkz. watchDev). Arka planda acilir, Claude sekmesinin yanina, geri yuklenmez.
+  async function open(cwd, command, resumeSessionId, opts = {}) {
+    if (!panes) return null;
     // Ikinci bir kopyayi acmamak icin iki ayri tekillestirme var:
     //
     // - Resume istenmisse: ayni konusma zaten bir sekmede acikSA ona geciyoruz.
@@ -542,16 +677,16 @@ function start() {
     //   varolan sekmeye geciyoruz.
     //
     // Ozel bir komut verilmisse (command) hicbirine bakmiyoruz: ne istendigini
-    // bilmiyoruz, karar cagiranin.
+    // bilmiyoruz, karar cagiranin. Tarayici ve dev sekmeleri ikisinin de disinda.
     if (resumeSessionId) {
       // Iki alana birden bakiyoruz: resumeSessionId acilista belli oluyor,
       // t.sessionId'yi ise panel tty eslestirmesiyle sonradan yaziyor
       // (noteSession). Hizli ust uste dokunusta ikincisi henuz dolmamis olur.
-      const ayni = tabs.find((t) => !t.dead &&
+      const ayni = tabs.find((t) => !t.dead && !t.web && !t.devTab &&
         (t.resumeSessionId === resumeSessionId || t.sessionId === resumeSessionId));
       if (ayni) { select(ayni); return; }
     } else if (!command) {
-      const existing = tabs.find((t) => t.cwd === cwd && !t.dead);
+      const existing = tabs.find((t) => t.cwd === cwd && !t.dead && !t.web && !t.devTab);
       if (existing) { select(existing); return; }
     }
     const el = document.createElement('div');
@@ -574,9 +709,28 @@ function start() {
     term.loadAddon(search);
     term.open(el);
     fit.fit();
-    // Ctrl/Cmd+V: xterm bunu kendi tusuna gore islemiyor, tarayicinin "paste"
-    // olayina biraktigi icin bazi ortamlarda (Electron izin istemi vb.) hic
-    // calismiyordu. Native panoyu dogrudan okuyup elle yapistiriyoruz.
+
+    let info;
+    try {
+      // light: acik temada pty.js claude'u --settings ile aciyor, yoksa
+      // Claude Code koyu tema renklerini krem zemine basiyor.
+      info = await T.create({
+        cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
+        light: !!cssVar('--term-light', ''),
+      });
+    } catch (e) {
+      term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
+      return;
+    }
+
+    const t = { ...info, term, fit, search, el, dead: false, resumeSessionId: resumeSessionId || null };
+    if (opts.dev) { t.devTab = true; t.title = t.title + ' · dev'; }
+    // Sayac yalniz etkin sekme icin: izgarada digerlerinden gelen sonuc ustune yazmasin
+    search.onDidChangeResults((r) => { if (t === active) showCount(r); });
+    // xterm.js'de attachCustomKeyEventHandler tek bir isleyici tutuyor — ikinci
+    // cagri birinciyi sessizce eziyordu. Ctrl/Cmd+V (native panoyu okuyup
+    // yapistirma) ile Ctrl+C (secim yokken ^C gondersin, bazi tarayicilar bunu
+    // "kopyala" saniyor) tek isleyicide birlesti.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
@@ -588,30 +742,7 @@ function start() {
         });
         return false;
       }
-      return true;
-    });
-
-    let info;
-    try {
-      // light: acik temada pty.js claude'u --settings '{"theme":"light"}' ile
-      // aciyor, yoksa Claude Code koyu tema renklerini krem zemine basiyor.
-      info = await T.create({
-        cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
-        light: !!cssVar('--term-light', ''),
-      });
-    } catch (e) {
-      term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
-      return;
-    }
-
-    const t = { ...info, term, fit, search, el, dead: false, resumeSessionId: resumeSessionId || null };
-    // Sayac yalniz etkin sekme icin: izgarada digerlerinden gelen sonuc ustune yazmasin
-    search.onDidChangeResults((r) => { if (t === active) showCount(r); });
-    // Bazi tarayicilar Ctrl+C'yi "kopyala" diye yorumlayip terminale hic vermiyor.
-    // Secim varken kopyalamak dogru davranis; secim yokken ^C gitmesi gerekiyor.
-    term.attachCustomKeyEventHandler((e) => {
-      if (e.type === 'keydown' && e.ctrlKey && !e.metaKey && !e.altKey
-          && (e.key === 'c' || e.key === 'C') && !term.hasSelection()) {
+      if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'c' || e.key === 'C') && !term.hasSelection()) {
         T.write(t.id, '\x03');
         e.preventDefault();
         return false;
@@ -626,11 +757,236 @@ function start() {
     el.addEventListener('mousedown', () => { if (active !== t) select(t); });
     term.onData((d) => T.write(t.id, d));
     term.onResize(({ cols, rows }) => T.resize(t.id, cols, rows));
-    tabs.push(t);
+    const at = opts.after ? tabs.indexOf(opts.after) : -1;
+    if (at >= 0) tabs.splice(at + 1, 0, t); else tabs.push(t);
     saveRestore();
     applyLayout();
-    select(t);
-    term.focus();
+    if (opts.dev) drawStrip();
+    else { select(t); term.focus(); }
+    if (!command && !opts.dev) openProjectWeb(t);
+    return t;
+  }
+
+  // Projenin sitesi (bkz. server.js projectWeb): terminal acilinca yaninda, arka planda.
+  // O adres zaten bir sekmede aciksa ikincisini acmiyoruz.
+  const sameSite = (a, b) => { try { return new URL(a).origin === new URL(b).origin; } catch { return false; } };
+  function openProjectWeb(t) {
+    if (localStorage.getItem('cc.webAuto') === '0' || !t.cwd) return;
+    fetch('/api/project-web?cwd=' + encodeURIComponent(t.cwd))
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d || !tabs.includes(t)) return;
+        if (d.dev && d.dev.length) watchDev(t, d.dev, d.devCmd || '');
+        if (!d.url) return;
+        t.site = d.url;
+        if (tabs.some((x) => x.web && x.url && sameSite(x.url, d.url))) return;
+        openWeb(d.url, { quiet: true, after: t });
+      })
+      .catch(() => {});
+  }
+
+  // Dev sunucusu (bkz. server.js devCandidates/devCommand): Claude sekmesi acik
+  // oldugu surece projenin dev portlarini yokluyoruz; biri acilinca adresi
+  // tarayici sekmesinde aciyoruz. Ilk bakista hicbiri acik degilse ve projenin bir
+  // dev komutu varsa (Ionic'te `ionic serve`) onu yandaki bir terminal sekmesinde
+  // kendimiz baslatiyoruz — gorunur, istenince kapatilir. Kimse sormak zorunda kalmasin.
+  const isLocal = (u) => { try { return /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(new URL(u).hostname); } catch { return false; } };
+  const portOf = (u) => { try { return new URL(u).port; } catch { return ''; } };
+
+  function watchDev(t, urls, cmd) {
+    const ports = [...new Set(urls.map(portOf).filter(Boolean))];
+    if (!ports.length || t.devWatch) return;
+    t.devWatch = true;
+    const started = Date.now();
+    let first = true, timer = null;
+    const stop = () => { if (timer) clearInterval(timer); timer = null; };
+    const tick = () => {
+      if (!tabs.includes(t) || t.dead || localStorage.getItem('cc.webAuto') === '0' || Date.now() - started > 3 * 3600e3) return stop();
+      fetch('/api/port-open?ports=' + ports.join(','))
+        .then((r) => r.json())
+        .then((d) => {
+          if (!timer) return;
+          const open = ((d && d.open) || []).map(String);
+          const hit = urls.find((u) => open.includes(portOf(u)));
+          if (hit) {
+            stop();
+            if (tabs.some((x) => x.web && x.url && sameSite(x.url, hit))) return;   // terminal ciktisindan zaten acildi
+            const dev = t.devTabRef && tabs.includes(t.devTabRef) ? t.devTabRef : t;
+            openWeb(hit, { quiet: true, after: dev });
+            return;
+          }
+          if (first && cmd && !t.devTabRef) {
+            t.devTabRef = true;                  // ikinci kez baslatmayalim
+            open(t.cwd, cmd, undefined, { dev: true, after: t }).then((dt) => { t.devTabRef = dt || null; });
+          }
+          first = false;
+        })
+        .catch(() => {});
+    };
+    timer = setInterval(tick, 3000);
+    tick();
+  }
+
+  // Bir tarayici sekmesi hangi projenin? Seritte solundaki ilk terminal.
+  function projectOf(w) {
+    for (let i = tabs.indexOf(w) - 1; i >= 0; i--) if (!tabs[i].web) return tabs[i];
+    return null;
+  }
+  const baseName = (p) => String(p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+
+  // --- tarayici sekmesi ---
+  // Kod beklerken internette gezinmek (ya da Claude'un actigi dev sunucusuna bakmak)
+  // icin, terminallerin yaninda bir sekme. Masaustunde <webview>: kalici ayri oturum,
+  // sag tik menusu, kisayollar ve yeni pencere -> yeni sekme ana surecte (electron/browser.js).
+  // Tarayicida iframe; cogu site iframe'e izin vermedigi icin orada yalniz localhost ise yarar.
+  // Adres cubugu tarayicilardaki gibi: adrese benziyorsa git, degilse ara.
+  // "7789" -> localhost:7789 (Claude'un actigi dev sunucusu icin kisa yol).
+  const SEARCH = 'https://www.google.com/search?q=';
+  const normUrl = (raw) => {
+    let u = String(raw || '').trim();
+    if (!u) return '';
+    if (/^\d{2,5}(\/.*)?$/.test(u)) return 'http://localhost:' + u;
+    if (/^(https?|about):/i.test(u)) return u;
+    if (/\s/.test(u)) return SEARCH + encodeURIComponent(u);
+    // localhost:3000, 127.0.0.1, 192.168.1.5:8080/x, ornek.com, ornek.com.tr/yol
+    const m = u.match(/^([^/?#]+)/)[1];
+    if (/^localhost(:\d+)?$/i.test(m) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(m)) return 'http://' + u;
+    if (/^[\p{L}\d-]+(\.[\p{L}\d-]+)*\.[\p{L}]{2,}(:\d+)?$/u.test(m)) return 'https://' + u;
+    return SEARCH + encodeURIComponent(u);
+  };
+  const urlTitle = (u) => { try { return new URL(u).host || u; } catch { return u; } };
+
+  // Webview icinden gelen yeni sekme istekleri ve kisayollar (bkz. electron/browser.js)
+  if (D && D.web) {
+    D.web.onOpen(({ url }) => { if (url) openWeb(url); });
+    D.web.onKey(({ wcId, act }) => {
+      const t = tabs.find((x) => x.web && x.wcId === wcId);
+      if (!t) return;
+      if (act === 'focus-url') { t.input.focus(); t.input.select(); }
+    });
+  }
+
+  function openWeb(raw, { quiet = false, after = null } = {}) {
+    if (!panes) return null;
+    const desktop = !!D;
+    const el = document.createElement('div');
+    el.className = 'tm-pane tm-web';
+    el.innerHTML = `
+      <div class="tm-web-bar">
+        ${desktop ? `<button class="tm-web-back" title="${esc(T2('webBack'))}  (Alt+←)">${ICONS.back}</button>
+        <button class="tm-web-fwd" title="${esc(T2('webFwd'))}  (Alt+→)">${ICONS.fwd}</button>` : ''}
+        <button class="tm-web-reload" title="${esc(T2('webReload'))}">${ICONS.reload}</button>
+        <input type="text" spellcheck="false" autocomplete="off" placeholder="${esc(T2('webPh'))}">
+        <button class="tm-web-pin">${ICONS.pin}</button>
+        <button class="tm-web-ext" title="${esc(T2('webExt'))}">${ICONS.external}</button>
+      </div>
+      <div class="tm-web-body"></div>`;
+    panes.appendChild(el);
+    const input = el.querySelector('input');
+    const body = el.querySelector('.tm-web-body');
+    const reloadBtn = el.querySelector('.tm-web-reload');
+    const t = { id: 'web-' + (++webSeq), web: true, url: '', title: T2('webTab'), icon: null,
+      loading: false, wcId: null, el, input, view: null, dead: false };
+
+    const retitle = (title) => { title = title || urlTitle(t.url) || T2('webTab'); if (t.title !== title) { t.title = title; drawStrip(); } };
+    const setUrl = (u) => {
+      t.url = u;
+      if (document.activeElement !== input) input.value = u;
+      saveRestore();
+      drawStrip();
+    };
+    const setLoading = (on) => {
+      t.loading = on;
+      reloadBtn.innerHTML = on ? ICONS.stop : ICONS.reload;
+      reloadBtn.title = T2(on ? 'webStop' : 'webReload');
+      drawStrip();
+    };
+    const overlay = (html) => {
+      let o = body.querySelector('.tm-web-empty');
+      if (!html) { if (o) o.remove(); return; }
+      if (!o) { o = document.createElement('div'); o.className = 'tm-web-empty'; body.appendChild(o); }
+      o.innerHTML = html;
+      return o;
+    };
+
+    const go = (v) => {
+      const u = normUrl(v);
+      if (!u) return;
+      setUrl(u);
+      overlay(null);
+      if (t.view) { if (desktop) t.view.loadURL(u).catch(() => {}); else t.view.src = u; return; }
+      const w = document.createElement(desktop ? 'webview' : 'iframe');
+      if (desktop) {
+        // Oturum/partition ve guvenlik ayarlari ana surecte (will-attach-webview).
+        // allowpopups: window.open ana surecin handler'ina ulassin, o da yeni sekme acsin.
+        w.setAttribute('allowpopups', '');
+        w.addEventListener('dom-ready', () => { try { t.wcId = w.getWebContentsId(); } catch { /* */ } });
+        w.addEventListener('did-navigate', (e) => { setUrl(e.url); t.icon = null; retitle(); });
+        w.addEventListener('did-navigate-in-page', (e) => { if (e.isMainFrame) setUrl(e.url); });
+        w.addEventListener('page-title-updated', (e) => retitle(e.title));
+        w.addEventListener('page-favicon-updated', (e) => { t.icon = (e.favicons || [])[0] || null; drawStrip(); });
+        w.addEventListener('did-start-loading', () => setLoading(true));
+        w.addEventListener('did-stop-loading', () => setLoading(false));
+        w.addEventListener('did-fail-load', (e) => {
+          // -3: kullanici durdurdu / yeni gezinme eskisini kesti — hata degil
+          if (!e.isMainFrame || e.errorCode === -3) return;
+          const o = overlay(`<b>${esc(T2('webFail'))}</b><div>${esc(e.validatedURL || t.url)}</div>
+            <div>${esc(e.errorDescription || '')}</div><button>${esc(T2('webRetry'))}</button>`);
+          o.querySelector('button').onclick = () => { overlay(null); w.reload(); };
+        });
+      } else {
+        w.addEventListener('load', () => retitle());
+      }
+      w.src = u;
+      body.innerHTML = '';
+      body.appendChild(w);
+      t.view = w;
+    };
+
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); go(input.value); if (t.view) t.view.focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); input.value = t.url; if (t.view) t.view.focus(); }
+    };
+    input.onfocus = () => input.select();
+    input.onblur = () => { if (!input.value.trim()) input.value = t.url; };
+    const q = (c) => el.querySelector(c);
+    if (desktop) {
+      q('.tm-web-back').onclick = () => { if (t.view && t.view.canGoBack()) t.view.goBack(); };
+      q('.tm-web-fwd').onclick = () => { if (t.view && t.view.canGoForward()) t.view.goForward(); };
+    }
+    reloadBtn.onclick = () => {
+      if (!t.view) return go(input.value);
+      if (!desktop) { t.view.src = t.url; return; }
+      if (t.loading) t.view.stop(); else t.view.reload();
+    };
+    q('.tm-web-ext').onclick = () => { if (t.url) window.open(t.url, '_blank'); };
+    // 📌 bu adresi (sadece kok: https://site/) soldaki terminalin projesine yaz
+    t.pinBtn = q('.tm-web-pin');
+    t.pinBtn.onclick = () => {
+      const p = projectOf(t);
+      if (!p || !t.url) return;
+      const dev = isLocal(t.url);
+      let url; try { url = dev ? t.url : new URL(t.url).origin + '/'; } catch { return; }
+      if (dev ? p.devUrl === url : (p.site && sameSite(p.site, url))) return;
+      fetch('/api/project-web', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cwd: p.cwd, url, kind: dev ? 'dev' : 'site' }) })
+        .then((r) => r.json()).then((d) => { if (d && d.ok) { if (dev) p.devUrl = url; else p.site = url; drawStrip(); } })
+        .catch(() => {});
+    };
+    // webview icindeki tiklama ust belgeye mousedown olarak gelmiyor; odakla da secelim.
+    el.addEventListener('mousedown', () => { if (active !== t) select(t); });
+    el.addEventListener('focusin', () => { if (active !== t) select(t); });
+
+    // Bir terminalden geldiyse onun hemen yanina: hangi projenin sayfasi oldugu belli olsun
+    const at = after ? tabs.indexOf(after) : -1;
+    if (at >= 0) tabs.splice(at + 1, 0, t); else tabs.push(t);
+    const u = normUrl(raw);
+    if (u) go(u); else overlay(esc(T2('webEmpty')));
+    saveRestore();
+    applyLayout();
+    if (!quiet) { select(t); if (!u) requestAnimationFrame(() => input.focus()); }
+    else drawStrip();
+    return t;
   }
 
   function select(t) {
@@ -642,7 +998,12 @@ function start() {
     drawStrip();
     if (prev !== t) refind(prev);
     // Arama cubugu acikken odak orada kalsin; yoksa terminale
-    requestAnimationFrame(() => { fitAll(); if (find && !find.box.hidden) find.input.focus(); else t.term.focus(); });
+    requestAnimationFrame(() => { fitAll(); if (find && !find.box.hidden) find.input.focus(); else focusTab(t); });
+  }
+
+  function focusTab(t) {
+    if (!t.web) { t.term.focus(); return; }
+    if (t.view) t.view.focus(); else t.input.focus();
   }
 
   function selectIndex(i) {
@@ -652,8 +1013,7 @@ function start() {
 
   function close(t) {
     if (t.ro) t.ro.disconnect();
-    T.kill(t.id);
-    t.term.dispose();
+    if (!t.web) { T.kill(t.id); t.term.dispose(); }
     t.el.remove();
     const i = tabs.indexOf(t);
     if (i >= 0) tabs.splice(i, 1);
@@ -664,6 +1024,7 @@ function start() {
   }
 
   function fitOne(t) {
+    if (t.web) return;               // webview/iframe kendi boyutunu CSS'ten aliyor
     // Gizli pane'in olcusu 0: olcmeye calisirsak xterm anlamsiz bir boyuta duser
     if (!t.el.isConnected || !t.el.clientWidth || !t.el.clientHeight) return;
     // mount() render() her saniye cagirdigi icin fitAll buraya da her saniye
@@ -691,8 +1052,42 @@ function start() {
 
   T.onData(({ id, data }) => {
     const t = tabs.find((x) => x.id === id);
-    if (t) t.term.write(data);
+    if (t) { t.term.write(data); sniffUrl(t, data); }
   });
+
+  // --- dev sunucusu adresi -> tarayici sekmesi ---
+  // Vite/Next/CRA/Astro... hepsi basarken "Local: http://localhost:5173/" basiyor;
+  // Claude arka planda `npm run dev` calistirinca da o satir terminale dusuyor.
+  // Boyle bir adres gorunce onu terminalin hemen yaninda bir tarayici sekmesinde
+  // aciyoruz — arka planda, odagi calmadan (Claude'a yazarken sekme degismesin).
+  // Ayni adres zaten aciksa yeni sekme yerine onu yeniliyoruz. Ayar: cc.webAuto.
+  const ANSI_RE = /\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][0-9A-B]/g;
+  const LOCAL_RE = /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):\d{2,5}[^\s'"<>()[\]{}`]*/gi;
+  const ownPort = location.port || (location.protocol === 'https:' ? '443' : '80');
+
+  function sniffUrl(t, data) {
+    // Parca sinirinda bolunen adres icin onceki parcanin sonunu da tariyoruz.
+    const raw = (t._tail || '') + data;
+    t._tail = raw.slice(-300);
+    if (!raw.includes('://') || localStorage.getItem('cc.webAuto') === '0') return;
+    const text = raw.replace(ANSI_RE, '');
+    t.webSeen = t.webSeen || new Set();
+    for (const m of text.matchAll(LOCAL_RE)) {
+      // Satirin sonunda biten eslesme yarim olabilir ("...:51" + sonraki parcada "73/")
+      if (m.index + m[0].length >= text.length) continue;
+      let u;
+      try { u = new URL(m[0].replace(/[.,;:!?]+$/, '')); } catch { continue; }
+      if (u.port === ownPort) continue;                         // mineClaude'un kendisi
+      if (/callback|oauth/i.test(u.pathname)) continue;          // giris akislari
+      u.hostname = 'localhost';
+      const key = u.origin;
+      if (t.webSeen.has(key)) continue;                           // ekran yeniden cizildi
+      t.webSeen.add(key);
+      const open = tabs.find((x) => x.web && x.url && x.url.startsWith(key));
+      if (open) { if (open.view && open.view.reload) open.view.reload(); continue; }
+      openWeb(u.href, { quiet: true, after: t });
+    }
+  }
   T.onExit(({ id, code, gone }) => {
     const t = tabs.find((x) => x.id === id);
     if (!t) return;
@@ -704,7 +1099,7 @@ function start() {
   // Baglanti geri gelince acik sekmeleri sunucudaki PTY'lere yeniden bagla.
   if (T.onReconnect) T.onReconnect(async () => {
     for (const t of tabs) {
-      if (t.dead) continue;
+      if (t.dead || t.web) continue;
       try { await T.reattach(t.id); T.resize(t.id, t.term.cols, t.term.rows); }
       catch { /* PTY gitmisse 'gone' mesaji zaten geliyor */ }
     }
@@ -721,34 +1116,73 @@ function start() {
     findClose: closeFind,              // Esc (index.html'deki genel Esc zinciri)
     findStep: (back) => { if (find && !find.box.hidden && find.input.value) { runFind(back ? 'prev' : 'next'); return true; } return false; }, // ⌘G / ⌘⇧G
     selectIndex,                       // ⌘1-9
-    // Panel bir session'in tty'sini biliyor: bu sekmelerden biri mi?
-    tabForTty: (tty) => (tty ? (tabs.find((t) => t.tty === tty) || null) : null),
+    // Panel bir session'in tty'sini biliyor: bu sekmelerden biri mi? Windows'ta
+    // ConPTY'nin /dev/ttysNNN karsiligi yok, ptsName hep null donuyor — tty ile
+    // eslesme oradaki hicbir sekmeyi bulamiyor (hepsi ayni "null" ile eslesmeye
+    // calisip ilk sekmede takili kalirdi). cwd'ye dusuyoruz, o her platformda var.
+    tabForTty: (tty, cwd) => (tty ? tabs.find((t) => t.tty === tty) : tabs.find((t) => t.cwd === cwd && !t.dead && !t.web && !t.devTab)) || null,
     // Panel bir sekmede hangi oturumun kostugunu biliyor; geri yuklemede
     // `--resume <id>` diyebilmek icin onu sekmeye yaziyoruz.
     // Ofiste el kaldiran kisi neyse, sekmede amber baslik o: bu sekmedeki
-    // oturum senden input bekliyor.
-    noteWaiting: (tty, waiting) => {
-      const t = tabs.find((x) => x.tty === tty);
-      if (t && !!t.waiting !== !!waiting) { t.waiting = !!waiting; drawStrip(); }
+    // oturum senden input bekliyor. Ofiste masasinda mi lounge'da mi oturdugu
+    // (atDesk, bkz. office3d.js) sekmede de ayni ayrimla gorunsun istedik.
+    noteStatus: (tty, cwd, status) => {
+      const t = tty ? tabs.find((x) => x.tty === tty) : tabs.find((x) => x.cwd === cwd && !x.dead && !x.web && !x.devTab);
+      if (!t) return;
+      const waiting = status === 'waiting';
+      const lounge = status === 'idle' || status === 'unknown';
+      if (t.status !== status || t.waiting !== waiting || t.lounge !== lounge) {
+        t.status = status; t.waiting = waiting; t.lounge = lounge; drawStrip();
+      }
     },
-    noteSession: (tty, sessionId) => {
-      const t = tabs.find((x) => x.tty === tty);
+    noteSession: (tty, cwd, sessionId) => {
+      const t = tty ? tabs.find((x) => x.tty === tty) : tabs.find((x) => x.cwd === cwd && !x.dead && !x.web && !x.devTab);
       if (t && sessionId && t.sessionId !== sessionId) { t.sessionId = sessionId; saveRestore(); }
     },
     pendingCount: () => pending.length,
-    list: () => tabs.map((t) => ({ id: t.id, cwd: t.cwd, title: t.title, tty: t.tty, dead: t.dead })),
+    list: () => tabs.map((t) => ({ id: t.id, cwd: t.cwd, title: t.title, tty: t.tty, dead: t.dead, web: !!t.web })),
+    openWeb,                           // tarayici sekmesi
+    // Sag paneldeki Gecmis sekmesinden mesaj: sanki klavyeden yazilmis gibi. term.paste
+    // Claude'un actigi "bracketed paste" kipine uyuyor — cok satirli metin tek mesaj olarak
+    // gidiyor, satir sonlari erken gondermiyor. Enter'i biraz sonra ayri basiyoruz ki
+    // yapistirma bitmeden gonderilmesin.
+    sendText: (id, text) => {
+      const t = tabs.find((x) => x.id === id && !x.web && !x.dead);
+      if (!t) return false;
+      t.term.paste(String(text).replace(/\r\n?/g, '\n'));
+      setTimeout(() => { if (!t.dead) T.write(t.id, '\r'); }, 80);
+      return true;
+    },
+    // `mineclaude --open`: istenen sayfa, istendigi icin one gelir. O proje icin zaten
+    // ayni sitenin sekmesi varsa yenisini acmak yerine onu o adrese goturuyoruz.
+    openUrl: ({ url, cwd }) => {
+      const term = tabs.find((x) => !x.web && !x.devTab && !x.dead && x.cwd === cwd)
+        || tabs.find((x) => !x.web && !x.dead && x.cwd === cwd) || null;
+      const same = tabs.find((x) => x.web && x.url && sameSite(x.url, url));
+      if (same) {
+        select(same);
+        if (same.url !== url && same.view) { if (same.view.loadURL) same.view.loadURL(url).catch(() => {}); else same.view.src = url; }
+        return;
+      }
+      openWeb(url, { after: term });
+    },
     selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
-    showKeys: (on) => { if (keyWrap) keyWrap.classList.toggle('on', !!on); },
     conn: () => (T.state ? T.state() : { kind: T.kind }),
     count: () => tabs.length,
     layout: () => layout,
     setLayout,
     setTasksOpen: (v) => { tasksOpen = !!v; if (strip) drawStrip(); },
     fit: fitAll,
+    // Tema degisince sadece YENI yazilan icerik dogru renklenir. Ekranda
+    // zaten duran metni terminali sifirlayip yeniden yazarak duzeltmeyi
+    // denedik: gorunumu duzeltiyor ama xterm'in tamponuyla gercek surecin
+    // (kabuk/claude) kendi imlec/mod takibi birbirinden kopuyor — ardindan
+    // yazilan karakterler yanlis yerde beliriyor (denendi, dogrulandi, hem
+    // duz kabukta hem tam ekranda). Bu yuzden burada sadece ayarlari
+    // guncelliyoruz; ekranda halihazirda duran metin eski renginde kalir.
     retheme: () => {
-      // Sira onemli: kontrast orani on plan renklerini zemine gore hesapliyor,
-      // o yuzden once yeni zemin/palet girsin.
       for (const t of tabs) {
+        if (t.web) continue;
         t.term.options.theme = theme();
         t.term.options.minimumContrastRatio = minContrast();
       }

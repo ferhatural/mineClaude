@@ -16,7 +16,14 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
+const net = require('net');
 const { execFileSync, spawn } = require('child_process');
+let SftpClient = null;
+try {
+  SftpClient = require('ssh2-sftp-client');
+} catch {
+  /* paket kurulu degilse gorevlerin SFTP senkronu sessizce devre disi kalir */
+}
 
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
@@ -416,8 +423,15 @@ function deriveStatus(sess, tr, now) {
   // Yeni surumler durumu dogrudan ~/.claude/sessions/<pid>.json icine yaziyor.
   if (sess && sess.status) {
     const s = String(sess.status);
-    if (s === 'waiting' || s === 'busy' || s === 'idle') return { status: s, source: 'session-file' };
-    return { status: 'unknown', raw: s, source: 'session-file' };
+    const status = s === 'waiting' || s === 'busy' || s === 'idle' ? s : 'unknown';
+    // Bu alan "hic konusma olmadi" bilgisini tasimiyor, o yuzden onu ayrica
+    // transcript yoklugundan cikariyoruz — ama yalniz calismiyorken (idle/unknown)
+    // anlamli: busy/waiting zaten kullanimda oldugunu kaniti.
+    if ((status === 'idle' || status === 'unknown') && !tr) {
+      const age = sess.startedAt ? now - sess.startedAt : Infinity;
+      if (age >= 2 * 60e3) return { status: 'idle', empty: true, hintKey: 'no-conversation', source: 'session-file' };
+    }
+    return { status, raw: status === 'unknown' ? s : undefined, source: 'session-file' };
   }
   // Transcript yoksa: surec ayakta ama bu oturumda hic konusma baslamamis
   // (tipik olarak editorun acilista baslattigi bos Claude sureci).
@@ -457,6 +471,155 @@ function tasksFileFor(cwd) {
   return path.join(cwd, '.mineclaude', 'tasks.json');
 }
 
+// --- projenin web adresi ---
+// Terminal bir projede acilinca mineClaude o projenin sitesini tarayici sekmesinde
+// aciyor (bkz. term.js). Adres once projenin kendi ayarindan (<cwd>/.mineclaude/project.json
+// "webUrl"; "" = bu projede acma), yoksa zaten var olan dosyalardan tahmin ediliyor:
+// CNAME (GitHub Pages), sftp.json'daki uzak klasor adi (ör. htdocs/dsmg.ae -> https://dsmg.ae/).
+// package.json "homepage"e bilerek bakmiyoruz: sablonlardan kaliyor (Ionic starter
+// "https://ionicframework.com/" birakiyor) ya da dokuman/repo linki oluyor — yayindaki
+// siteyi gostermiyor. Deploy ayarlari (CNAME, sftp) ise gercekten yayinlanan yeri soyluyor.
+const DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
+
+function projectFileFor(cwd) {
+  return path.join(cwd, '.mineclaude', 'project.json');
+}
+
+function readJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+// Dev sunucusu: projenin turunden hangi portta kalkacagini tahmin ediyoruz; term.js
+// terminal acikken bu portlari yokluyor, biri acilinca (sen `ionic serve` dedin ya da
+// Claude arka planda baslatti) tarayici sekmesinde aciyor. Elle 📌'lenmis devUrl
+// (ör. http://localhost:8100/tabs/tab1) varsa yalniz o.
+function devCandidates(cwd, cfg) {
+  if (cfg && typeof cfg.devUrl === 'string') return cfg.devUrl ? [cfg.devUrl] : [];
+  const ports = [];
+  const add = (p) => { p = parseInt(p, 10); if (p > 0 && p < 65536 && p !== PORT && !ports.includes(p)) ports.push(p); };
+  const has = (f) => fs.existsSync(path.join(cwd, f));
+  const firstOf = (names) => names.find(has);
+  const portIn = (file) => {
+    try { const m = fs.readFileSync(path.join(cwd, file), 'utf8').match(/\bport\s*:\s*(\d{2,5})/); return m && m[1]; }
+    catch { return null; }
+  };
+
+  const pkg = readJson(path.join(cwd, 'package.json'));
+  const scripts = pkg && pkg.scripts && typeof pkg.scripts === 'object' ? Object.values(pkg.scripts).filter((v) => typeof v === 'string') : [];
+  const deps = pkg ? { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) } : {};
+
+  if (has('ionic.config.json')) add(8100);                       // ionic serve
+  // script'lerde acikca yazilan portlar (ng serve --port 4200, vite --port 3001, next dev -p 3005)
+  for (const sc of scripts) for (const m of sc.matchAll(/(?:--port[=\s]+|\s-p\s+)(\d{2,5})\b/g)) add(m[1]);
+  const ng = readJson(path.join(cwd, 'angular.json'));
+  if (ng && ng.projects) {
+    for (const pr of Object.values(ng.projects)) {
+      const o = pr && pr.architect && pr.architect.serve && pr.architect.serve.options;
+      if (o && o.port) add(o.port);
+    }
+    add(4200);
+  }
+  const vite = firstOf(['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts']);
+  if (vite) { add(portIn(vite)); add(5173); }
+  if (firstOf(['next.config.js', 'next.config.mjs', 'next.config.ts']) || deps.next) add(3000);
+  if (firstOf(['astro.config.mjs', 'astro.config.ts'])) { add(portIn(firstOf(['astro.config.mjs', 'astro.config.ts']))); add(4321); }
+  if (firstOf(['nuxt.config.ts', 'nuxt.config.js'])) add(3000);
+  if (deps['react-scripts']) add(3000);
+  return ports.slice(0, 6).map((p) => 'http://localhost:' + p + '/');
+}
+
+// Port dinleniyor mu? localhost bazen yalniz ::1'e baglaniyor (Node 18+ Angular/Vite),
+// bazen yalniz 127.0.0.1'e: ikisini de deniyoruz.
+function portOpen(port) {
+  const tryHost = (host) => new Promise((resolve) => {
+    const s = net.connect({ host, port, timeout: 400 });
+    const done = (ok) => { s.destroy(); resolve(ok); };
+    s.once('connect', () => done(true));
+    s.once('timeout', () => done(false));
+    s.once('error', () => done(false));
+  });
+  return tryHost('127.0.0.1').then((ok) => ok || tryHost('::1'));
+}
+
+// Dev sunucusu calismiyorsa mineClaude onu kendisi baslatiyor (term.js, ayri bir
+// terminal sekmesinde — gorunur, istenince kapatilir). Komut projenin kendi
+// script'lerinden: Ionic'te `ionic serve` (8100), yoksa dev / start / serve.
+// node_modules yoksa baslatmiyoruz: kurulmamis projede yalniz hata basardi.
+function onPath(bin) {
+  const exts = process.platform === 'win32' ? ['.cmd', '.exe', ''] : [''];
+  return String(process.env.PATH || '').split(path.delimiter).some((d) =>
+    d && exts.some((e) => { try { return fs.statSync(path.join(d, bin + e)).isFile(); } catch { return false; } }));
+}
+
+function devCommand(cwd, cfg) {
+  if (cfg && typeof cfg.devCmd === 'string') return cfg.devCmd;   // "" = baslatma
+  if (!fs.existsSync(path.join(cwd, 'node_modules'))) return '';
+  const pkg = readJson(path.join(cwd, 'package.json'));
+  const sc = (pkg && pkg.scripts) || {};
+  if (fs.existsSync(path.join(cwd, 'ionic.config.json'))) {
+    return onPath('ionic') ? 'ionic serve --no-open' : 'npx --yes @ionic/cli serve --no-open';
+  }
+  if (typeof sc.dev === 'string') return 'npm run dev';
+  // "start" bazen sunucu degil (node index.js, electron .): yalniz bilinen dev sunuculari
+  if (typeof sc.start === 'string' && /\b(ng serve|vite|next dev|react-scripts start|nuxt|astro dev|webpack serve|vue-cli-service serve)\b/.test(sc.start)) return 'npm start';
+  if (typeof sc.serve === 'string') return 'npm run serve';
+  return '';
+}
+
+function projectWeb(cwd) {
+  const cfg = readJson(projectFileFor(cwd));
+  const dev = devCandidates(cwd, cfg);
+  return { ...projectSite(cwd, cfg), dev, devCmd: dev.length ? devCommand(cwd, cfg) : '' };
+}
+
+// `mineclaude --open [adres]` (Claude'a "projeyi tarayicida ac" denince): adres
+// verilmediyse projenin kendisi — dev sunucusu ayaktaysa o, degilse yayindaki site.
+// "8100" / "localhost:8100" / "ornek.com" gibi yarim adresleri de tamamliyoruz.
+function normalizeOpenUrl(raw) {
+  let u = String(raw || '').trim();
+  if (!u) return '';
+  if (/^\d{2,5}(\/.*)?$/.test(u)) return 'http://localhost:' + u;
+  if (/^https?:\/\//i.test(u)) return u;
+  if (/^(localhost|127\.0\.0\.1|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/|$)/i.test(u)) return 'http://' + u;
+  if (/^[^\s/]+\.[a-z]{2,}(:\d+)?(\/|$)/i.test(u)) return 'https://' + u;
+  return '';
+}
+
+async function resolveOpenUrl(raw, cwd) {
+  if (raw) return normalizeOpenUrl(raw);
+  if (!cwd) return '';
+  const w = projectWeb(cwd);
+  for (const d of w.dev || []) {
+    const port = parseInt(new URL(d).port, 10);
+    if (port && await portOpen(port)) return d;
+  }
+  return w.url || '';
+}
+
+function projectSite(cwd, cfg) {
+  if (cfg && typeof cfg.webUrl === 'string') return { url: cfg.webUrl, source: 'config' };
+  try {
+    const host = fs.readFileSync(path.join(cwd, 'CNAME'), 'utf8').trim().split(/\s+/)[0];
+    if (DOMAIN_RE.test(host)) return { url: 'https://' + host + '/', source: 'CNAME' };
+  } catch { /* yok */ }
+  const sftp = readJson(path.join(cwd, '.vscode', 'sftp.json'));
+  if (sftp && typeof sftp.remotePath === 'string') {
+    const dom = sftp.remotePath.split('/').reverse().find((seg) => DOMAIN_RE.test(seg));
+    if (dom) return { url: 'https://' + dom.replace(/^www\./i, '') + '/', source: 'sftp.json' };
+  }
+  return { url: '', source: null };
+}
+
+// key: 'webUrl' (yayindaki site) ya da 'devUrl' (yerel dev sunucusu, yol dahil)
+function saveProjectWeb(cwd, key, url) {
+  if (!fs.statSync(cwd).isDirectory()) throw new Error('klasor yok');
+  const file = projectFileFor(cwd);
+  const cfg = readJson(file) || {};
+  cfg[key] = url;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+}
+
 function loadLegacyNotes() {
   try {
     return JSON.parse(fs.readFileSync(NOTES_FILE, 'utf8'));
@@ -468,7 +631,7 @@ function loadLegacyNotes() {
 // Eskiden burada proje basina tek bir metin (tek "not") tutuluyordu. Musteri
 // istekleri tek seferde 5-10 is birden birikince o tek kutu yetmiyordu; artik
 // her cwd bir gorev listesi: [{id, text, done}].
-function notesFor(cwd) {
+function notesForLocal(cwd) {
   try {
     const raw = JSON.parse(fs.readFileSync(tasksFileFor(cwd), 'utf8'));
     if (Array.isArray(raw)) return raw;
@@ -479,6 +642,11 @@ function notesFor(cwd) {
   if (Array.isArray(legacy)) return legacy;
   if (typeof legacy === 'string' && legacy) return [{ id: 'legacy', text: legacy, done: false }];
   return [];
+}
+
+function notesFor(cwd) {
+  const sftp = sftpConfigFor(cwd);
+  return sftp ? notesForSftp(cwd, sftp) : notesForLocal(cwd);
 }
 
 function saveTasks(cwd, tasks) {
@@ -498,6 +666,111 @@ function saveTasks(cwd, tasks) {
     fs.mkdirSync(path.dirname(NOTES_FILE), { recursive: true });
     fs.writeFileSync(NOTES_FILE, JSON.stringify(legacy, null, 2));
   }
+
+  // Proje klasorunde .vscode/sftp.json varsa (VS Code SFTP eklentisinin deploy
+  // ayari), gorevleri o sunucuya da yaziyoruz. Boylece ayni sftp.json'a (ayni
+  // host+remotePath) sahip baska bir bilgisayar da ayni gorev listesini gorur.
+  const sftp = sftpConfigFor(cwd);
+  if (sftp) {
+    const entry = sftpTaskCache.get(cwd) || {};
+    entry.tasks = tasks;
+    entry.fetchedAt = Date.now(); // az once biz yazdik, hemen tekrar okumaya gerek yok
+    sftpTaskCache.set(cwd, entry);
+    uploadRemoteTasks(sftp, tasks).catch((e) =>
+      console.error('[mineClaude] sftp gorev yazma hatasi (' + cwd + '):', e.message || e));
+  }
+}
+
+// ---------------------------------------------------------------- gorevlerin SFTP senkronu
+//
+// sftp.json her makinede farkli bir yerel proje yoluna karsilik gelebilir (ornek:
+// C:\Users\hakan\Projects\DSMG ile C:\Users\ahmet\proje\dsmg), ama ikisi de ayni
+// host+remotePath'a isaret ediyorsa ayni uzak tasks.json'u okuyup yazarlar — ekstra
+// bir eslesme/merkezi servise gerek yok, zaten var olan deploy ayarini kullaniyoruz.
+
+const SFTP_POLL_MS = 8000; // baska bir bilgisayarin yazdigini bu araliklarla yoklariz
+const sftpTaskCache = new Map(); // cwd -> { tasks, fetchedAt, fetching }
+
+function sftpConfigFor(cwd) {
+  if (!SftpClient) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(cwd, '.vscode', 'sftp.json'), 'utf8'));
+    if (!raw || !raw.host || !raw.username || !raw.remotePath) return null;
+    return {
+      host: raw.host,
+      port: raw.port || 22,
+      username: raw.username,
+      password: raw.password,
+      privateKey: raw.privateKeyPath ? fs.readFileSync(raw.privateKeyPath) : undefined,
+      remoteDir: String(raw.remotePath).replace(/\/+$/, '') + '/.mineclaude',
+    };
+  } catch {
+    return null; // sftp.json yok ya da bozuk: sessizce yerel dosyaya duser
+  }
+}
+
+async function withSftp(cfg, fn) {
+  const client = new SftpClient();
+  try {
+    await client.connect({
+      host: cfg.host,
+      port: cfg.port,
+      username: cfg.username,
+      password: cfg.password,
+      privateKey: cfg.privateKey,
+    });
+    return await fn(client);
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      /* baglanti zaten kopmus olabilir */
+    }
+  }
+}
+
+async function fetchRemoteTasks(cfg) {
+  return withSftp(cfg, async (client) => {
+    try {
+      const buf = await client.get(cfg.remoteDir + '/tasks.json');
+      const raw = JSON.parse(buf.toString('utf8'));
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) {
+      // dosya henuz yok (bu proje icin ilk kullanim) -> bos liste, hata degil
+      if (/no such file|not exist/i.test(String(e.message || e))) return [];
+      throw e;
+    }
+  });
+}
+
+async function uploadRemoteTasks(cfg, tasks) {
+  return withSftp(cfg, async (client) => {
+    await client.mkdir(cfg.remoteDir, true);
+    await client.put(Buffer.from(JSON.stringify(tasks, null, 2)), cfg.remoteDir + '/tasks.json');
+  });
+}
+
+// collect() ve /api/note gibi senkron yollardan cagriliyor: agi burada bekleyemeyiz.
+// Elimizdeki en son bilinen listeyi hemen donup arka planda tazeliyoruz.
+function notesForSftp(cwd, cfg) {
+  let entry = sftpTaskCache.get(cwd);
+  if (!entry) {
+    entry = { tasks: notesForLocal(cwd), fetchedAt: 0, fetching: false };
+    sftpTaskCache.set(cwd, entry);
+  }
+  if (!entry.fetching && Date.now() - entry.fetchedAt > SFTP_POLL_MS) {
+    entry.fetching = true;
+    fetchRemoteTasks(cfg)
+      .then((tasks) => {
+        entry.tasks = tasks;
+        entry.fetchedAt = Date.now();
+      })
+      .catch((e) => console.error('[mineClaude] sftp gorev okuma hatasi (' + cwd + '):', e.message || e))
+      .finally(() => {
+        entry.fetching = false;
+      });
+  }
+  return entry.tasks;
 }
 
 // "Tum gorevler" penceresi sadece o an canli oturumlarla sinirli olursa, gorevi
@@ -940,6 +1213,7 @@ const INDEX_FILE = path.join(__dirname, 'index.html');
 
 function serve() {
   const clients = new Set();
+  process.env.MINECLAUDE_PORT = String(PORT);   // gomulu terminaldeki `mineclaude --open` icin
 
   const server = http.createServer((req, res) => {
     const url = req.url.split('?')[0];
@@ -1036,6 +1310,71 @@ function serve() {
       } catch (e) {
         return reply(500, { error: String(e.message || e) });
       }
+    }
+    if (url === '/api/project-web' && req.method === 'GET') {
+      const cwd = new URL(req.url, 'http://x').searchParams.get('cwd') || '';
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(cwd ? projectWeb(cwd) : { url: '', source: null, dev: [] }));
+      return;
+    }
+    if (url === '/api/web-open' && req.method === 'POST') {
+      const reply = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(obj));
+      };
+      const origin = req.headers.origin;
+      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 8 * 1024) req.destroy(); });
+      req.on('end', async () => {
+        let d;
+        try { d = JSON.parse(body); } catch { return reply(400, { ok: false, error: 'gecersiz JSON' }); }
+        const cwd = typeof d.cwd === 'string' ? d.cwd.trim() : '';
+        const u = await resolveOpenUrl(typeof d.url === 'string' ? d.url : '', cwd).catch(() => '');
+        if (!u) {
+          return reply(404, { ok: false, error: d.url ? 'gecersiz adres: ' + d.url
+            : 'bu proje icin bir adres bulunamadi (dev sunucusu kapali, yayindaki site bilinmiyor)' });
+        }
+        // Pencere SSE'yi o an yeniden kuruyor olabilir (index.html 2.5 sn sonra baglaniyor):
+        // hemen "acik degil" demeden biraz bekle.
+        for (let i = 0; i < 30 && !clients.size; i++) await new Promise((r) => setTimeout(r, 200));
+        if (!clients.size) return reply(409, { ok: false, error: 'mineClaude penceresi acik degil' });
+        const payload = 'event: web-open\ndata: ' + JSON.stringify({ url: u, cwd }) + '\n\n';
+        for (const c of clients) { try { c.write(payload); } catch { clients.delete(c); } }
+        reply(200, { ok: true, url: u });
+      });
+      return;
+    }
+    if (url === '/api/port-open' && req.method === 'GET') {
+      const ports = (new URL(req.url, 'http://x').searchParams.get('ports') || '')
+        .split(',').map((p) => parseInt(p, 10)).filter((p) => p > 0 && p < 65536).slice(0, 8);
+      Promise.all(ports.map(portOpen)).then((r) => {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ open: ports.filter((_, i) => r[i]) }));
+      });
+      return;
+    }
+    if (url === '/api/project-web' && req.method === 'POST') {
+      const origin = req.headers.origin;
+      const reply = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(obj));
+      };
+      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      let body = '';
+      req.on('data', (c) => { body += c; if (body.length > 8 * 1024) req.destroy(); });
+      req.on('end', () => {
+        let d;
+        try { d = JSON.parse(body); } catch { return reply(400, { ok: false, error: 'gecersiz JSON' }); }
+        const cwd = typeof d.cwd === 'string' ? d.cwd.trim() : '';
+        const key = d.kind === 'dev' ? 'devUrl' : 'webUrl';
+        const u = typeof d.url === 'string' ? d.url.trim().slice(0, 2048) : null;
+        if (!cwd || u === null) return reply(400, { ok: false, error: 'cwd ve url gerekli' });
+        if (u && !/^https?:\/\//i.test(u)) return reply(400, { ok: false, error: 'http(s) adresi gerekli' });
+        try { saveProjectWeb(cwd, key, u); reply(200, { ok: true }); }
+        catch (e) { reply(500, { ok: false, error: String(e.message || e) }); }
+      });
+      return;
     }
     if (url === '/api/note' && req.method === 'GET') {
       const cwd = new URL(req.url, 'http://x').searchParams.get('cwd') || '';
@@ -1362,9 +1701,34 @@ function taskCommand(kind, arg) {
   printTasks(cwd, tasks);
 }
 
+// `mineclaude --open [adres]`: sayfayi calisan mineClaude'un kendi tarayici sekmesinde
+// ac (projenin terminalinin yaninda). Adres yoksa projenin kendisi (bkz. resolveOpenUrl).
+function openCommand(raw) {
+  const cwd = taskCwd();
+  const body = JSON.stringify({ url: raw, cwd });
+  const req = http.request({
+    host: '127.0.0.1', port: PORT, path: '/api/web-open', method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+  }, (res) => {
+    let s = '';
+    res.on('data', (c) => { s += c; });
+    res.on('end', () => {
+      let d = {};
+      try { d = JSON.parse(s); } catch { /* */ }
+      if (d.ok) console.log('  mineClaude tarayicisinda acildi: ' + d.url);
+      else { console.error('  acilamadi: ' + (d.error || res.statusCode)); process.exitCode = 1; }
+    });
+  });
+  req.on('error', () => { console.error('  mineClaude calismiyor (localhost:' + PORT + ')'); process.exitCode = 1; });
+  req.end(body);
+}
+
 // ---------------------------------------------------------------- giris
 
-if (hasFlag('--tasks')) {
+if (hasFlag('--open')) {
+  openCommand(argv[argv.indexOf('--open') + 1] && !argv[argv.indexOf('--open') + 1].startsWith('--')
+    ? argv[argv.indexOf('--open') + 1] : '');
+} else if (hasFlag('--tasks')) {
   taskCommand('list');
 } else if (hasFlag('--task-add')) {
   taskCommand('add', flagValue('--task-add', ''));

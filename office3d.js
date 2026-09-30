@@ -991,6 +991,19 @@ function themeIsDark() {
 }
 
 function init(container) {
+  // Tekrar cagirilirsa (retheme() tema degisince burayi tekrar cagiriyor) eski
+  // WebGL baglamini ve materyalleri once serbest birakiyoruz — GC bunlari
+  // kendiliginden temizlemiyor, aksi halde her tema degisiminde bir GL
+  // context sizdirip tarayiciyi bir sure sonra en eskisini zorla kaybetmeye
+  // iterdik.
+  if (renderer) {
+    // headMaterials() matCache'e tek materyal yerine 6'lik bir dizi koyuyor
+    // (kutunun her yuzu icin), o yuzden dizi olabilecegini de hesaba katiyoruz.
+    for (const m of matCache.values()) (Array.isArray(m) ? m : [m]).forEach((mm) => mm.dispose());
+    for (const t of texCache.values()) t.dispose();
+    renderer.dispose();
+  }
+
   C = themeIsDark() ? DARK : LIGHT;
   matCache.clear();
   texCache.clear();
@@ -1453,6 +1466,18 @@ function render(list, container, translate) {
   hint.textContent = T('camHint');
 }
 
+// Tema degisince cagriliyor (bkz. index.html: theme.onChange). Sahne renkleri
+// duz sayi olarak materyallere gomulu, tek tek boyamak yerine init()'i tekrar
+// calistirip yeniden kuruyoruz — kamera acisi/yakinlastirma/kaydirma modul
+// seviyesinde (azimuth/zoom/pan) durdugu icin bundan etkilenmiyor. Kisilerin
+// masalari bir sonraki render() cagrisinda (index.html'in kendi anketi ya da
+// hemen ardindan cagirdigi render()) geri geliyor.
+function retheme() {
+  if (!ready || !root) return;
+  if (C === (themeIsDark() ? DARK : LIGHT)) return; // gercekten degismemis
+  init(root);
+}
+
 // WebGL yoksa hic ortaya cikmiyoruz: index.html 2D gorunume dusuyor
 let supported = false;
 try {
@@ -1461,6 +1486,6 @@ try {
 } catch { supported = false; }
 
 if (supported) {
-  window.Office3D = { render, onPick: null, onCatPet: null };
+  window.Office3D = { render, retheme, onPick: null, onCatPet: null };
   window.dispatchEvent(new Event('office3d-ready'));
 }

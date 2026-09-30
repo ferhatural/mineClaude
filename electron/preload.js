@@ -29,8 +29,7 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   setCloseIntercept: (on) => ipcRenderer.send('mineclaude:close-intercept', !!on),
   onCloseTerminal: (fn) => ipcRenderer.on('mineclaude:close-terminal', () => fn()),
 
-  // Menudeki Ayarlar > Dil ile sayfanin metni ayni ayari paylasiyor: tek kaynak
-  // main surec (config.json), sayfa da onChange ile pesinden geliyor.
+  // Ayarlar > Dil ile Pencere > Dil ayni ayari paylasiyor: main surec tek kaynak.
   lang: {
     get: () => ipcRenderer.invoke('mineclaude:get-lang'),
     set: (l) => ipcRenderer.send('mineclaude:set-lang', l),
@@ -41,5 +40,18 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   // renklerini de yeniden boyamak icin bunu dinliyor (bkz. MTerm.retheme()).
   theme: {
     onChange: (fn) => ipcRenderer.on('mineclaude:theme-changed', () => fn()),
+  },
+
+  // Tarayici sekmesi (bkz. browser.js): yeni sekme isteyen linkler ve webview
+  // icinde yakalanan kisayollar (wcId: hangi webview'den geldigi).
+  web: {
+    onOpen: (fn) => ipcRenderer.on('mineclaude:web-open', (_e, m) => fn(m)),
+    onKey: (fn) => ipcRenderer.on('mineclaude:web-key', (_e, m) => fn(m)),
+  },
+
+  // Otomatik guncelleme indirilip hazir olunca sayfanin kendi modalini gostermesi icin.
+  update: {
+    onReady: (fn) => ipcRenderer.on('mineclaude:update-ready', (_e, info) => fn(info)),
+    restart: () => ipcRenderer.send('mineclaude:update-restart'),
   },
 });

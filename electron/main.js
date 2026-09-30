@@ -17,6 +17,7 @@ const http = require('http');
 const { spawn, execFile } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const term = require('../pty');
+const browser = require('./browser');
 
 const ROOT = path.join(__dirname, '..');
 const SERVER_JS = path.join(ROOT, 'server.js');
@@ -87,6 +88,13 @@ function initL() {
     ? `Sürüm ${v}\n\nYerel Claude Code oturumların için bir kontrol paneli.`
     : `Version ${v}\n\nA local dashboard for your Claude Code sessions.`),
   aboutGitHub: TR ? "GitHub'da aç"          : 'Open on GitHub',
+  checkUpdates: TR ? 'Güncellemeleri kontrol et' : 'Check for Updates',
+  checkUpdatesDev: TR ? 'Geliştirme sürümünde güncelleme kontrolü kullanılamaz.'
+                       : 'Update checks are unavailable in the development build.',
+  upToDate: (v) => (TR
+    ? `mineClaude güncel (sürüm ${v}).`
+    : `mineClaude is up to date (version ${v}).`),
+  updateCheckFailed: TR ? 'Güncelleme kontrolü başarısız oldu.' : 'Update check failed.',
   ok:        TR ? 'Tamam'                  : 'OK',
   pickDir:   TR ? 'Terminal hangi klasörde açılsın?' : 'Which folder should the terminal open in?',
   qButtons:  TR ? ['Çık', 'Vazgeç']        : ['Quit', 'Cancel'],
@@ -95,12 +103,6 @@ function initL() {
   qMessage:  (n) => (TR
     ? `${n} terminal açık — hepsi kapanacak`
     : `${n} terminal${n > 1 ? 's are' : ' is'} open — all of them will close`),
-  updateTitle:   TR ? 'Güncelleme hazır'      : 'Update ready',
-  updateMessage: (v) => (TR
-    ? `mineClaude ${v} indirildi. Şimdi yeniden başlatıp kurulsun mu?`
-    : `mineClaude ${v} has been downloaded. Restart now to install it?`),
-  updateRestart: TR ? 'Şimdi yeniden başlat'  : 'Restart now',
-  updateLater:   TR ? 'Sonra'                 : 'Later',
   };
 }
 
@@ -109,7 +111,6 @@ function initL() {
 const configFile = () => path.join(app.getPath('userData'), 'config.json');
 // lang: null = sistemin diline uy, 'tr'/'en' = kullanicinin Ayarlar > Dil'den sectigi zorlama.
 // theme: null = sistemin temasina uy, 'light'/'dark' = Ayarlar > Tema'dan secilen zorlama.
-// (Ayarlar mac'te uygulama menusunun, diger platformlarda ust seviye bir menunun altinda.)
 // lastTermDir: yeni terminal icin klasor secme diyalogu en son nereden secildiyse
 // orada acilsin diye — Windows'ta bu diyalog kendiliginden hatirlamiyor.
 const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null, lastTermDir: null };
@@ -262,10 +263,28 @@ function createWindow() {
       nodeIntegration: false,
       backgroundThrottling: false, // gizliyken de SSE'yi dinlesin, bildirimler gecikmesin
       spellcheck: false,
+      webviewTag: true, // terminallerin yanindaki tarayici sekmesi (bkz. browser.js)
     },
   });
+  browser.attach(win, () => TR);
 
   win.loadURL(serverUrl);
+
+  // GECICI TEST: MINECLAUDE_TEST_UPDATE=1 ile calistirilinca acilista sahte bir
+  // "guncelleme hazir" bildirimi tetikler, boylece gercek bir surum yayinlamadan
+  // uygulama icinde modali gormek mumkun olur. Onay sonrasi kaldirilacak.
+  if (process.env.MINECLAUDE_TEST_UPDATE === '1') {
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.executeJavaScript(`window.showUpdateReady && window.showUpdateReady(${JSON.stringify({
+        version: '1.4.0',
+        notes: [
+          'Terminal sekmelerine durum rengi eklendi',
+          'Ctrl/Cmd+V ile Ctrl+C yapıştırma çakışması giderildi',
+          'Panoya yapıştırma davranışı düzeltildi',
+        ],
+      })});`).catch(() => {});
+    });
+  }
 
   const remember = () => {
     if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
@@ -501,59 +520,12 @@ function notifyThemeChanged() {
 }
 nativeTheme.on('updated', notifyThemeChanged);
 
-// Dil ve Tema her iki platformda da ayni iki alt menu; yalnizca nereye
-// asildiklari degisiyor (bkz. setAppMenu).
-function settingsSubmenu() {
-  return [
-    {
-      label: L.langMenu,
-      submenu: [
-        { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
-        { label: 'Türkçe', type: 'radio', checked: config.lang === 'tr', click: () => applyLangOverride('tr') },
-        { label: 'English', type: 'radio', checked: config.lang === 'en', click: () => applyLangOverride('en') },
-      ],
-    },
-    {
-      label: L.themeMenu,
-      submenu: [
-        { label: L.themeSystem, type: 'radio', checked: !config.theme, click: () => applyThemeOverride(null) },
-        { label: L.themeLight, type: 'radio', checked: config.theme === 'light', click: () => applyThemeOverride('light') },
-        { label: L.themeDark, type: 'radio', checked: config.theme === 'dark', click: () => applyThemeOverride('dark') },
-      ],
-    },
-  ];
-}
-
-const isMac = process.platform === 'darwin';
-
 function setAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    // Uygulama adiyla acilan ilk menu yalniz macOS'ta bir sey gosteriyor; Windows'ta
-    // bomboş acilip kucuk harfli "mineclaude" etiketi olarak kaliyor, o yuzden orada
-    // hic eklemiyoruz.
-    //
-    // macOS'ta Hakkinda ve Ayarlar'in yeri burasi — sistem genelinde her uygulamada
-    // oyle, ⌘, oraya bakiyor. Windows/Linux'ta ise ayri "Ayarlar" ve "Yardim"
-    // menuleri olarak menu cubugunun sagina asiliyorlar (asagida).
-    //
-    // Rollerin etiketini mac'te biz yazmiyoruz: isletim sistemi Gizle/Servisler/Cik
-    // gibi ogeleri kendi dilinde veriyor, elle etiketlemek onlari sistemden ayirirdi.
-    ...(isMac ? [{
-      label: app.getName(),
-      submenu: [
-        { label: L.about, click: () => showAbout() },
-        { type: 'separator' },
-        { label: L.settingsMenu, submenu: settingsSubmenu() },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' },
-      ],
-    }] : []),
+    // appMenu (uygulama adiyla acilan ilk menu: About/Hide/Quit) sadece macOS'ta bir
+    // sey gosteriyor. Windows'ta zaten bomboş acılıyor, sadece kucuk harfli "mineclaude"
+    // yazan cirkin bir etiket olarak kalıyor — o yuzden orada hic eklemiyoruz.
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     {
       label: L.editMenu,
       submenu: [
@@ -563,7 +535,7 @@ function setAppMenu() {
         { role: 'cut', label: L.cut },
         { role: 'copy', label: L.copy },
         { role: 'paste', label: L.paste },
-        ...(isMac ? [{ role: 'pasteAndMatchStyle', label: L.pasteStyle }] : []),
+        ...(process.platform === 'darwin' ? [{ role: 'pasteAndMatchStyle', label: L.pasteStyle }] : []),
         { role: 'delete', label: L.delete },
         { type: 'separator' },
         { role: 'selectAll', label: L.selectAll },
@@ -606,11 +578,41 @@ function setAppMenu() {
         },
       ],
     },
-    // mac'te bu ikisi yukarida uygulama menusunun icinde.
-    ...(isMac ? [] : [
-      { label: L.settingsMenu, submenu: settingsSubmenu() },
-      { label: L.helpMenu, submenu: [{ label: L.about, click: () => showAbout() }] },
-    ]),
+    {
+      label: L.settingsMenu,
+      submenu: [
+        {
+          label: L.themeMenu,
+          submenu: [
+            { label: L.themeSystem, type: 'radio', checked: !config.theme, click: () => applyThemeOverride(null) },
+            { label: L.themeLight, type: 'radio', checked: config.theme === 'light', click: () => applyThemeOverride('light') },
+            { label: L.themeDark, type: 'radio', checked: config.theme === 'dark', click: () => applyThemeOverride('dark') },
+          ],
+        },
+        {
+          label: L.langMenu,
+          submenu: [
+            { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
+            { label: 'Türkçe', type: 'radio', checked: config.lang === 'tr', click: () => applyLangOverride('tr') },
+            { label: 'English', type: 'radio', checked: config.lang === 'en', click: () => applyLangOverride('en') },
+          ],
+        },
+      ],
+    },
+    {
+      label: L.helpMenu,
+      submenu: [
+        {
+          label: L.checkUpdates,
+          click: () => checkForUpdatesManually(),
+        },
+        { type: 'separator' },
+        {
+          label: L.about,
+          click: () => showAbout(),
+        },
+      ],
+    },
   ]));
 }
 
@@ -632,25 +634,33 @@ function showAbout() {
 
 // ---------------------------------------------------------------- otomatik guncelleme
 //
-// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (ferhatural/mineClaude).
+// package.json > build.publish, GitHub Releases'i kaynak gosteriyor (fork'un).
 // Yeni bir surum orada yayinlandiginda (electron-builder --publish always ile)
 // buradaki her kurulu kopya acilista ve sonra periyodik olarak kontrol edip
 // indiriyor, kullaniciya sorup onay alinca yeniden baslatip kuruyor.
+// electron-updater releaseNotes, GitHub Release govdesinden geliyor (prepare-release
+// isi Release'i "gh release create --generate-notes" ile aciyor). Birden fazla
+// surum atlanmissa (ör. 1.3.5 -> 1.4.0) dizi olarak da gelebiliyor — her ikisini de
+// sayfanin kendi <li> listesine uygun duz satirlara ceviriyoruz.
+function parseReleaseNotes(raw) {
+  const text = Array.isArray(raw) ? raw.map((r) => r && r.note).filter(Boolean).join('\n') : raw;
+  if (!text || typeof text !== 'string') return [];
+  return text
+    .split('\n')
+    .map((l) => l.replace(/^#+\s*/, '').replace(/^[-*]\s+/, '').trim())
+    .filter((l) => l && !l.startsWith('**Full Changelog**'));
+}
+
 function setupAutoUpdate() {
   if (!app.isPackaged) return; // gelistirme sirasinda (npm run app) anlamsiz, hata basar
   autoUpdater.autoDownload = true;
   autoUpdater.on('update-downloaded', (info) => {
-    dialog.showMessageBox(win, {
-      type: 'info',
-      title: L.updateTitle,
-      message: L.updateMessage(info.version),
-      buttons: [L.updateRestart, L.updateLater],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-    }).then((r) => {
-      if (r.response === 0) autoUpdater.quitAndInstall();
-    });
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('mineclaude:update-ready', {
+        version: info.version,
+        notes: parseReleaseNotes(info.releaseNotes),
+      });
+    }
   });
   autoUpdater.on('error', (err) => {
     console.error('[mineClaude] guncelleme kontrolu basarisiz:', err.message || err);
@@ -658,6 +668,64 @@ function setupAutoUpdate() {
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   check();
   setInterval(check, 4 * 3600e3); // uygulama uzun sure acik kalabiliyor: 4 saatte bir tekrar bak
+}
+
+// Yardim menusundeki "Guncellemeleri kontrol et": kullanicinin elle tetikledigi
+// tek seferlik kontrol. Yukaridaki setupAutoUpdate zaten periyodik calisiyor ve
+// sadece indirilince/hata olunca konusuyor; burada ayrica "guncelsin" sonucunu da
+// gostermemiz gerekiyor, o yuzden bir kerelik dinleyiciler kurup temizliyoruz.
+let manualUpdateCheckInFlight = false;
+function checkForUpdatesManually() {
+  if (!app.isPackaged) {
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: L.checkUpdates,
+      message: L.checkUpdatesDev,
+      buttons: [L.ok],
+      noLink: true,
+    });
+    return;
+  }
+  if (manualUpdateCheckInFlight) return;
+  manualUpdateCheckInFlight = true;
+
+  const cleanup = () => {
+    manualUpdateCheckInFlight = false;
+    autoUpdater.removeListener('update-not-available', onNotAvailable);
+    autoUpdater.removeListener('update-available', onAvailable);
+    autoUpdater.removeListener('error', onError);
+  };
+  const onNotAvailable = () => {
+    cleanup();
+    dialog.showMessageBox(win, {
+      type: 'info',
+      title: L.checkUpdates,
+      message: L.upToDate(app.getVersion()),
+      buttons: [L.ok],
+      noLink: true,
+    });
+  };
+  // Guncelleme bulununca sessizce indirsin (autoDownload=true, her zamanki gibi):
+  // bitince 'update-downloaded' zaten setupAutoUpdate'teki restart/later
+  // diyalogunu gosterecek. Bu buton sadece 4 saatlik periyodik kontrolu
+  // beklemeden kullaniciya "hemen kontrol et" imkani veriyor.
+  const onAvailable = () => cleanup();
+  const onError = (err) => {
+    cleanup();
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: L.checkUpdates,
+      message: L.updateCheckFailed,
+      detail: err && err.message,
+      buttons: [L.ok],
+      noLink: true,
+    });
+  };
+
+  autoUpdater.once('update-not-available', onNotAvailable);
+  autoUpdater.once('update-available', onAvailable);
+  autoUpdater.once('error', onError);
+  autoUpdater.checkForUpdates().catch(onError);
 }
 
 // ---------------------------------------------------------------- giris
@@ -679,6 +747,7 @@ if (!app.requestSingleInstanceLock()) {
 
     const port = await ensureServer();
     serverUrl = `http://127.0.0.1:${port}`;
+    process.env.MINECLAUDE_PORT = String(port);   // gomulu terminaldeki `mineclaude --open` bu portu bulsun
     createWindow();
     showWindow(); // ilk acilista pencereyi goster; sonraki acilislar tray'den
     setupAutoUpdate();
@@ -686,6 +755,8 @@ if (!app.requestSingleInstanceLock()) {
 
   ipcMain.on('mineclaude:status', (_e, s) => setTrayStatus(s || {}));
   ipcMain.on('mineclaude:show', showWindow);
+  // Sayfanin kendi guncelleme-hazir modalindaki "Simdi yeniden baslat" butonu.
+  ipcMain.on('mineclaude:update-restart', () => autoUpdater.quitAndInstall());
   ipcMain.handle('mineclaude:focus-terminal', (_e, s) => focusTerminal(s || {}));
 
   // ---- gomulu terminaller
