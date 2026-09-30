@@ -179,6 +179,29 @@ function start() {
     ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'], ['^D', '\x04'], ['^Z', '\x1a'],
     ['\u2191', '\x1b[A'], ['\u2193', '\x1b[B'], ['\u2190', '\x1b[D'], ['\u2192', '\x1b[C'],
   ];
+  // Pano yazma tek yerden. navigator.clipboard guvenli baglam ve kullanici
+  // etkilesimi istiyor; tutmadigi durumlarda gizli bir textarea + execCommand
+  // ile deniyoruz. Sessizce basarisiz olmuyoruz: cagiran sonuca gore geri
+  // bildirim gosteriyor.
+  async function yazPanoya(metin) {
+    if (!metin) return false;
+    try {
+      await navigator.clipboard.writeText(metin);
+      return true;
+    } catch { /* izin/etkilesim yok: eski yola dusuyoruz */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = metin;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch { return false; }
+  }
+
   let keyWrap = null;
   // Tablette fiziksel Ctrl yok: yazilim klavyesinden Ctrl+J (Claude Code'da alt
   // satir) gibi bir sey yazilamiyordu. Serittteki "ctrl" yapiskan bir
@@ -221,10 +244,14 @@ function start() {
     ctrlBtn.classList.toggle('on', ctrlSticky);
     for (const [ad, dizi] of KEYS) ekle(ad, () => yaz(dizi));
     // Clipboard API guvenli baglam istiyor; Tailscale HTTPS verdigi icin calisiyor.
-    ekle(T2('termCopy'), async () => {
+    const kopyaBtn = ekle(T2('termCopy'), async () => {
       if (!active || !active.term) return;
       const sel = active.term.getSelection();
-      if (sel) { try { await navigator.clipboard.writeText(sel); } catch {} }
+      // Sessiz basarisizlik en kotusuydu: dugmeye basiyordun, hicbir sey
+      // olmuyordu ve nedenini bilmiyordun. Artik sonucu dugmede gosteriyoruz.
+      const ok = sel ? await yazPanoya(sel) : false;
+      kopyaBtn.classList.add(ok ? 'ok' : 'no');
+      setTimeout(() => kopyaBtn.classList.remove('ok', 'no'), 900);
     }, 'wide');
     ekle(T2('termPaste'), async () => {
       if (!active || active.web) return;
@@ -796,6 +823,23 @@ function start() {
     term.loadAddon(fit);
     const search = new SearchAddon();
     term.loadAddon(search);
+    // Claude Code panoya OSC 52 ile yaziyor — "copied" diyen o. xterm bunu
+    // varsayilan olarak islemiyor, yani mesaj cikiyor ama pano bos kaliyordu.
+    // Masaustunde fark edilmiyordu cunku orada zaten sistem panosu vardi;
+    // tablette tek yol bu.
+    term.parser.registerOscHandler(52, (veri) => {
+      const i = veri.indexOf(';');
+      if (i === -1) return false;
+      const yuk = veri.slice(i + 1);
+      // '?' pano ICERIGINI isteyen sorgu. Cevaplamiyoruz: uzaktaki bir sureç
+      // panonun icini okuyabilmemeli.
+      if (yuk === '?') return true;
+      try {
+        const metin = new TextDecoder().decode(Uint8Array.from(atob(yuk), (c) => c.charCodeAt(0)));
+        yazPanoya(metin);
+      } catch { return false; }
+      return true;
+    });
     term.open(el);
     fit.fit();
 
@@ -873,6 +917,18 @@ function start() {
     t.ro = new ResizeObserver(() => fitOne(t));
     t.ro.observe(el);
     el.addEventListener('mousedown', () => { if (active !== t) select(t); });
+    // Sag tik / uzun basma: xterm tuvale ciziyor, yani tarayicinin gordugu bir
+    // DOM secimi yok — native menude "kopyala" hic cikmiyor, yalnizca
+    // "yapistir" cikiyordu. Secim varsa menuyu biz karsiliyoruz ve dogrudan
+    // kopyaliyoruz; secim yoksa native menu (yapistir) oldugu gibi aciliyor.
+    el.addEventListener('contextmenu', async (e) => {
+      const sel = t.term && t.term.getSelection();
+      if (!sel) return;
+      e.preventDefault();
+      const ok = await yazPanoya(sel);
+      el.classList.add(ok ? 'tm-copied' : 'tm-copyfail');
+      setTimeout(() => el.classList.remove('tm-copied', 'tm-copyfail'), 700);
+    });
     term.onData((d) => T.write(t.id, d));
     term.onResize(({ cols, rows }) => T.resize(t.id, cols, rows));
     const at = opts.after ? tabs.indexOf(opts.after) : -1;

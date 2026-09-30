@@ -334,6 +334,13 @@
     border-radius:7px;padding:7px 9px;cursor:pointer;touch-action:manipulation}
   .tm-keys button.wide{min-width:auto;font-size:12px}
   .tm-keys button:active{background:var(--panel);border-color:var(--idle)}
+  /* Kopyala dugmesinin sonucu: sessiz basarisizlik yerine gorunur cevap. */
+  .tm-keys button.ok{border-color:var(--busy);color:var(--busy)}
+  .tm-keys button.no{border-color:var(--wait);color:var(--wait)}
+  /* Sag tik ile kopyalayinca kisa bir cerceve: dokunmatikte geri bildirim sart,
+     yoksa bir sey olup olmadigi anlasilmiyor. */
+  .tm-pane.tm-copied{outline:2px solid var(--busy);outline-offset:-2px}
+  .tm-pane.tm-copyfail{outline:2px solid var(--wait);outline-offset:-2px}
 
   /* Tarayici sekmesi (term.js openWeb): localhost'taki dev sunucusunu terminallerin
      yaninda gormek icin. Pane'in kendi adres cubugu var, sayfa altinda tam boy. */
