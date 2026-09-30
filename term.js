@@ -1442,6 +1442,14 @@ function start() {
       }
       openWeb(url, { after: term });
     },
+    // Android sarmalayici icin: tus olayini DOM'a hic sokmadan dogrudan
+    // terminale yaziyoruz. Tarayici/WebView/OS zincirinde araya giren ne varsa
+    // atlanmis oluyor — Ctrl+S gibi kisayollarin kapildigi yer orasi.
+    sendKey: (metin) => {
+      if (!active || active.web || !metin) return false;
+      T.write(active.id, metin);
+      return true;
+    },
     selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
     conn: () => (T.state ? T.state() : { kind: T.kind }),
     count: () => tabs.length,
