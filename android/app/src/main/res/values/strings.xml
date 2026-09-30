@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">mineClaude</string>
+  <string name="url_hint">https://…ts.net</string>
+  <string name="url_label">mineClaude adresi</string>
+  <string name="connect">Bağlan</string>
+</resources>

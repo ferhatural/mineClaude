@@ -272,3 +272,71 @@ Uzun süre evden ayrılmadan önce otomatik macOS güncellemesi kapatılmalı. F
 karar: açık kalırsa elektrik kesintisi ya da çökme de aynı duvara çarpar.
 
 Ayrıca: dizüstü olduğu için `sudo pmset -a sleep 0 disablesleep 1` ve **fişte** olması şart.
+
+---
+
+# APK — 30 Eylul / 1 Ekim 2026
+
+Yukaridaki "Elenen yollar" bolumunde APK/TWA su gerekceyle elenmisti:
+
+> **APK / TWA:** uc sikayeti de (tus seridi yeri, kopyala-yapistir, yazi boyutu)
+> tarayici tarafinda cozduk. Native uygulama yazilabilir ama buradan test
+> edilemiyor, her tur sideload gerektirir. Gerekcesi kalmadi.
+
+**Bu gerekce yanlis cikti.** Dorduncu bir sikayet vardi ve tarayici tarafinda
+cozulemiyordu: **Ctrl+S / Ctrl+X ile mesaj zorla gonderme.** Opera'da Ctrl+S
+dogrudan "added to offline pages" diyor, sayfaya hic ulasmiyor. Kod yazarak
+cozulemez, cunku preventDefault edilecek bir olay yok.
+
+Denenip elenenler, sirayla:
+- **Tus seridine "ctrl" yapiskan dugmesi:** hic calismadi, ustelik yazarken
+  dugmeye uzanmak ergonomik degil. Kaldirildi.
+- **PWA olarak ana ekrana eklemek:** standalone kipte tarayici kisayollarinin
+  devreye girmeyecegi umuluyordu, girdi.
+
+## Neden TWA degil, duz WebView
+
+TWA tarayici motorunu kullanir, yani Chrome'un kisayol kapmasi aynen surer —
+sorunu hic cozmezdi. WebView'da tarayici kabugu yok.
+
+## Tesihis zinciri (asil deger burada)
+
+Ilk WebView surumunde de Ctrl+C calismadi. Uygulamaya bir olcum koyup
+bakildi:
+
+1. **Ctrl tek basina** → `Activity.dispatchKeyEvent`'e ulasiyor
+   (`keyCode=113 ctrl=true`).
+2. **Ctrl+C** → hic ulasmiyor.
+
+Aradaki fark IME. Android'de donanim tuslari once klavye uygulamasina gidiyor;
+o Ctrl+C/S/X'i kendi kopyala/kaydet/kes kisayolu sayip tuketiyor. Ctrl tek
+basina tam bir komut olmadigi icin tuketilmiyor — bu yuzden o goruluyor,
+kombinasyon gorulmuyordu.
+
+Cozum: **`View.dispatchKeyEventPreIme`**, yani IME'den once calisan kanca.
+Ctrl'lu harf orada yakalanip kontrol karakterine cevriliyor ve sayfaya
+`MTerm.sendKey` ile dogrudan yaziliyor — DOM olayi hic uretilmiyor, araya
+girecek katman kalmiyor.
+
+"Uretici OS tusu kapiyor" tahmini yanlisti: kapan isletim sistemi degil,
+klavye uygulamasiydi — ve onun onune gecilebiliyor.
+
+## Kurulum
+
+Kaynak `android/`. Gradle wrapper 8.9, AGP 8.7.3, JDK 21, compileSdk 35.
+Bagimlilik yok (appcompat iki farkli kotlin-stdlib getirip derlemeyi kiriyordu
+ve bir WebView sarmalayicinin ona ihtiyaci yok). APK ~10 KB, tek izin INTERNET,
+debug anahtariyla imzali — magaza dagitimi soz konusu degil, sideload.
+
+```
+cd android && ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:assembleRelease
+```
+
+**Tailnet adresi koda gomulu degil**: depo public, gomulu bir ts.net adresi
+herkese acik olurdu. Uygulama ilk acilista soruyor ve cihazda sakliyor;
+baglanamazsa giris ekranina geri donuyor.
+
+Tablete ulastirma (USB gerekmiyor): APK'yi yerel bir porttan sunup
+`tailscale serve --bg --set-path=/apk http://127.0.0.1:<port>` ile tailnet'e
+baglamak yeterli. Tailscale **dosya** sunmayi root'a kisitliyor, **servise
+proxy** serbest — o yuzden araya kucuk bir sunucu giriyor.

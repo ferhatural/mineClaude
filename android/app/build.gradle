@@ -1,0 +1,32 @@
+plugins { id 'com.android.application' }
+
+android {
+  namespace 'tech.mineclaude.wrap'
+  compileSdk 35
+
+  defaultConfig {
+    applicationId 'tech.mineclaude.wrap'
+    minSdk 26
+    targetSdk 35
+    versionCode 1
+    versionName '1.0'
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+      // Imzasiz surum sideload edilemiyor; debug anahtariyla imzaliyoruz ki
+      // tablete dogrudan kurulabilsin. Magaza dagitimi soz konusu degil.
+      signingConfig signingConfigs.debug
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+}
+
+// Bagimlilik yok. Bir WebView sarmalayicinin appcompat'e ihtiyaci yok ve o
+// bagimlilik iki farkli kotlin-stdlib surumu getirip "duplicate class"
+// hatasina yol aciyordu.
