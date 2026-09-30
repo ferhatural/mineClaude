@@ -1540,32 +1540,53 @@ function projectNameFromCwd(cwd){
   const parts = String(cwd || '').split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || cwd || '?';
 }
+let termTasksSnap = null;   // son cizilen veri
+let termTasksReq = 0;       // gec gelen eski istek yenisini ezmesin
 function renderTermTasks(){
   if(!hasTerm()) return;
   const activeTab = document.querySelector('.tm-tab.on');
   const cwd = activeTab ? activeTab.title : null;
-  if(cwd === termTasksCwd) return; // aktif sekme degismedi: yeniden kurma
-  termTasksCwd = cwd;
   const body = $('#termTasksBody');
-  if(!cwd){
-    $('#termTasksProj').textContent = '';
-    $('#termTasksPath').textContent = '';
-    body.innerHTML = `<div class="tt-empty">${T('termEmpty')}</div>`;
-    return;
+  const sekmeDegisti = cwd !== termTasksCwd;
+  if(sekmeDegisti){
+    termTasksCwd = cwd;
+    termTasksSnap = null;
+    if(!cwd){
+      $('#termTasksProj').textContent = '';
+      $('#termTasksPath').textContent = '';
+      body.innerHTML = `<div class="tt-empty">${T('termEmpty')}</div>`;
+      return;
+    }
+    $('#termTasksProj').textContent = projectNameFromCwd(cwd);
+    $('#termTasksPath').textContent = cwd;
+    $('#termTasksPath').title = cwd;
+    body.innerHTML = `<div class="tt-empty">${T('loading')}</div>`;
   }
-  $('#termTasksProj').textContent = projectNameFromCwd(cwd);
-  $('#termTasksPath').textContent = cwd;
-  $('#termTasksPath').title = cwd;
-  body.innerHTML = `<div class="tt-empty">${T('loading')}</div>`;
+  if(!cwd) return;
+  // Eskiden yalnizca sekme degisince veri cekiliyordu: panel bir kez cizildikten
+  // sonra bir daha sormuyordu. Disaridan eklenen bir gorev (mineclaude --task-add,
+  // Claude, baska bir cihaz) sekme degistirilene kadar hic gorunmuyordu — "Tum
+  // gorevler" penceresi guncel, bu bos kaliyordu. Artik her ankette soruyoruz;
+  // DOM'u ise yalnizca veri gercekten degistiyse kuruyoruz, yoksa mouse bir
+  // gorevin uzerindeyken hover durumu surekli gidip geliyordu.
+  const ref = ++termTasksReq;
   fetch('/api/note?cwd=' + encodeURIComponent(cwd))
     .then(r => r.json())
     .then(d => {
-      if(termTasksCwd !== cwd) return; // bu arada baska bir sekmeye gecilmis
-      const fakeS = { cwd, projectTasks: d.tasks || [] };
+      if(ref !== termTasksReq || termTasksCwd !== cwd) return;
+      const tasks = d.tasks || [];
+      const snap = JSON.stringify(tasks);
+      if(snap === termTasksSnap) return;
+      termTasksSnap = snap;
+      const fakeS = { cwd, projectTasks: tasks };
       body.innerHTML = noteHtml(fakeS);
       wireNote(body, fakeS);
     })
-    .catch(() => { if(termTasksCwd === cwd) body.innerHTML = `<div class="tt-empty">${T('noTasksAnywhere')}</div>`; });
+    .catch(() => {
+      if(ref === termTasksReq && termTasksCwd === cwd && termTasksSnap === null){
+        body.innerHTML = `<div class="tt-empty">${T('noTasksAnywhere')}</div>`;
+      }
+    });
 }
 // Terminal kısayolları — yalnız terminal görünümü açıkken ve yazarken değilken.
 // ⌘W menüde "Kapat"a bağlı olduğu için burada değil, ana süreçten IPC ile geliyor.
