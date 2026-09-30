@@ -6,6 +6,8 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -218,6 +220,46 @@ public class MainActivity extends Activity {
     public void openUrl(final String url) {
       if (url == null || url.isEmpty()) return;
       runOnUiThread(() -> miniTarayiciAc(url));
+    }
+
+    /**
+     * Sayfadaki tam ekran dugmesi icin. Tarayicinin Fullscreen API'si WebView'da
+     * sistem cubuklarini gizlemiyor — dugme hicbir ise yaramiyordu. Burada
+     * gercek immersive kipe geciyoruz: durum ve gezinme cubuklari kayboluyor,
+     * kenardan cekince gecici olarak geri geliyor.
+     */
+    @JavascriptInterface
+    public boolean toggleFullscreen() {
+      final boolean hedef = !tamEkran;
+      runOnUiThread(() -> tamEkranAyarla(hedef));
+      return hedef;
+    }
+  }
+
+  private boolean tamEkran = false;
+
+  private void tamEkranAyarla(boolean ac) {
+    tamEkran = ac;
+    if (android.os.Build.VERSION.SDK_INT >= 30) {
+      WindowInsetsController c = getWindow().getInsetsController();
+      if (c == null) return;
+      if (ac) {
+        c.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+        c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+      } else {
+        c.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+      }
+    } else {
+      // API 30 oncesi: eski bayraklar. minSdk 26 oldugu icin duruyor.
+      View d = getWindow().getDecorView();
+      d.setSystemUiVisibility(ac
+          ? (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+             | View.SYSTEM_UI_FLAG_FULLSCREEN
+             | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+             | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+          : 0);
     }
   }
 

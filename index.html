@@ -1712,6 +1712,13 @@ applyViewBtn();
 
 // --- tam ekran ---
 $('#fs').onclick = () => {
+  // Android sarmalayicisinda tarayicinin Fullscreen API'si sistem cubuklarini
+  // gizlemiyor, yani dugme hicbir ise yaramiyordu. Orada uygulamanin kendi
+  // immersive kipini cagiriyoruz: durum ve gezinme cubuklari da kayboluyor.
+  if (window.mineClaudeAndroid && window.mineClaudeAndroid.toggleFullscreen) {
+    window.mineClaudeAndroid.toggleFullscreen();
+    return;
+  }
   if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen().catch(()=>{});
 };
