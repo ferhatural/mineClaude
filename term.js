@@ -257,6 +257,29 @@ function start() {
       if (!active || active.web) return;
       try { const t = await navigator.clipboard.readText(); if (t) T.write(active.id, t); } catch {}
     }, 'wide');
+    // Tus teshisi: tarayicinin hangi olayi sayfaya birakip hangisini kendi
+    // yuttugu ancak boyle goruluyor. Belge seviyesinde YAKALAMA evresinde
+    // dinliyoruz — baska bir sey olayi durdursa bile burada goruruz.
+    ekle('tus?', () => {
+      let kutu = document.querySelector('.tm-keylog');
+      if (kutu) { kutu.remove(); return; }
+      kutu = document.createElement('div');
+      kutu.className = 'tm-keylog';
+      kutu.textContent = 'bir tusa bas…';
+      (keyWrap ? keyWrap.parentNode : document.body).appendChild(kutu);
+      const satirlar = [];
+      const dinle = (e) => {
+        satirlar.unshift(`${e.type}  key=${JSON.stringify(e.key)}  code=${e.code}  kc=${e.keyCode}`
+          + `  ctrl=${e.ctrlKey ? 1 : 0} alt=${e.altKey ? 1 : 0} meta=${e.metaKey ? 1 : 0} shift=${e.shiftKey ? 1 : 0}`);
+        kutu.textContent = satirlar.slice(0, 8).join('\n');
+      };
+      document.addEventListener('keydown', dinle, true);
+      kutu.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        document.removeEventListener('keydown', dinle, true);
+        kutu.remove();
+      });
+    }, 'wide');
     ekle('A\u2212', () => setFont(-1));
     ekle('A+', () => setFont(1));
 
