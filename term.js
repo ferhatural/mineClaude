@@ -904,10 +904,29 @@ function start() {
         }).catch(() => {});
         return false;
       }
-      if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'c' || e.key === 'C') && !term.hasSelection()) {
-        T.write(t.id, '\x03');
-        e.preventDefault();
-        return false;
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+        // Secim varsa kopyala, yoksa ^C gonder.
+        //
+        // Eskiden secim varken hicbir sey yapmiyor, tarayicinin kopyalamasina
+        // birakiyorduk. Masaustunde calisiyordu ama tablette hic: xterm tuvale
+        // ciziyor, tarayicinin gordugu bir DOM secimi yok, dolayisiyla
+        // kopyalayacagi bir sey de yok. Sonuc: secim yapip Ctrl+C'ye
+        // basiyordun, ne kopyalaniyor ne kesiliyordu — tuş bosa gidiyordu.
+        const sel = term.getSelection();
+        if (sel) {
+          e.preventDefault();
+          yazPanoya(sel).then((ok) => {
+            el.classList.add(ok ? 'tm-copied' : 'tm-copyfail');
+            setTimeout(() => el.classList.remove('tm-copied', 'tm-copyfail'), 700);
+          });
+          return false;
+        }
+        // Cmd+C secimsizken macOS'ta ^C anlamina gelmiyor: orada birakiyoruz.
+        if (e.ctrlKey && !e.metaKey) {
+          T.write(t.id, '\x03');
+          e.preventDefault();
+          return false;
+        }
       }
       return true;
     });
