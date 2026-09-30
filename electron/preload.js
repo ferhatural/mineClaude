@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('mineClaudeDesktop', {
   term: {
     available: () => ipcRenderer.invoke('mineclaude:term-available'),
     create: (opt) => ipcRenderer.invoke('mineclaude:term-create', opt),
+    list: () => ipcRenderer.invoke('mineclaude:term-list'),
     write: (id, data) => ipcRenderer.send('mineclaude:term-write', { id, data }),
     resize: (id, cols, rows) => ipcRenderer.send('mineclaude:term-resize', { id, cols, rows }),
     kill: (id) => ipcRenderer.send('mineclaude:term-kill', { id }),

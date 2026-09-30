@@ -1676,7 +1676,7 @@ function actionBtns(s){
       if(s.sessionId)
         acts.push(`<button class="iconbtn" title="${T('termHere')}: ${esc(s.cwd)}" data-term-cwd-new="${esc(s.cwd)}">${svg('termPlus')}</button>`);
       const title = s.sessionId ? T('termResume') : T('termHere');
-      acts.push(`<button class="iconbtn" title="${title}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}" data-term-session="${esc(s.sessionId || '')}">${svg('term')}</button>`);
+      acts.push(`<button class="iconbtn" title="${title}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}" data-term-session="${esc(s.sessionId || '')}" data-term-tty="${esc(s.tty || '')}">${svg('term')}</button>`);
     }
   }
   if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
@@ -1696,7 +1696,15 @@ function wireActions(root){
     // sessionId varsa tik resume acar, Shift+tik her zaman bos terminal acar
     // (ayni klasorde ikinci bir Claude sureci istersen). Yanindaki "+" dugmesi
     // ayni seye mouse'la ulasmanin gorsel yolu.
-    b.onclick = (e) => {
+    b.onclick = async (e) => {
+      // Once: bu oturum mineClaude'un kendi terminallerinden birinde zaten
+      // kosuyorsa ona baglan. Sunucudaki PTY yasamaya devam ediyor, yani evde
+      // acilan bir oturuma tabletten boyle devam ediliyor. Yeni surec acmak
+      // ayni konusmaya ikinci bir claude demek olurdu.
+      if(b.dataset.termTty && !e.shiftKey && hasTerm()){
+        goTerm();
+        if(await MTerm.adoptByTty(b.dataset.termTty)){ render(); return; }
+      }
       if(b.dataset.termSession && !e.shiftKey){
         // Komutu burada kurmuyoruz: claude'un nasil cagrildigina (platform farki,
         // acik temada --settings) tek yerden pty.js karar veriyor.

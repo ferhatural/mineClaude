@@ -85,6 +85,10 @@ function webTransport() {
     // .catch(() => false) bilerek yok: ag hatasiyla "terminaller kapali"
     // cevabini ayirt etmek gerekiyor. Ilki gecici, ikincisi kalici.
     available: () => fetch('/api/terminals').then((r) => r.json()).then((d) => !!d.enabled),
+    // Sunucuda halihazirda calisan PTY'ler. Sayfa her yuklendiginde tabs bos
+    // basliyor; evde acilan terminallere tabletten baglanabilmek icin
+    // sunucuya "elinde ne var" diye sormak gerekiyor (bkz. adoptByTty).
+    list: () => fetch('/api/terminals').then((r) => r.json()).then((d) => d.terminals || []),
     create: (opt) => new Promise((resolve, reject) => {
       const ref = nextRef++;
       waiting.set(ref, { resolve, reject });
@@ -749,7 +753,8 @@ function start() {
     //
     // Ozel bir komut verilmisse (command) hicbirine bakmiyoruz: ne istendigini
     // bilmiyoruz, karar cagiranin. Tarayici ve dev sekmeleri ikisinin de disinda.
-    if (resumeSessionId) {
+    if (opts.adopt) { /* belirli bir PTY isteniyor, tekillestirme yok */ }
+    else if (resumeSessionId) {
       // Iki alana birden bakiyoruz: resumeSessionId acilista belli oluyor,
       // t.sessionId'yi ise panel tty eslestirmesiyle sonradan yaziyor
       // (noteSession). Hizli ust uste dokunusta ikincisi henuz dolmamis olur.
@@ -782,16 +787,28 @@ function start() {
     fit.fit();
 
     let info;
-    try {
-      // light: acik temada pty.js claude'u --settings ile aciyor, yoksa
-      // Claude Code koyu tema renklerini krem zemine basiyor.
-      info = await T.create({
-        cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
-        light: !!cssVar('--term-light', ''),
-      });
-    } catch (e) {
-      term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
-      return;
+    if (opts.adopt) {
+      // Sunucuda zaten calisan bir PTY'yi devraliyoruz: yeni surec acmiyoruz,
+      // yalnizca ciktisina bagleniyoruz (bkz. adoptByTty).
+      info = opts.adopt;
+      try {
+        await T.reattach(info.id);
+      } catch (e) {
+        term.write('\r\n  terminale baglanilamadi: ' + String(e.message || e) + '\r\n');
+        return;
+      }
+    } else {
+      try {
+        // light: acik temada pty.js claude'u --settings ile aciyor, yoksa
+        // Claude Code koyu tema renklerini krem zemine basiyor.
+        info = await T.create({
+          cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
+          light: !!cssVar('--term-light', ''),
+        });
+      } catch (e) {
+        term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
+        return;
+      }
     }
 
     const t = { ...info, term, fit, search, el, dead: false, resumeSessionId: resumeSessionId || null };
@@ -830,6 +847,9 @@ function start() {
     term.onResize(({ cols, rows }) => T.resize(t.id, cols, rows));
     const at = opts.after ? tabs.indexOf(opts.after) : -1;
     if (at >= 0) tabs.splice(at + 1, 0, t); else tabs.push(t);
+    // Sunucu ciktiyi tamponlamiyor: devralinan sekme yeni cikti gelene kadar
+    // bos gorunurdu. Olcu bildirimi Claude Code'a arayuzu bastan cizdiriyor.
+    if (opts.adopt) T.resize(t.id, term.cols, term.rows);
     saveRestore();
     applyLayout();
     if (opts.dev) drawStrip();
@@ -1191,6 +1211,23 @@ function start() {
     // ConPTY'nin /dev/ttysNNN karsiligi yok, ptsName hep null donuyor — tty ile
     // eslesme oradaki hicbir sekmeyi bulamiyor (hepsi ayni "null" ile eslesmeye
     // calisip ilk sekmede takili kalirdi). cwd'ye dusuyoruz, o her platformda var.
+    // Karttan "bu oturuma devam et" denince: sunucuda o tty ile calisan bir PTY
+    // varsa YENI surec acmak yerine ona bagleniyoruz. Evde acilan terminale
+    // tabletten devam etmenin yolu bu. Onceden boyle bir yol yoktu: sayfa
+    // sifirdan yuklendigi icin tabs bos oluyordu, dugme eslesme bulamayip
+    // `claude --resume` ile ikinci bir surec aciyordu — ayni konusmaya iki
+    // claude, ki sahada tek konusmadan sekiz surec cikardi.
+    adoptByTty: async (tty) => {
+      if (!tty) return false;
+      const bizde = tabs.find((t) => t.tty === tty && !t.dead);
+      if (bizde) { select(bizde); return true; }          // bu sayfada zaten sekme var
+      if (!T.list) return false;                          // tasima desteklemiyor
+      let uzak;
+      try { uzak = (await T.list()).find((x) => x.tty === tty && !x.dead); } catch { return false; }
+      if (!uzak) return false;
+      await open(uzak.cwd, undefined, null, { adopt: uzak });
+      return true;
+    },
     tabForTty: (tty, cwd) => (tty ? tabs.find((t) => t.tty === tty) : tabs.find((t) => t.cwd === cwd && !t.dead && !t.web && !t.devTab)) || null,
     // Panel bir sekmede hangi oturumun kostugunu biliyor; geri yuklemede
     // `--resume <id>` diyebilmek icin onu sekmeye yaziyoruz.

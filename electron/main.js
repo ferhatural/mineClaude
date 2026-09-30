@@ -761,6 +761,7 @@ if (!app.requestSingleInstanceLock()) {
 
   // ---- gomulu terminaller
   ipcMain.handle('mineclaude:term-available', () => ({ ok: term.available(), error: term.loadError() }));
+  ipcMain.handle('mineclaude:term-list', () => term.list().filter((t) => !t.dead));
   ipcMain.handle('mineclaude:term-create', (e, opt) => {
     const info = term.create(opt || {});
     const wc = e.sender;
