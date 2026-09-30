@@ -44,8 +44,6 @@ public class MainActivity extends Activity {
   private static final String KEY_ZOOM = "zoom";   // yuzde
 
   private TermWebView web;
-  /** Yakinlastirma yuzdesi. Tarayicidaki Ctrl +/- yerine gecen sey; kalici. */
-  private int zoom = 100;
   /**
    * Tus teshisi. Kapali: eslesen kombinasyonlar zaten sessizce calisiyor,
    * her basista bildirim gostermek gunluk kullanimda rahatsiz ediyor. Acmak
@@ -120,14 +118,15 @@ public class MainActivity extends Activity {
     s.setDomStorageEnabled(true);
     // Durum sesleri kullanici dokunmadan calabilsin.
     s.setMediaPlaybackRequiresUserGesture(false);
-    // Tarayici kabugu olmadigi icin Ctrl +/- yok; yakinlastirmayi kendimiz
-    // isliyoruz (bkz. dispatchKeyEventPreIme). Dahili destek acik olmali,
-    // ama ekranda +/- dugmeleri istemiyoruz.
-    s.setSupportZoom(true);
-    s.setBuiltInZoomControls(true);
-    s.setDisplayZoomControls(false);
-    zoom = prefs().getInt(KEY_ZOOM, 100);
-    web.setInitialScale(zoom);
+    // WebView yakinlastirmasi KAPALI. Denendi ve geri alindi: setInitialScale
+    // ile zoomBy birlikte tutarsiz davraniyor (arayuz kucuk kalip buyumuyordu)
+    // ve dahili zoom'u acmak fare/parmak hareketlerini de yakinlastirmaya
+    // bagliyordu. Boyut ayari artik panelin kendi Ayarlar'inda — orada xterm
+    // yazi boyutu dogrudan degistigi icin gorüntü de net kaliyor.
+    s.setSupportZoom(false);
+    s.setBuiltInZoomControls(false);
+    // Onceki surumde saklanmis bozuk olcek varsa temizliyoruz.
+    if (prefs().contains(KEY_ZOOM)) prefs().edit().remove(KEY_ZOOM).apply();
     web.setBackgroundColor(Color.parseColor("#0e1013"));
 
     // Baglantilari disari atmiyoruz: panel kendi icinde geziyor.
@@ -189,13 +188,6 @@ public class MainActivity extends Activity {
         int kc = e.getKeyCode();
         boolean ctrlTusu = kc == KeyEvent.KEYCODE_CTRL_LEFT || kc == KeyEvent.KEYCODE_CTRL_RIGHT;
         if (!ctrlTusu) {
-          // Yakinlastirma: tarayicidaki Ctrl+- / Ctrl++ / Ctrl+0'in karsiligi.
-          // '-' (45) ve '=' (61) zaten kontrol karakteri araliginin (64-95)
-          // disinda, yani asagidaki esleme ile catismiyorlar.
-          if (kc == KeyEvent.KEYCODE_MINUS)  { olcekle(0.9f); return true; }
-          if (kc == KeyEvent.KEYCODE_EQUALS) { olcekle(1.1f); return true; }
-          if (kc == KeyEvent.KEYCODE_0)      { olcekle(0f);   return true; }
-
           int u = e.getUnicodeChar(0);              // degistiricisiz temel karakter
           int buyuk = u > 0 ? Character.toUpperCase(u) : 0;
           if (buyuk >= 64 && buyuk <= 95) {         // @ A-Z ve bitisik isaretler
@@ -213,22 +205,6 @@ public class MainActivity extends Activity {
     }
   }
 
-  /**
-   * Yakinlastirmayi degistirir ve hatirlar. carpan 0 ise sifirlar (%100).
-   * zoomBy anlik etki icin; kalici olmasi icin yuzdeyi saklayip acilista
-   * setInitialScale ile veriyoruz — WebView olcegi kendisi hatirlamiyor.
-   */
-  private void olcekle(float carpan) {
-    if (web == null) return;
-    zoom = carpan == 0f ? 100 : Math.max(50, Math.min(300, Math.round(zoom * carpan)));
-    prefs().edit().putInt(KEY_ZOOM, zoom).apply();
-    if (carpan == 0f) web.zoomBy(100f / Math.max(1, olcekTahmini));
-    else web.zoomBy(carpan);
-    olcekTahmini = zoom;
-  }
-
-  /** zoomBy goreli calisiyor; sifirlamak icin nerede oldugumuzu takip ediyoruz. */
-  private int olcekTahmini = 100;
 
   /** Kontrol karakterini sayfaya, DOM olayina hic dokunmadan veriyoruz. */
   private void yazTerminale(int kod) {

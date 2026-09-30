@@ -1474,6 +1474,11 @@ function start() {
     // Android sarmalayici icin: tus olayini DOM'a hic sokmadan dogrudan
     // terminale yaziyoruz. Tarayici/WebView/OS zincirinde araya giren ne varsa
     // atlanmis oluyor — Ctrl+S gibi kisayollarin kapildigi yer orasi.
+    // Ayarlar panelindeki +/- icin. WebView yakinlastirmasi denendi ve geri
+    // alindi (arayuz kucuk kalip buyumuyordu, ustelik fare/parmak da zoom
+    // yapiyordu); xterm'in kendi yazi boyutu hem dogru hem net.
+    setFont: (delta) => { setFont(delta); return fontSize; },
+    fontSize: () => fontSize,
     sendKey: (metin) => {
       if (!active || active.web || !metin) return false;
       T.write(active.id, metin);
