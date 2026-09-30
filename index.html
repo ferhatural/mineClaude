@@ -14,6 +14,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/office.css">
 <link rel="stylesheet" href="/vendor/xterm.css">
+<script>
+  // Boyamadan once calismali, yoksa acik temada bir an koyu parliyor.
+  // Secim yoksa sistemi izliyoruz; Electron'da nativeTheme buraya yansiyor.
+  (function(){
+    try {
+      var s = localStorage.getItem('cc.theme');
+      var koyu = s ? s === 'dark'
+                   : !matchMedia('(prefers-color-scheme: light)').matches;
+      document.documentElement.dataset.theme = koyu ? 'dark' : 'light';
+    } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+  })();
+</script>
 <style>
   :root{
     --bg:#0e1013; --panel:#16191e; --panel2:#1c2027; --line:#272c34;
@@ -27,8 +39,13 @@
     --term-min-contrast:1;
     --you-bg-mix:12%;
   }
-  @media (prefers-color-scheme: light){
-    :root{
+  /* Acik tema artik medya sorgusuyla degil <html data-theme> ile secili. Sebep:
+     tarayicida (tablet) native menu yok, yani kullanicinin tema secebilecegi
+     hicbir yer yoktu — Opera koyu, Huawei tarayici acik aciyordu ve seciminin
+     karsiligi yoktu. Secim yoksa JS matchMedia'ya bakip yine sistemi izliyor,
+     Electron'da da nativeTheme oraya yansidigi icin menudeki Tema calismaya
+     devam ediyor (bkz. applyTheme). */
+  :root[data-theme="light"]{
       --bg:#f4f5f7; --panel:#ffffff; --panel2:#f8f9fb; --line:#e3e6eb;
       --text:#171a1f; --dim:#5c6472; --faint:#8b94a3;
       --wait:#c8880c; --busy:#1c9c4b; --idle:#2a6fd4; --unknown:#7b838f; --ended:#98a0ac;
@@ -55,7 +72,6 @@
       --t4:#1f5fbf;  --t5:#8b3fa8; --t6:#0f6f76; --t7:#5c5750;
       --t8:#776f65;  --t9:#c0392b; --t10:#1e6f24; --t11:#7a5c00;
       --t12:#1552a8; --t13:#7a2f96; --t14:#0b5f66; --t15:#35302a;
-    }
   }
   *{box-sizing:border-box}
   [hidden]{display:none !important}
@@ -621,6 +637,15 @@
           <span class="opt-label" id="webAutoLabel"></span>
           <span class="switch"><input type="checkbox" id="webAuto" checked><span class="switch-track"></span></span>
         </label>
+        <div class="opt-row opt-row-static" id="themeWrap">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="8" r="4.2"/><path d="M8 1.4v1.6M8 13v1.6M1.4 8h1.6M13 8h1.6M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M12.7 3.3l-1.1 1.1M4.4 11.6l-1.1 1.1"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="themeLabel"></span>
+          <div class="opts" id="themeSel"></div>
+        </div>
         <div class="opt-row opt-row-static" id="colsWrap">
           <span class="opt-icon">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -727,7 +752,7 @@ const I18N = {
     msgEnded:'Oturum kapalı. Alttaki “devam ettir” düğmesiyle mineClaude’da açarsan buradan mesaj gönderebilirsin.',
     msgNoTerm:'Mesaj göndermek için terminal desteği gerekiyor.',
     msgFailed:'Gönderilemedi: terminal sekmesi kapanmış olabilir.',
-    settings:'Ayarlar',
+    settings:'Ayarlar', theme:'Tema', themeSystem:'Sistem', themeLight:'Açık', themeDark:'Koyu',
     allTasks:'Tüm görevler', noTasksAnywhere:'Hiçbir projede görev yok.',
     searchAll:'Tüm konuşmalarda ara', searchHint:'Aramak için en az iki harf yaz',
     searchNone:'Eşleşen konuşma yok.', searchBusy:'aranıyor…',
@@ -788,7 +813,7 @@ const I18N = {
     msgEnded:'This session has ended. Resume it in mineClaude with the button below to send messages here.',
     msgNoTerm:'Sending messages needs terminal support.',
     msgFailed:'Couldn’t send: the terminal tab may have closed.',
-    settings:'Settings',
+    settings:'Settings', theme:'Theme', themeSystem:'System', themeLight:'Light', themeDark:'Dark',
     allTasks:'All tasks', noTasksAnywhere:'No tasks in any project.',
     searchAll:'Search all conversations', searchHint:'Type at least two characters',
     searchNone:'No conversation matches.', searchBusy:'searching…',
@@ -877,6 +902,39 @@ hideEmptyBox.onchange = () => { localStorage.setItem('cc.hideEmpty', hideEmptyBo
 const webAutoBox = $('#webAuto');
 webAutoBox.checked = localStorage.getItem('cc.webAuto') !== '0';
 webAutoBox.onchange = () => localStorage.setItem('cc.webAuto', webAutoBox.checked ? '1' : '0');
+
+// --- tema secimi ---
+// Tarayicida (tablet) native menu yok, yani tema secmenin baska yolu yoktu:
+// sayfa tarayicinin tercihini izliyordu ve kullanicinin sozu gecmiyordu.
+// Secim localStorage'da, uygulanmasi <html data-theme> uzerinden (bkz. <head>
+// icindeki erken script). 'system' secilince matchMedia'yi izliyoruz —
+// Electron'da nativeTheme oraya yansidigi icin menudeki Tema da calisiyor.
+const THEME_KEY = 'cc.theme';
+const sistemKoyu = matchMedia('(prefers-color-scheme: dark)');
+function temaSecimi(){ return localStorage.getItem(THEME_KEY) || 'system'; }
+function applyTheme(){
+  const sec = temaSecimi();
+  const koyu = sec === 'system' ? sistemKoyu.matches : sec === 'dark';
+  document.documentElement.dataset.theme = koyu ? 'dark' : 'light';
+  // xterm renkleri CSS degiskenlerinden okunuyor ama acilista sabitleniyor;
+  // 3D sahnede de renkler materyallere gomulu. Ikisine de haber veriyoruz.
+  if(hasTerm()) MTerm.retheme();
+  if(has3d()) { Office3D.retheme(); render(); }
+  drawThemeSel();
+}
+function drawThemeSel(){
+  const el = $('#themeSel');
+  if(!el) return;
+  const sec = temaSecimi();
+  el.innerHTML = [['system','themeSystem'],['light','themeLight'],['dark','themeDark']]
+    .map(([v,k]) => `<button data-t="${v}" class="${sec===v?'on':''}">${esc(T(k))}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const v = b.dataset.t;
+    if(v === 'system') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, v);
+    applyTheme();
+  });
+}
+sistemKoyu.addEventListener('change', () => { if(temaSecimi() === 'system') applyTheme(); });
 
 // --- ses: dosya yok, iki nota WebAudio ile sentezleniyor ---
 const soundBox = $('#sound');
@@ -1577,6 +1635,8 @@ function applyViewBtn(){
   $('#allTasksClose').title = T('close');
   $('#allTasksClose').innerHTML = svg('cross');
   $('#allTasksTitle').textContent = T('allTasks');
+  $('#themeLabel').textContent = T('theme');
+  drawThemeSel();
   $('#setBtn').title = T('settings');
   $('#setBtn').innerHTML = svg('gear');
   $('#setClose').title = T('close');
