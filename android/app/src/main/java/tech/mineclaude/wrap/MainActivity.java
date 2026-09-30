@@ -228,6 +228,20 @@ public class MainActivity extends Activity {
      * gercek immersive kipe geciyoruz: durum ve gezinme cubuklari kayboluyor,
      * kenardan cekince gecici olarak geri geliyor.
      */
+    /**
+     * Sunucu adresini degistirmek icin giris ekranini geri getirir. Adres
+     * yanlissa zaten onReceivedError bunu kendiliginden yapiyor; bu ise
+     * "calisan bir sunucudan baskasina gecmek" durumu icin — panel acilabiliyor
+     * ama baska bir makineye baglanmak isteniyor.
+     */
+    @JavascriptInterface
+    public void changeServer() {
+      runOnUiThread(() -> {
+        tamEkranAyarla(false);
+        showUrlPrompt(null);
+      });
+    }
+
     @JavascriptInterface
     public boolean toggleFullscreen() {
       final boolean hedef = !tamEkran;

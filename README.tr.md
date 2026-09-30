@@ -201,6 +201,34 @@ açılıyor (JSON'u doğrudan komut satırına gömmek PowerShell'in native arg�
 bozuluyordu, o yüzden bir dosyadan geçiyor). Bu bayrak yalnız o oturumu bağlıyor; global ayarın
 olduğu gibi kalıyor, kabukta elle `claude` yazdığın oturumlar da senin seçtiğin temayla açılıyor.
 
+## Tablet / Android uygulamasi
+
+`android/` altinda ince bir WebView sarmalayici var. Paneli tabletten
+kullanirken tarayicinin cozemedigi tek sorun icin: **tarayicilar Ctrl+S /
+Ctrl+X gibi kisayollari kendi isliyor** ("sayfayi kaydet", "kes") ve sayfaya
+hic birakmiyor. Claude Code'da bu tuslar mesaj gondermek icin gerekiyor.
+
+TWA degil duz WebView — TWA tarayici motorunu kullanir, kapma aynen surerdi.
+
+```
+cd android && ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:assembleRelease
+```
+
+Cikan APK ~19 KB, bagimlilik yok, tek izin `INTERNET`, debug anahtariyla
+imzali (sideload). **Adres koda gomulu degil**: ilk acilista soruluyor ve
+cihazda saklaniyor, Ayarlar > Sunucu adresi ile degistirilebiliyor.
+
+Sarmalayicinin cozdukleri:
+
+| | |
+|---|---|
+| `Ctrl+<harf>` | `dispatchKeyEventPreIme` ile IME'den ONCE yakalaniyor — klavye uygulamasi Ctrl+C/S/X'i kendi kisayolu sanip tuketiyordu |
+| Cerceveyi reddeden siteler | Mini tarayicidaki "disarida ac" uygulamanin kendi katmanini aciyor; `<iframe>` degil, ust seviye yukleme |
+| Tam ekran | Sistem cubuklarini da gizliyor (tarayicinin Fullscreen API'si WebView'da onlara dokunmuyor) |
+| Arka plandan donus | `onResume` + `resumeTimers`, sayfa tarafinda `visibilitychange` ile tuval yeniden ciziliyor |
+
+Teshis zinciri ve elenen yollar `docs/uzaktan-kurulum.md`'de.
+
 ## Durumlar
 
 | Durum | Anlamı |
