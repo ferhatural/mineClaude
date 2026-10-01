@@ -80,6 +80,8 @@ public class MainActivity extends Activity {
 
   /** Panelin kendi adresi: iframe basliklarini yalniz BASKA sitelerde temizliyoruz. */
   private String panelHost = "";
+  /** https://makine.ts.net — gorsel yuklemesi icin. */
+  private String panelKok = "";
 
   @Override
   protected void onCreate(Bundle state) {
@@ -160,6 +162,10 @@ public class MainActivity extends Activity {
 
     // Baglantilari disari atmiyoruz: panel kendi icinde geziyor.
     panelHost = hostOf(url);
+    try {
+      Uri pu = Uri.parse(url);
+      panelKok = pu.getScheme() + "://" + pu.getEncodedAuthority();
+    } catch (Exception ex) { panelKok = url; }
     // Cerceve icindeki siteler cerezsiz kalmasin (oturum acilan siteler).
     CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
     web.setWebViewClient(new WebViewClient() {
@@ -233,16 +239,9 @@ public class MainActivity extends Activity {
       if (e.getAction() == KeyEvent.ACTION_DOWN && e.isCtrlPressed() && termOdakta) {
         int kc = e.getKeyCode();
         boolean ctrlTusu = kc == KeyEvent.KEYCODE_CTRL_LEFT || kc == KeyEvent.KEYCODE_CTRL_RIGHT;
-        // Ctrl+V: panodaki METNI yapistir. Eskiden \x16 gidiyordu; Claude Code
-        // onu "gorsel yapistir" sayip "image yok" diyordu. Panoda metin yoksa
-        // \x16 yine gidiyor — gorsel yapistirma niyeti oyle ifade ediliyor.
+        // Ctrl+V: bkz. yapistir().
         if (kc == KeyEvent.KEYCODE_V && !e.isAltPressed()) {
-          String metin = panoOku();
-          if (metin != null && !metin.isEmpty()) {
-            web.evaluateJavascript("window.MTerm && MTerm.pasteText(" + JSONObject.quote(metin) + ")", null);
-          } else {
-            yazTerminale(0x16);
-          }
+          yapistir();
           return true;
         }
         // Ctrl+C: secim varsa kopyala, yoksa ^C — karari sayfa veriyor, secim
@@ -271,16 +270,111 @@ public class MainActivity extends Activity {
   }
 
 
-  private String panoOku() {
+  private ClipData.Item panoOgesi() {
     try {
       ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
       if (cm == null || !cm.hasPrimaryClip()) return null;
       ClipData c = cm.getPrimaryClip();
       if (c == null || c.getItemCount() == 0) return null;
-      CharSequence t = c.getItemAt(0).coerceToText(this);
-      return t == null ? null : t.toString();
+      return c.getItemAt(0);
     } catch (Exception ex) {
       return null;
+    }
+  }
+
+  /**
+   * Panodaki METIN. coerceToText KULLANMIYORUZ: panoda gorsel varken o,
+   * gorselin content:// adresini metin olarak donduruyor ve terminale o adres
+   * yapistiriliyordu.
+   */
+  private String panoOku() {
+    ClipData.Item o = panoOgesi();
+    if (o == null || o.getText() == null) return null;
+    return o.getText().toString();
+  }
+
+  /**
+   * Ctrl+V (ve seritteki Yapistir).
+   *  - Metin: xterm'in paste yolundan (MTerm.pasteText, korumali yapistirma).
+   *    Eskiden \x16 gidiyordu, Claude Code onu "gorsel yapistir" sayiyordu.
+   *  - Gorsel: Claude Code gorseli calistigi makinenin (Mac) panosundan
+   *    okuyor, tabletin panosu ona hic ulasmiyor. Gorseli sunucuya
+   *    yukleyip (/api/paste-image) gecici dosyanin yolunu yapistiriyoruz;
+   *    Claude Code mesajdaki gorsel yolunu kendisi ekliyor. Masaustu
+   *    uygulamasinin Ctrl+V'si de boyle (electron/main.js).
+   *  - Hicbiri: \x16 — Claude Code Mac'in panosuna baksin (eski davranis).
+   */
+  private void yapistir() {
+    ClipData.Item o = panoOgesi();
+    if (o != null && o.getText() != null && o.getText().length() > 0) {
+      web.evaluateJavascript("window.MTerm && MTerm.pasteText(" + JSONObject.quote(o.getText().toString()) + ")", null);
+      return;
+    }
+    Uri uri = o != null ? o.getUri() : null;
+    String tur = null;
+    if (uri != null) {
+      try { tur = getContentResolver().getType(uri); } catch (Exception ex) { /* izin yok */ }
+    }
+    if (uri != null && tur != null && tur.startsWith("image/")) {
+      Toast.makeText(this, "Görsel yükleniyor…", Toast.LENGTH_SHORT).show();
+      final Uri u = uri;
+      final String t = tur;
+      new Thread(() -> gorselYukle(u, t)).start();
+      return;
+    }
+    yazTerminale(0x16);
+  }
+
+  private void gorselYukle(Uri uri, String tur) {
+    String hata = null;
+    try {
+      byte[] veri;
+      try (InputStream in = getContentResolver().openInputStream(uri)) {
+        if (in == null) throw new Exception("görsel okunamadı");
+        java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+        byte[] tampon = new byte[16384];
+        int n;
+        while ((n = in.read(tampon)) > 0) b.write(tampon, 0, n);
+        veri = b.toByteArray();
+      }
+      // Sunucu png/jpeg/webp/gif kabul ediyor; HEIC gibi digerlerini PNG'ye
+      // ceviriyoruz.
+      if (!tur.equals("image/png") && !tur.equals("image/jpeg") && !tur.equals("image/webp") && !tur.equals("image/gif")) {
+        android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeByteArray(veri, 0, veri.length);
+        if (bmp == null) throw new Exception("desteklenmeyen görsel: " + tur);
+        java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+        bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, b);
+        veri = b.toByteArray();
+        tur = "image/png";
+      }
+      HttpURLConnection c = (HttpURLConnection) new URL(panelKok + "/api/paste-image").openConnection();
+      c.setRequestMethod("POST");
+      c.setDoOutput(true);
+      c.setConnectTimeout(15000);
+      c.setReadTimeout(60000);
+      c.setRequestProperty("Content-Type", tur);
+      c.setFixedLengthStreamingMode(veri.length);
+      try (java.io.OutputStream out = c.getOutputStream()) { out.write(veri); }
+      int kod = c.getResponseCode();
+      InputStream yanit = kod < 400 ? c.getInputStream() : c.getErrorStream();
+      java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+      if (yanit != null) {
+        byte[] tampon = new byte[4096];
+        int n;
+        while ((n = yanit.read(tampon)) > 0) b.write(tampon, 0, n);
+        yanit.close();
+      }
+      JSONObject j = new JSONObject(new String(b.toByteArray(), StandardCharsets.UTF_8));
+      if (!j.optBoolean("ok")) throw new Exception(j.optString("error", "HTTP " + kod));
+      final String yol = "\"" + j.getString("path") + "\"";
+      runOnUiThread(() -> web.evaluateJavascript(
+          "window.MTerm && MTerm.pasteText(" + JSONObject.quote(yol) + ")", null));
+    } catch (Exception ex) {
+      hata = ex.getMessage() != null ? ex.getMessage() : ex.toString();
+    }
+    if (hata != null) {
+      final String h = hata;
+      runOnUiThread(() -> Toast.makeText(this, "Görsel yapıştırılamadı: " + h, Toast.LENGTH_LONG).show());
     }
   }
 
@@ -414,6 +508,10 @@ public class MainActivity extends Activity {
   private class Kopru {
     @JavascriptInterface
     public void setTermFocus(boolean odak) { termOdakta = odak; }
+
+    /** Seritteki Yapistir: Ctrl+V ile ayni yol (metin ya da gorsel). */
+    @JavascriptInterface
+    public void paste() { runOnUiThread(() -> yapistir()); }
 
     @JavascriptInterface
     public void copyText(final String metin) {

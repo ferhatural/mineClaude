@@ -348,6 +348,8 @@ function start() {
     }, 'wide');
     ekle(T2('termPaste'), async () => {
       if (!active || active.web) return;
+      // APK: Ctrl+V ile ayni yol — panoda gorsel varsa onu da yapistiriyor.
+      if (AND() && AND().paste) { AND().paste(); return; }
       try {
         const t = (AND() && AND().readClipboard) ? AND().readClipboard() : await navigator.clipboard.readText();
         if (t) active.term.paste(t);

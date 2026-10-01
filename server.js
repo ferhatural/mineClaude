@@ -486,6 +486,39 @@ function projectFileFor(cwd) {
   return path.join(cwd, '.mineclaude', 'project.json');
 }
 
+// Yazan uclar (POST) yalniz panelin kendisinden gelsin. Eskiden yalniz
+// http://localhost kabul ediliyordu; tablet paneli Tailscale uzerinden
+// https://<makine>.ts.net'ten aciyor ve tabletten yapilan her yazma (gorev
+// isaretleme, adres sabitleme) "origin reddedildi" ile sessizce dusuyordu.
+//
+// Herhangi bir *.ts.net KABUL EDILMIYOR: Funnel ile herkes acik bir ts.net
+// sitesi yayinlayabilir. Yalniz istegin geldigi adresin kendisi (Host /
+// X-Forwarded-Host) ya da bu makinenin kendi tailnet adi.
+let tailnetAdi = '';
+try {
+  const sock = path.join(os.homedir(), '.tailscale', 'sock');
+  const args = fs.existsSync(sock) ? ['--socket=' + sock, 'status', '--json'] : ['status', '--json'];
+  const tsBin = ['/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale'].find((f) => fs.existsSync(f)) || 'tailscale';
+  const cp = spawn(tsBin, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+  let out = '';
+  cp.stdout.on('data', (c) => { out += c; });
+  cp.on('close', () => {
+    try { tailnetAdi = String(JSON.parse(out).Self.DNSName || '').replace(/\.$/, '').toLowerCase(); } catch { /* tailscale yok */ }
+  });
+  cp.on('error', () => { /* tailscale kurulu degil */ });
+} catch { /* */ }
+
+function kaynakGuvenli(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;   // curl, APK'nin Java'si; tarayici POST'ta hep gonderiyor
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  let host;
+  try { host = new URL(origin).host.toLowerCase(); } catch { return false; }
+  const gelen = [req.headers.host, req.headers['x-forwarded-host']]
+    .filter(Boolean).map((h) => String(h).split(',')[0].trim().toLowerCase());
+  return gelen.includes(host) || (!!tailnetAdi && host === tailnetAdi);
+}
+
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
 }
@@ -1338,13 +1371,46 @@ function serve() {
       res.end(JSON.stringify(cwd ? projectWeb(cwd) : { url: '', source: null, dev: [] }));
       return;
     }
+    // Tabletten gorsel yapistirma. Claude Code gorseli calistigi makinenin
+    // panosundan okuyor; tabletin panosu ona hic ulasmiyor. APK panodaki
+    // gorseli buraya yukluyor, biz gecici dosyaya yaziyoruz, terminale yolu
+    // yapistiriliyor — Claude Code mesajdaki gorsel yolunu kendisi ekliyor
+    // (masaustu uygulamasinin Ctrl+V'si de ayni sekilde, bkz. electron/main.js).
+    if (url === '/api/paste-image' && req.method === 'POST') {
+      const reply = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(obj));
+      };
+      if (!kaynakGuvenli(req)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      const tur = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const UZANTI = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+      if (!UZANTI[tur]) return reply(415, { ok: false, error: 'desteklenmeyen tur: ' + tur });
+      const parcalar = [];
+      let boy = 0, fazla = false;
+      req.on('data', (c) => {
+        boy += c.length;
+        if (boy > 25 * 1024 * 1024) { fazla = true; req.destroy(); return; }
+        parcalar.push(c);
+      });
+      req.on('end', () => {
+        if (fazla) return;
+        if (!boy) return reply(400, { ok: false, error: 'bos govde' });
+        try {
+          const dir = path.join(os.tmpdir(), 'mineclaude-paste');
+          fs.mkdirSync(dir, { recursive: true });
+          const file = path.join(dir, `paste-${Date.now()}.${UZANTI[tur]}`);
+          fs.writeFileSync(file, Buffer.concat(parcalar));
+          reply(200, { ok: true, path: file });
+        } catch (e) { reply(500, { ok: false, error: String(e.message || e) }); }
+      });
+      return;
+    }
     if (url === '/api/web-open' && req.method === 'POST') {
       const reply = (code, obj) => {
         res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(obj));
       };
-      const origin = req.headers.origin;
-      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      if (!kaynakGuvenli(req)) return reply(403, { ok: false, error: 'origin reddedildi' });
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 8 * 1024) req.destroy(); });
       req.on('end', async () => {
@@ -1376,12 +1442,11 @@ function serve() {
       return;
     }
     if (url === '/api/project-web' && req.method === 'POST') {
-      const origin = req.headers.origin;
       const reply = (code, obj) => {
         res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(obj));
       };
-      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      if (!kaynakGuvenli(req)) return reply(403, { ok: false, error: 'origin reddedildi' });
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 8 * 1024) req.destroy(); });
       req.on('end', () => {
@@ -1404,8 +1469,7 @@ function serve() {
       return;
     }
     if (url === '/api/note' && req.method === 'POST') {
-      const origin = req.headers.origin;
-      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) {
+      if (!kaynakGuvenli(req)) {
         res.writeHead(403, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: 'origin reddedildi' }));
         return;
