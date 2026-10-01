@@ -1,7 +1,8 @@
 # Tabletten çalışma — kurulum notları
 
-**Durum: park edildi.** Kod `remote-terminals` dalında hazır ve çalışıyor; eksik olan tek
-şey donanım. Mac mini İstanbul'da, bir sonraki gelişte getirilecek.
+**Durum: 22 Eylül 2026'da kuruldu ve çalışıyor.** Aşağıdaki "park edildi" bölümleri kararların
+gerekçesi olarak duruyor; fiilen yapılanlar için en sona, **"Gerçekten kurulduğunda"**
+bölümüne bak.
 
 Bu dosya, konuya aylar sonra dönüldüğünde konuşmayı hatırlamak zorunda kalmamak için yazıldı:
 neye karar verildi, neden, neyin ölçüldüğü ve neyin hâlâ kanıtlanmadığı.
@@ -153,3 +154,189 @@ Bunlar yazıldı ama gerçek koşulda sınanmadı — döndüğünde ilk bunlara
   doğru yol **ayrı macOS kullanıcısı + ayrı port**, kod değişikliği gerekmiyor. Aynı kullanıcıda
   `CLAUDE_CONFIG_DIR` ile ayırmak Claude tarafında çalışır ama mineClaude ikinci kiracıyı
   göremez, üstelik terminal = kabuk olduğu için iki kiracı arasında hiçbir izolasyon kalmaz
+
+---
+
+# Gerçekten kurulduğunda — 22 Eylül 2026
+
+Plandan **yön farkı**: Mac mini gelmedi. Bunun yerine MacBook (M1 Pro, macOS 26.5.1) evde
+kaldı, tablet İstanbul'a gitti. Mimari aynen geçerli, host değişti.
+
+## Tailscale GUI uygulaması çalışmadı
+
+`brew install --cask tailscale-app` (1.102.4) kuruldu, ağ uzantısı `activated enabled`
+göründü, ama uygulamanın **Sign in / Sign up düğmeleri hiçbir şey yapmıyordu**. Teşhis:
+
+```
+tailscale version   → The Tailscale CLI failed to start: ... (Tailscale.CLIError error 1.)
+```
+
+`version` bile hata verdiği için sorun girişte değil, uygulamanın CLI köprüsünün hiç
+kalkmamasındaydı. Tarayıcı açma yeteneği test edildi (`open https://...` çalışıyor), yani
+suç tarayıcıda değildi.
+
+**Çözüm: GUI'yi bırak, açık kaynak ikiliyi kullan.**
+
+```
+brew install tailscale        # formula, cask degil
+```
+
+## Kök gerektirmeyen kurulum
+
+`tailscaled` normalde utun arayüzü için root ister. Gerekmiyor: **userspace-networking**
+kipinde çalışıyor ve `tailscale serve` zaten `127.0.0.1`'e proxy'lediği için makineyi komple
+VPN'e sokmaya ihtiyaç yok. Yan faydası, kurulumda tek bir `sudo` adımı kalmaması.
+
+Bedeli: **Mac kendi tailnet adını çözemez** (tun yok). Mac'ten `curl https://<host>.ts.net`
+çalışmaz, "couldn't resolve host" verir. Bu bir arıza değil; sunan tarafın kendine tailnet
+üzerinden ulaşmasına gerek yok. Test tabletten yapılır.
+
+## `--state` değil `--statedir` — bu bir saat yedi
+
+İlk LaunchAgent `--state=~/.tailscale/state` ile yazıldı. Bağlantı kuruldu, `serve` ayarı
+kabul edildi, tailnet'te iki cihaz da göründü — **ama tablette hiçbir şey açılmadı ve Mac'in
+logunda gelen istek görünmedi.**
+
+Teşhisi veren komut:
+
+```
+tailscale cert <host>.ts.net   → 500 Internal Server Error: no TailscaleVarRoot
+```
+
+TLS sertifikaları bir **dizine** yazılıyor; yalnız state dosyası verilince yazacak yer
+olmuyor ve `serve` HTTPS'i hiç ayağa kaldıramıyor. Sessizce başarısız oluyor: ne CLI hata
+veriyor ne log bir şey yazıyor, istemci tarafında sadece "açılmıyor" görünüyor.
+
+Doğrusu:
+
+```
+tailscaled --tun=userspace-networking \
+           --statedir=$HOME/.tailscale \
+           --socket=$HOME/.tailscale/sock
+```
+
+`--statedir` verilince state dosyası `<dir>/tailscaled.state` oluyor. Mevcut kurulumdan
+geçilecekse eski `state` dosyasını o isme kopyalamak girişi koruyor.
+
+## Admin konsolunda açılması gereken
+
+**HTTPS Certificates** (login.tailscale.com/admin/dns). Kapalıyken:
+
+```
+tailscale cert ...  → 500: your Tailscale account does not support getting TLS certs
+tailscale serve ... → hicbir cikti vermeden asili kalir
+```
+
+Yeni tailnet'te varsayılan kapalı. HTTPS şart, çünkü Clipboard API güvenli bağlam istiyor.
+
+## `serve` söz dizimi değişti
+
+Belgenin üstündeki `tailscale serve https / http://127.0.0.1:7788` artık kabul edilmiyor:
+
+```
+tailscale serve --bg http://127.0.0.1:7788
+```
+
+## Servisler
+
+İkisi de **kullanıcı seviyesinde LaunchAgent**, `RunAtLoad` + `KeepAlive`:
+
+| | |
+|---|---|
+| `com.github.ferhatural.mineclaude` | `server.js --terminals`, yalnız `127.0.0.1:7788` |
+| `com.ferhatural.tailscaled` | userspace kip, `--statedir` |
+
+Daemon bilerek öldürülüp yeniden başlatıldı: hem giriş hem `serve` ayarı sağ kaldı.
+
+## Ölçülen
+
+- Mac ↔ tablet **doğrudan bağlantı kurulamadı**, DERP aktarıcısı üzerinden gidiyor
+  (`direct connection not established`), aynı wifi'de bile. Gidiş-dönüş 93–137 ms.
+  Belgenin öngördüğü CGNAT durumu doğrulandı. Terminal trafiği için hissedilmiyor.
+
+## Seyahat tuzağı: FileVault + otomatik güncelleme
+
+Bu ikisi birlikte setup'ı **sessizce ve kalıcı olarak** öldürüyor:
+
+```
+AutomaticallyInstallMacOSUpdates = 1
+bekleyen: macOS 26.7, macOS 27   → ikisi de Action: restart
+FileVault: On
+```
+
+Zincir: macOS kendiliğinden günceller → yeniden başlatır → FileVault kilit ekranında durur →
+kimse giriş yapmadığı için **kullanıcı LaunchAgent'larının hiçbiri başlamaz** → uzaktan
+yapılabilecek hiçbir şey kalmaz.
+
+Uzun süre evden ayrılmadan önce otomatik macOS güncellemesi kapatılmalı. FileVault ayrı bir
+karar: açık kalırsa elektrik kesintisi ya da çökme de aynı duvara çarpar.
+
+Ayrıca: dizüstü olduğu için `sudo pmset -a sleep 0 disablesleep 1` ve **fişte** olması şart.
+
+---
+
+# APK — 30 Eylul / 1 Ekim 2026
+
+Yukaridaki "Elenen yollar" bolumunde APK/TWA su gerekceyle elenmisti:
+
+> **APK / TWA:** uc sikayeti de (tus seridi yeri, kopyala-yapistir, yazi boyutu)
+> tarayici tarafinda cozduk. Native uygulama yazilabilir ama buradan test
+> edilemiyor, her tur sideload gerektirir. Gerekcesi kalmadi.
+
+**Bu gerekce yanlis cikti.** Dorduncu bir sikayet vardi ve tarayici tarafinda
+cozulemiyordu: **Ctrl+S / Ctrl+X ile mesaj zorla gonderme.** Opera'da Ctrl+S
+dogrudan "added to offline pages" diyor, sayfaya hic ulasmiyor. Kod yazarak
+cozulemez, cunku preventDefault edilecek bir olay yok.
+
+Denenip elenenler, sirayla:
+- **Tus seridine "ctrl" yapiskan dugmesi:** hic calismadi, ustelik yazarken
+  dugmeye uzanmak ergonomik degil. Kaldirildi.
+- **PWA olarak ana ekrana eklemek:** standalone kipte tarayici kisayollarinin
+  devreye girmeyecegi umuluyordu, girdi.
+
+## Neden TWA degil, duz WebView
+
+TWA tarayici motorunu kullanir, yani Chrome'un kisayol kapmasi aynen surer —
+sorunu hic cozmezdi. WebView'da tarayici kabugu yok.
+
+## Tesihis zinciri (asil deger burada)
+
+Ilk WebView surumunde de Ctrl+C calismadi. Uygulamaya bir olcum koyup
+bakildi:
+
+1. **Ctrl tek basina** → `Activity.dispatchKeyEvent`'e ulasiyor
+   (`keyCode=113 ctrl=true`).
+2. **Ctrl+C** → hic ulasmiyor.
+
+Aradaki fark IME. Android'de donanim tuslari once klavye uygulamasina gidiyor;
+o Ctrl+C/S/X'i kendi kopyala/kaydet/kes kisayolu sayip tuketiyor. Ctrl tek
+basina tam bir komut olmadigi icin tuketilmiyor — bu yuzden o goruluyor,
+kombinasyon gorulmuyordu.
+
+Cozum: **`View.dispatchKeyEventPreIme`**, yani IME'den once calisan kanca.
+Ctrl'lu harf orada yakalanip kontrol karakterine cevriliyor ve sayfaya
+`MTerm.sendKey` ile dogrudan yaziliyor — DOM olayi hic uretilmiyor, araya
+girecek katman kalmiyor.
+
+"Uretici OS tusu kapiyor" tahmini yanlisti: kapan isletim sistemi degil,
+klavye uygulamasiydi — ve onun onune gecilebiliyor.
+
+## Kurulum
+
+Kaynak `android/`. Gradle wrapper 8.9, AGP 8.7.3, JDK 21, compileSdk 35.
+Bagimlilik yok (appcompat iki farkli kotlin-stdlib getirip derlemeyi kiriyordu
+ve bir WebView sarmalayicinin ona ihtiyaci yok). APK ~10 KB, tek izin INTERNET,
+debug anahtariyla imzali — magaza dagitimi soz konusu degil, sideload.
+
+```
+cd android && ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:assembleRelease
+```
+
+**Tailnet adresi koda gomulu degil**: depo public, gomulu bir ts.net adresi
+herkese acik olurdu. Uygulama ilk acilista soruyor ve cihazda sakliyor;
+baglanamazsa giris ekranina geri donuyor.
+
+Tablete ulastirma (USB gerekmiyor): APK'yi yerel bir porttan sunup
+`tailscale serve --bg --set-path=/apk http://127.0.0.1:<port>` ile tailnet'e
+baglamak yeterli. Tailscale **dosya** sunmayi root'a kisitliyor, **servise
+proxy** serbest — o yuzden araya kucuk bir sunucu giriyor.

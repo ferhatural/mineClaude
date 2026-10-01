@@ -14,6 +14,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="stylesheet" href="/office.css">
 <link rel="stylesheet" href="/vendor/xterm.css">
+<script>
+  // Boyamadan once calismali, yoksa acik temada bir an koyu parliyor.
+  // Secim yoksa sistemi izliyoruz; Electron'da nativeTheme buraya yansiyor.
+  (function(){
+    try {
+      var s = localStorage.getItem('cc.theme');
+      var koyu = s ? s === 'dark'
+                   : !matchMedia('(prefers-color-scheme: light)').matches;
+      document.documentElement.dataset.theme = koyu ? 'dark' : 'light';
+    } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+  })();
+</script>
 <style>
   :root{
     --bg:#0e1013; --panel:#16191e; --panel2:#1c2027; --line:#272c34;
@@ -27,8 +39,13 @@
     --term-min-contrast:1;
     --you-bg-mix:12%;
   }
-  @media (prefers-color-scheme: light){
-    :root{
+  /* Acik tema artik medya sorgusuyla degil <html data-theme> ile secili. Sebep:
+     tarayicida (tablet) native menu yok, yani kullanicinin tema secebilecegi
+     hicbir yer yoktu — Opera koyu, Huawei tarayici acik aciyordu ve seciminin
+     karsiligi yoktu. Secim yoksa JS matchMedia'ya bakip yine sistemi izliyor,
+     Electron'da da nativeTheme oraya yansidigi icin menudeki Tema calismaya
+     devam ediyor (bkz. applyTheme). */
+  :root[data-theme="light"]{
       --bg:#f4f5f7; --panel:#ffffff; --panel2:#f8f9fb; --line:#e3e6eb;
       --text:#171a1f; --dim:#5c6472; --faint:#8b94a3;
       --wait:#c8880c; --busy:#1c9c4b; --idle:#2a6fd4; --unknown:#7b838f; --ended:#98a0ac;
@@ -55,7 +72,6 @@
       --t4:#1f5fbf;  --t5:#8b3fa8; --t6:#0f6f76; --t7:#5c5750;
       --t8:#776f65;  --t9:#c0392b; --t10:#1e6f24; --t11:#7a5c00;
       --t12:#1552a8; --t13:#7a2f96; --t14:#0b5f66; --t15:#35302a;
-    }
   }
   *{box-sizing:border-box}
   [hidden]{display:none !important}
@@ -291,6 +307,46 @@
   .tm-tasks-btn.on{color:var(--idle)}
   .tm-tasks-btn svg{width:15px;height:15px;display:block}
   .tm-pane .xterm{height:100%}
+  /* Hizalamayi yalniz ilk sag dugme (.tm-lay) yapiyor. Buna da margin-left:auto
+     kalsaydi flex bos alani iki auto arasinda bolusturur, duzen ve gorevler
+     dugmeleri seridin ortasinda asili kalirdi. */
+  .tm-findbtn{margin-left:0}
+  /* Dokunmatik tus seridi. Sagda duruyor ve sola dogru aciliyor: tablette yazi
+     soldan basladigi icin sag taraf bos kaliyor. Eski hali alt kenari bastan
+     basa kapliyordu (left:0;right:0) ve Claude'un cevap alanini ortuyordu.
+     row-reverse: ilk cocuk (dugme) en sagda, serit onun soluna aciliyor. */
+  .tm-keywrap{display:flex;position:absolute;right:8px;bottom:8px;z-index:3;
+    flex-direction:row-reverse;align-items:center;gap:6px;
+    max-width:calc(100% - 16px);pointer-events:none}
+  .tm-keywrap > *{pointer-events:auto}
+  .tm-keytoggle{flex:0 0 auto;font:inherit;font-size:15px;line-height:1;
+    color:var(--dim);background:color-mix(in srgb,var(--panel) 88%,transparent);
+    border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer;
+    backdrop-filter:blur(6px);touch-action:manipulation}
+  .tm-keytoggle:active{border-color:var(--idle);color:var(--text)}
+  .tm-keys{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;min-width:0;
+    background:color-mix(in srgb,var(--panel) 88%,transparent);
+    border:1px solid var(--line);border-radius:10px;padding:5px;backdrop-filter:blur(6px)}
+  .tm-keys::-webkit-scrollbar{display:none}
+  .tm-keywrap.off .tm-keys{display:none}
+  .tm-keys button{flex:0 0 auto;font:inherit;font-size:13px;min-width:44px;
+    color:var(--text);background:var(--panel2);border:1px solid var(--line);
+    border-radius:7px;padding:7px 9px;cursor:pointer;touch-action:manipulation}
+  .tm-keys button.wide{min-width:auto;font-size:12px}
+  .tm-keys button:active{background:var(--panel);border-color:var(--idle)}
+  /* Kopyala dugmesinin sonucu: sessiz basarisizlik yerine gorunur cevap. */
+  .tm-keys button.ok{border-color:var(--busy);color:var(--busy)}
+  .tm-keys button.no{border-color:var(--wait);color:var(--wait)}
+  /* Sag tik ile kopyalayinca kisa bir cerceve: dokunmatikte geri bildirim sart,
+     yoksa bir sey olup olmadigi anlasilmiyor. */
+  .tm-pane.tm-copied{outline:2px solid var(--busy);outline-offset:-2px}
+  .tm-pane.tm-copyfail{outline:2px solid var(--wait);outline-offset:-2px}
+  /* Tus teshisi kutusu (serittteki "tus?" dugmesi). Uzerine basinca kapaniyor. */
+  .tm-keylog{position:absolute;right:8px;bottom:56px;z-index:5;max-width:calc(100% - 16px);
+    font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre;overflow:auto;
+    max-height:40vh;color:var(--text);background:color-mix(in srgb,var(--panel) 94%,transparent);
+    border:1px solid var(--idle);border-radius:8px;padding:8px 10px;backdrop-filter:blur(6px)}
+
   /* Tarayici sekmesi (term.js openWeb): localhost'taki dev sunucusunu terminallerin
      yaninda gormek icin. Pane'in kendi adres cubugu var, sayfa altinda tam boy. */
   .tm-pane.tm-web{padding:0;flex-direction:column}
@@ -365,8 +421,13 @@
     border:1px solid var(--line);border-radius:9px;padding:8px 11px;outline:none}
   .tm-picker input:focus{border-color:var(--idle)}
   .tm-picker-list{display:flex;flex-direction:column;gap:2px;max-height:42vh;overflow:auto}
+  /* flex:none sart — liste sabit yukseklikli bir flex sutun. Onsuz cok sayida
+     klasorde (40+ proje) dugmeler flex-shrink ile iceriginin altina eziliyor ve
+     satirlar dikeyde birbirine giriyor. Masaustunde ekran yuksek oldugu icin
+     gorunmuyor, tablette hemen ciriyor. */
   .tm-picker-list button{font:inherit;font-size:12px;text-align:left;color:var(--dim);
-    background:none;border:0;border-radius:7px;padding:6px 9px;cursor:pointer;
+    background:none;border:0;border-radius:7px;padding:6px 9px;cursor:pointer;flex:none;
+    min-height:34px;line-height:1.5;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tm-picker-list button:hover{background:var(--panel2);color:var(--text)}
   .tm-picker-foot{display:flex;gap:8px;justify-content:flex-end}
@@ -398,6 +459,27 @@
     background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.35)}
   .switch input:checked + .switch-track{background:var(--idle)}
   .switch input:checked + .switch-track::before{transform:translateX(15px)}
+  /* tum konusmalarda arama */
+  .sr-sheet{width:min(720px,100%)}
+  .sr-input{display:flex;align-items:center;gap:10px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:10px;padding:0 12px;margin-bottom:12px}
+  .sr-input input{flex:1;min-width:0;font:inherit;font-size:14px;color:var(--text);
+    background:none;border:0;outline:none;padding:10px 0}
+  .sr-count{flex:none;color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums}
+  .sr-body{max-height:62vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;
+    margin:0 -4px;padding:2px 4px}
+  .sr-hit{display:flex;flex-direction:column;gap:5px;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;
+    text-align:left;font:inherit;transition:border-color .12s,background .12s}
+  .sr-hit:hover{border-color:var(--idle);background:var(--panel2)}
+  .sr-head{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:12px}
+  .sr-head .name{font-weight:600;color:var(--text);flex:none;font-size:13px}
+  .sr-head .who{flex:none;color:var(--faint)}
+  .sr-head .when{margin-left:auto;flex:none;color:var(--faint)}
+  .sr-snip{color:var(--dim);font-size:12.5px;line-height:1.55;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .sr-snip mark{background:rgba(242,181,59,.28);color:var(--text);border-radius:3px;padding:0 1px}
+  .sr-note{color:var(--faint);font-size:12.5px;text-align:center;padding:26px 16px}
   .at-sheet{width:min(560px,100%)}
   .at-body{max-height:64vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
     margin:0 -4px;padding:2px 4px}
@@ -506,9 +588,12 @@
     <h1><span id="appTitle"></span> <span class="sub" id="host"></span></h1>
     <div class="hright">
       <div class="conn" id="conn"><span class="dot"></span><span id="connText"></span></div>
-      <div class="opts icons" id="viewSw"></div>
+      <button class="iconbtn" id="searchBtn"></button>
       <button class="iconbtn" id="allTasksBtn"></button>
       <button class="iconbtn" id="setBtn"></button>
+      <!-- Gorunum anahtari sagda, tam ekranin hemen solunda duruyor. Gorevler ve
+           Ayarlar dugmeleri sonradan araya girince ortada kalmisti. -->
+      <div class="opts icons" id="viewSw"></div>
       <button class="iconbtn" id="fs">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
           <path d="M2 6V2.5h3.5M14 6V2.5h-3.5M2 10v3.5h3.5M14 10v3.5h-3.5"/>
@@ -564,6 +649,53 @@
           <span class="opt-label" id="webAutoLabel"></span>
           <span class="switch"><input type="checkbox" id="webAuto" checked><span class="switch-track"></span></span>
         </label>
+        <div class="opt-row opt-row-static" id="serverWrap" hidden>
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1.8" y="2.4" width="12.4" height="4.2" rx="1.2"/>
+              <rect x="1.8" y="9.4" width="12.4" height="4.2" rx="1.2"/>
+              <path d="M4.4 4.5h.01M4.4 11.5h.01"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="serverLabel"></span>
+          <div class="opts"><button id="serverChange"></button></div>
+        </div>
+        <div class="opt-row opt-row-static" id="fontWrap">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.4 13L6.2 3h1.2L11.2 13M4 10h5.6M12 6.6h2.6M13.3 5.3v2.6"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="fontLabel"></span>
+          <div class="opts" id="fontSel"></div>
+        </div>
+        <div class="opt-row opt-row-static" id="themeWrap">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="8" r="4.2"/><path d="M8 1.4v1.6M8 13v1.6M1.4 8h1.6M13 8h1.6M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M12.7 3.3l-1.1 1.1M4.4 11.6l-1.1 1.1"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="themeLabel"></span>
+          <div class="opts" id="themeSel"></div>
+        </div>
+        <div class="opt-row opt-row-static" id="langWrap">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3.6h6M5 2v1.6M3.4 3.6c.4 2.4 2 4.4 4 5.4M6.6 3.6c-.4 2.4-2 4.4-4.4 5.6"/><path d="M8.4 14l2.6-6.4 2.6 6.4M9.3 12h3.4"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="langLabel"></span>
+          <div class="opts" id="langSel"></div>
+        </div>
+        <div class="opt-row opt-row-static" id="tabKeyWrap">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1.6" y="4" width="12.8" height="8" rx="1.4"/><path d="M4.2 6.8h.01M6.7 6.8h.01M9.3 6.8h.01M11.8 6.8h.01M5 9.4h6"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="tabKeyLabel"></span>
+          <div class="opts" id="tabKeySel"></div>
+        </div>
         <div class="opt-row opt-row-static" id="colsWrap">
           <span class="opt-icon">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -582,6 +714,17 @@
     <div class="sheet at-sheet">
       <div class="sheet-head"><b id="allTasksTitle"></b><button class="pick-x" id="allTasksClose"></button></div>
       <div class="at-body" id="allTasksBody"></div>
+    </div>
+  </div>
+
+  <div id="search" class="modal" hidden>
+    <div class="sheet sr-sheet">
+      <div class="sheet-head"><b id="searchTitle"></b><button class="pick-x" id="searchClose"></button></div>
+      <div class="sr-input">
+        <input type="text" id="searchQ" spellcheck="false" autocomplete="off">
+        <span class="sr-count" id="searchCount"></span>
+      </div>
+      <div class="sr-body" id="searchBody"></div>
     </div>
   </div>
 
@@ -659,8 +802,13 @@ const I18N = {
     msgEnded:'Oturum kapalı. Alttaki “devam ettir” düğmesiyle mineClaude’da açarsan buradan mesaj gönderebilirsin.',
     msgNoTerm:'Mesaj göndermek için terminal desteği gerekiyor.',
     msgFailed:'Gönderilemedi: terminal sekmesi kapanmış olabilir.',
-    settings:'Ayarlar',
+    settings:'Ayarlar', termFont:'Terminal yazı boyutu', serverAddr:'Sunucu adresi', change:'Değiştir', theme:'Tema', themeSystem:'Sistem', themeLight:'Açık', themeDark:'Koyu', tabKey:'Sekme geçişi (1–9)', language:'Dil', tabKeyOff:'Kapalı',
     allTasks:'Tüm görevler', noTasksAnywhere:'Hiçbir projede görev yok.',
+    searchAll:'Tüm konuşmalarda ara', searchHint:'Aramak için en az iki harf yaz',
+    searchNone:'Eşleşen konuşma yok.', searchBusy:'aranıyor…',
+    searchCount:(n,f)=>`${n} eşleşme · ${f} konuşma`,
+    searchMore:'ilk sonuçlar gösteriliyor, aramayı daralt',
+    searchOpen:'bu konuşmayı terminalde aç',
     clientNotePh:'Yeni görev ekle…',
     tasksTab:'Görevler', historyTab:'Geçmiş',
     petCat:'Kediyi sev', asked:'Soru sordu',
@@ -669,12 +817,14 @@ const I18N = {
     termTiles:'Izgara görünümü', termTabs:'Sekme görünümü',
     termGoTab:'Sekmesine git', termInApp:'mineClaude terminali',
     webNew:'Yeni tarayıcı sekmesi', webTab:'Tarayıcı', webBack:'Geri', webFwd:'İleri', webReload:'Yenile',
+    termKeys:'Tuş şeridi', termCopy:'kopyala', termPaste:'yapıştır',
     webExt:'Varsayılan tarayıcıda aç', webEmpty:'Kod beklerken gez: yukarıya ara ya da bir adres yaz.',
     webPin:(n)=>`Bu adresi “${n}” projesinin sitesi yap (proje açılınca burada açılır)`, webPinned:(n)=>`“${n}” projesinin sitesi bu`,
     webPinDev:(n)=>`Bu adresi “${n}” projesinin dev adresi yap (dev sunucusu kalkınca bu açılır)`, webPinnedDev:(n)=>`“${n}” projesinin dev adresi bu`,
     webPh:'Google’da ara veya adres yaz', webStop:'Durdur', webFail:'Sayfa açılamadı', webRetry:'Tekrar dene',
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'Geri yükle', termRestoreNo:'Yoksay',
+    termLiveAsk:(n)=>`Şu an açık ${n} terminal — dokununca bağlanırsın:`,
     termPick:'Terminal hangi klasörde açılsın?', termPickGo:'Aç', termGone:'Oturum artık yok',
     termFind:'Terminalde ara', termFindNone:'Yok', termFindCase:'Büyük/küçük harf duyarlı',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
@@ -714,8 +864,13 @@ const I18N = {
     msgEnded:'This session has ended. Resume it in mineClaude with the button below to send messages here.',
     msgNoTerm:'Sending messages needs terminal support.',
     msgFailed:'Couldn’t send: the terminal tab may have closed.',
-    settings:'Settings',
+    settings:'Settings', termFont:'Terminal font size', serverAddr:'Server address', change:'Change', theme:'Theme', themeSystem:'System', themeLight:'Light', themeDark:'Dark', tabKey:'Tab switching (1–9)', language:'Language', tabKeyOff:'Off',
     allTasks:'All tasks', noTasksAnywhere:'No tasks in any project.',
+    searchAll:'Search all conversations', searchHint:'Type at least two characters',
+    searchNone:'No conversation matches.', searchBusy:'searching…',
+    searchCount:(n,f)=>`${n} match${n===1?'':'es'} · ${f} conversation${f===1?'':'s'}`,
+    searchMore:'showing the first results, narrow the search',
+    searchOpen:'open this conversation in a terminal',
     clientNotePh:'Add a task…',
     tasksTab:'Tasks', historyTab:'History',
     petCat:'Pet the cat', asked:'Asked you something',
@@ -724,12 +879,14 @@ const I18N = {
     termTiles:'Tile view', termTabs:'Tab view',
     termGoTab:'Go to its tab', termInApp:'mineClaude terminal',
     webNew:'New browser tab', webTab:'Browser', webBack:'Back', webFwd:'Forward', webReload:'Reload',
+    termKeys:'Key bar', termCopy:'copy', termPaste:'paste',
     webExt:'Open in default browser', webEmpty:'Browse while the code runs: search or type an address above.',
     webPin:(n)=>`Make this “${n}”’s site (opens here when the project opens)`, webPinned:(n)=>`This is “${n}”’s site`,
     webPinDev:(n)=>`Make this “${n}”’s dev address (opens when its dev server is up)`, webPinnedDev:(n)=>`This is “${n}”’s dev address`,
     webPh:'Search Google or type an address', webStop:'Stop', webFail:'Couldn’t open the page', webRetry:'Try again',
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'Restore', termRestoreNo:'Dismiss',
+    termLiveAsk:(n)=>`${n} terminal${n>1?'s are':' is'} open — tap to attach:`,
     termPick:'Which folder should the terminal open in?', termPickGo:'Open', termGone:'Session is gone',
     termFind:'Find in terminal', termFindNone:'None', termFindCase:'Match case',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
@@ -775,6 +932,7 @@ const ICON = {
   gear:'<circle cx="8" cy="8" r="2.3"/><path d="M8 1.6l1 1.7 1.9-.5.5 1.9 1.7 1-1 1.7 1 1.7-1.7 1-.5 1.9-1.9-.5-1 1.7-1-1.7-1.9.5-.5-1.9-1.7-1 1-1.7-1-1.7 1.7-1 .5-1.9 1.9.5z"/>',
   trash:'<path d="M2.8 4.4h10.4M6.2 4.4V3.1c0-.6.5-1.1 1.1-1.1h1.4c.6 0 1.1.5 1.1 1.1v1.3M4.3 4.4l.6 8.3c.05.7.6 1.2 1.3 1.2h3.6c.7 0 1.25-.5 1.3-1.2l.6-8.3M6.5 7v4M9.5 7v4"/>',
   arrowUp:'<path d="M8 13V3M4 7l4-4 4 4"/>',
+  search:'<circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3L14 14"/>',
   send:'<path d="M14 2.2L1.9 7.6l4.4 1.6M14 2.2L8.9 14l-2.6-4.8M14 2.2L6.3 9.2"/>',
   checklist:'<rect x="1.8" y="2.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 4h7.4"/><rect x="1.8" y="6.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 8h7.4"/><rect x="1.8" y="10.6" width="2.8" height="2.8" rx=".6"/><path d="M6.8 12h7.4"/>',
 };
@@ -796,6 +954,116 @@ hideEmptyBox.onchange = () => { localStorage.setItem('cc.hideEmpty', hideEmptyBo
 const webAutoBox = $('#webAuto');
 webAutoBox.checked = localStorage.getItem('cc.webAuto') !== '0';
 webAutoBox.onchange = () => localStorage.setItem('cc.webAuto', webAutoBox.checked ? '1' : '0');
+
+// --- sunucu adresi (yalniz Android sarmalayicisinda) ---
+// Tarayicida adres zaten adres cubugunda, orada anlamsiz. Sarmalayicida ise
+// adres ilk acilista soruluyor ve cihazda sakli; degistirmenin baska yolu
+// yoktu (yalniz baglanti hata verirse giris ekrani kendiliginden geliyordu).
+if(window.mineClaudeAndroid && window.mineClaudeAndroid.changeServer){
+  $('#serverWrap').hidden = false;
+  $('#serverChange').onclick = () => window.mineClaudeAndroid.changeServer();
+}
+
+// --- terminal yazi boyutu ---
+// WebView yakinlastirmasi denendi ve geri alindi: arayuz kuculup buyumuyordu,
+// ustelik fare/parmak hareketleri de zoom'a kapiliyordu. xterm'in kendi yazi
+// boyutu hem net kaliyor hem de terminalin olcusunu dogru yeniden hesapliyor.
+function drawFontSel(){
+  const el = $('#fontSel');
+  if(!el) return;
+  const boyut = hasTerm() ? MTerm.fontSize() : null;
+  el.innerHTML = `<button data-d="-1">A−</button>`
+    + `<button data-d="0" class="on">${boyut ? Math.round(boyut) : '—'}</button>`
+    + `<button data-d="1">A+</button>`;
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const d = +b.dataset.d;
+    if(!d || !hasTerm()) return;
+    MTerm.setFont(d);
+    drawFontSel();
+  });
+}
+
+// --- tema secimi ---
+// Tarayicida (tablet) native menu yok, yani tema secmenin baska yolu yoktu:
+// sayfa tarayicinin tercihini izliyordu ve kullanicinin sozu gecmiyordu.
+// Secim localStorage'da, uygulanmasi <html data-theme> uzerinden (bkz. <head>
+// icindeki erken script). 'system' secilince matchMedia'yi izliyoruz —
+// Electron'da nativeTheme oraya yansidigi icin menudeki Tema da calisiyor.
+const THEME_KEY = 'cc.theme';
+const sistemKoyu = matchMedia('(prefers-color-scheme: dark)');
+function temaSecimi(){ return localStorage.getItem(THEME_KEY) || 'system'; }
+function applyTheme(){
+  const sec = temaSecimi();
+  const koyu = sec === 'system' ? sistemKoyu.matches : sec === 'dark';
+  document.documentElement.dataset.theme = koyu ? 'dark' : 'light';
+  // xterm renkleri CSS degiskenlerinden okunuyor ama acilista sabitleniyor;
+  // 3D sahnede de renkler materyallere gomulu. Ikisine de haber veriyoruz.
+  if(hasTerm()) MTerm.retheme();
+  if(has3d()) { Office3D.retheme(); render(); }
+  drawThemeSel();
+}
+function drawThemeSel(){
+  const el = $('#themeSel');
+  if(!el) return;
+  const sec = temaSecimi();
+  el.innerHTML = [['system','themeSystem'],['light','themeLight'],['dark','themeDark']]
+    .map(([v,k]) => `<button data-t="${v}" class="${sec===v?'on':''}">${esc(T(k))}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const v = b.dataset.t;
+    if(v === 'system') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, v);
+    applyTheme();
+  });
+}
+sistemKoyu.addEventListener('change', () => { if(temaSecimi() === 'system') applyTheme(); });
+
+// --- sekme gecisi tusu ---
+// Alt+1..9 mi Ctrl+1..9 mu: ikisi birden acikti, kullanici yalniz Alt istedi
+// (Ctrl+rakam bos kalsin, terminale gitsin). Varsayilan Alt. Mac'te satir
+// gizli: orada ⌘+rakam her zaman calisiyor, Alt ise Option ve karakter yaziyor.
+const TABKEY_KEY = 'cc.tabKey';
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+function tabKey(){ const v = localStorage.getItem(TABKEY_KEY); return v === 'ctrl' || v === 'off' ? v : 'alt'; }
+// Alt/Ctrl+rakam secilen sekme tusu mu. term.js de soruyor: xterm Alt+1'i
+// ESC 1 olarak terminale yaziyordu, yani sekme degisirken eski sekmedeki
+// Claude'a bir ESC (= durdur) gidiyordu. Eslesince xterm tusu hic islemiyor.
+function sekmeTusu(e){
+  if(IS_MAC || !(e.key >= '1' && e.key <= '9') || e.metaKey) return false;
+  const tk = tabKey();
+  if(tk === 'alt') return e.altKey && !e.ctrlKey;
+  if(tk === 'ctrl') return e.ctrlKey && !e.altKey;
+  return false;
+}
+window.mineClaudeTabKey = sekmeTusu;
+// --- dil ---
+// Secim yalniz masaustu uygulamasinin Pencere > Dil menusundeydi; tarayicida
+// ve APK'da tarayicinin dil listesine bakiliyordu ve degistirmenin yolu
+// yoktu (Turkce tablette hep Turkce). Masaustunde satir gizli: orada menu
+// tek kaynak, ikisi birbirini ezmesin.
+function drawLangSel(){
+  const el = $('#langSel');
+  if(!el) return;
+  $('#langWrap').hidden = !!window.mineClaudeDesktop;
+  el.innerHTML = [['tr','Türkçe'],['en','English']]
+    .map(([v,l]) => `<button data-l="${v}" class="${lang===v?'on':''}">${l}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    if(b.dataset.l === lang) return;
+    lang = b.dataset.l; localStorage.setItem('cc.lang', lang);
+    applyLang(); applyViewBtn(); render();
+  });
+}
+function drawTabKeySel(){
+  const el = $('#tabKeySel');
+  if(!el) return;
+  $('#tabKeyWrap').hidden = IS_MAC;
+  const sec = tabKey();
+  el.innerHTML = [['alt','Alt'],['ctrl','Ctrl'],['off',T('tabKeyOff')]]
+    .map(([v,l]) => `<button data-k="${v}" class="${sec===v?'on':''}">${esc(l)}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const v = b.dataset.k;
+    if(v === 'alt') localStorage.removeItem(TABKEY_KEY); else localStorage.setItem(TABKEY_KEY, v);
+    drawTabKeySel();
+  });
+}
 
 // --- ses: dosya yok, iki nota WebAudio ile sentezleniyor ---
 const soundBox = $('#sound');
@@ -847,6 +1115,85 @@ const closeAllTasks = () => { allTasksModal.hidden = true; };
 $('#allTasksBtn').onclick = openAllTasks;
 $('#allTasksClose').onclick = closeAllTasks;
 allTasksModal.onpointerdown = (e) => { if(e.target === allTasksModal) closeAllTasks(); };
+
+// --- tum konusmalarda arama ---
+// Kartlar transcript'in yalnizca son parcasini okuyor; burada sunucu dosyalarin
+// tamamina bakiyor, yani aylar once kapanmis oturumlar da geliyor. Tarama
+// ~370 MB'de yarim saniye civari: her tusa basista degil, yazmayi birakinca
+// (250ms) ariyoruz. Gec donen eski bir istek yeni sonuclari ezmesin diye
+// isteklere sira numarasi veriyoruz.
+const searchModal = $('#search'), searchQ = $('#searchQ'), searchBody = $('#searchBody');
+let searchReq = 0, searchTimer = null, searchLast = '';
+
+const openSearch = () => {
+  searchModal.hidden = false;
+  searchQ.focus();
+  searchQ.select();
+  if(!searchQ.value) drawSearchNote(T('searchHint'));
+};
+const closeSearch = () => { searchModal.hidden = true; clearTimeout(searchTimer); };
+$('#searchBtn').onclick = openSearch;
+$('#searchClose').onclick = closeSearch;
+searchModal.onpointerdown = (e) => { if(e.target === searchModal) closeSearch(); };
+
+function drawSearchNote(metin){
+  searchBody.innerHTML = `<div class="sr-note">${esc(metin)}</div>`;
+  $('#searchCount').textContent = '';
+}
+
+// Sunucu duz metin donuyor; vurguyu burada, kacisli metin uzerinde yapiyoruz ki
+// konusmanin icindeki < > & isaretleri HTML'e karismasin.
+function highlight(metin, q){
+  const kacis = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return esc(metin).replace(new RegExp(kacis, 'gi'), (m) => `<mark>${m}</mark>`);
+}
+
+async function runSearch(){
+  const q = searchQ.value.trim();
+  searchLast = q;
+  if(q.length < 2){ drawSearchNote(T('searchHint')); return; }
+  const ref = ++searchReq;
+  $('#searchCount').textContent = T('searchBusy');
+  let d;
+  try {
+    d = await fetch('/api/search?q=' + encodeURIComponent(q)).then(r => r.json());
+  } catch { return; }
+  if(ref !== searchReq) return;             // bu arada daha yeni bir arama basladi
+  if(!d.results.length){ drawSearchNote(T('searchNone')); return; }
+  $('#searchCount').textContent = T('searchCount')(d.results.length, d.hitFiles)
+    + (d.truncated ? ' · ' + T('searchMore') : '');
+  const now = Date.now();
+  searchBody.innerHTML = d.results.map((r) => `
+    <button class="sr-hit" data-session="${esc(r.sessionId)}" data-cwd="${esc(r.cwd || '')}"
+            title="${esc(T('searchOpen'))}">
+      <div class="sr-head">
+        <span class="name">${esc(r.title || r.project)}</span>
+        <span class="who">${r.role === 'user' ? esc(T('you')) : 'Claude'}</span>
+        <span class="when">${esc(rel(r.at, now))}</span>
+      </div>
+      <div class="sr-snip">${highlight(r.snippet, q)}</div>
+    </button>`).join('');
+  // Sonuca tiklayinca o konusmayi terminalde devam ettir. cwd bilinmiyorsa
+  // (cok eski transcript'lerde olabiliyor) resume edecek yer yok, tiklama da yok.
+  searchBody.querySelectorAll('.sr-hit').forEach((b) => {
+    b.onclick = () => {
+      if(!b.dataset.cwd || !hasTerm()) return;
+      closeSearch();
+      view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render();
+      MTerm.open(b.dataset.cwd, undefined, b.dataset.session);
+    };
+  });
+}
+
+searchQ.oninput = () => {
+  clearTimeout(searchTimer);
+  if(searchQ.value.trim() === searchLast) return;
+  searchTimer = setTimeout(runSearch, 250);
+};
+searchQ.onkeydown = (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); clearTimeout(searchTimer); runSearch(); }
+  else if(e.key === 'Escape'){ e.preventDefault(); closeSearch(); }
+};
 
 // --- guncelleme hazir modali ---
 const updateModal = $('#updateReady');
@@ -1260,37 +1607,80 @@ function projectNameFromCwd(cwd){
   const parts = String(cwd || '').split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || cwd || '?';
 }
+let termTasksSnap = null;   // son cizilen veri
+let termTasksReq = 0;       // gec gelen eski istek yenisini ezmesin
 function renderTermTasks(){
   if(!hasTerm()) return;
   const activeTab = document.querySelector('.tm-tab.on');
   const cwd = activeTab ? activeTab.title : null;
-  if(cwd === termTasksCwd) return; // aktif sekme degismedi: yeniden kurma
-  termTasksCwd = cwd;
   const body = $('#termTasksBody');
-  if(!cwd){
-    $('#termTasksProj').textContent = '';
-    $('#termTasksPath').textContent = '';
-    body.innerHTML = `<div class="tt-empty">${T('termEmpty')}</div>`;
-    return;
+  const sekmeDegisti = cwd !== termTasksCwd;
+  if(sekmeDegisti){
+    termTasksCwd = cwd;
+    termTasksSnap = null;
+    if(!cwd){
+      $('#termTasksProj').textContent = '';
+      $('#termTasksPath').textContent = '';
+      body.innerHTML = `<div class="tt-empty">${T('termEmpty')}</div>`;
+      return;
+    }
+    $('#termTasksProj').textContent = projectNameFromCwd(cwd);
+    $('#termTasksPath').textContent = cwd;
+    $('#termTasksPath').title = cwd;
+    body.innerHTML = `<div class="tt-empty">${T('loading')}</div>`;
   }
-  $('#termTasksProj').textContent = projectNameFromCwd(cwd);
-  $('#termTasksPath').textContent = cwd;
-  $('#termTasksPath').title = cwd;
-  body.innerHTML = `<div class="tt-empty">${T('loading')}</div>`;
+  if(!cwd) return;
+  // Eskiden yalnizca sekme degisince veri cekiliyordu: panel bir kez cizildikten
+  // sonra bir daha sormuyordu. Disaridan eklenen bir gorev (mineclaude --task-add,
+  // Claude, baska bir cihaz) sekme degistirilene kadar hic gorunmuyordu — "Tum
+  // gorevler" penceresi guncel, bu bos kaliyordu. Artik her ankette soruyoruz;
+  // DOM'u ise yalnizca veri gercekten degistiyse kuruyoruz, yoksa mouse bir
+  // gorevin uzerindeyken hover durumu surekli gidip geliyordu.
+  const ref = ++termTasksReq;
   fetch('/api/note?cwd=' + encodeURIComponent(cwd))
     .then(r => r.json())
     .then(d => {
-      if(termTasksCwd !== cwd) return; // bu arada baska bir sekmeye gecilmis
-      const fakeS = { cwd, projectTasks: d.tasks || [] };
+      if(ref !== termTasksReq || termTasksCwd !== cwd) return;
+      const tasks = d.tasks || [];
+      const snap = JSON.stringify(tasks);
+      if(snap === termTasksSnap) return;
+      termTasksSnap = snap;
+      const fakeS = { cwd, projectTasks: tasks };
       body.innerHTML = noteHtml(fakeS);
       wireNote(body, fakeS);
     })
-    .catch(() => { if(termTasksCwd === cwd) body.innerHTML = `<div class="tt-empty">${T('noTasksAnywhere')}</div>`; });
+    .catch(() => {
+      if(ref === termTasksReq && termTasksCwd === cwd && termTasksSnap === null){
+        body.innerHTML = `<div class="tt-empty">${T('noTasksAnywhere')}</div>`;
+      }
+    });
 }
 // Terminal kısayolları — yalnız terminal görünümü açıkken ve yazarken değilken.
 // ⌘W menüde "Kapat"a bağlı olduğu için burada değil, ana süreçten IPC ile geliyor.
 document.addEventListener('keydown', (e) => {
-  if(!e.metaKey || e.ctrlKey || e.altKey) return;
+  // Kisayollar ⌘ ile yazilmisti; tablet klavyesinde ⌘ yok, dolayisiyla hicbiri
+  // calismiyordu — sekmeler arasi gecis dahil.
+  //
+  // Sekme secimi icin Alt ya da Ctrl de kabul ediliyor (hangisi: Ayarlar >
+  // Sekme gecisi, bkz. tabKey()), ama YALNIZ RAKAMLARLA.
+  // Harfler bilerek disarida: Ctrl+T/W/F/C ve Alt+<harf> (ESC<harf> olarak
+  // gider) terminalde gercek anlam tasiyor, onlari kapmak yaziyi bozardi.
+  // Ctrl+<rakam> terminalde atil; Alt+<rakam> ESC<rakam> uretir ama pratikte
+  // kullanilmiyor ve tablet klavyesinde Alt, ⌘'nin durdugu yerde — basparmakla
+  // en kolay ulasilan tus.
+  //
+  // macOS istisnasi: orada Alt = Option ve Option+3 gibi kombinasyonlar gercek
+  // karakter yaziyor (£, ¢...). Mac'te Alt'i hic kapmiyoruz, zaten ⌘ var.
+  const rakam = e.key >= '1' && e.key <= '9';
+  const altGecerli = sekmeTusu(e) && e.altKey;
+  const ctrlGecerli = sekmeTusu(e) && e.ctrlKey;
+  if(e.altKey && !altGecerli) return;
+  if(!e.metaKey && !ctrlGecerli && !altGecerli) return;
+  if(e.metaKey && e.ctrlKey) return;
+  // ⌘⇧F her görünümde çalışıyor: terminal ⌘F'i o anki tamponda arar, bu ise
+  // makinedeki tüm konuşmalarda. Terminal kısayollarının önünde, çünkü onlar
+  // yalnız terminal görünümünde geçerli.
+  if((e.key === 'f' || e.key === 'F') && e.shiftKey){ e.preventDefault(); openSearch(); return; }
   if(!hasTerm() || view !== 'term') return;
   if(e.key === 't'){ e.preventDefault(); MTerm.openPicked().then(syncCloseIntercept); return; }
   if(e.key >= '1' && e.key <= '9'){ e.preventDefault(); MTerm.selectIndex(+e.key - 1); return; }
@@ -1301,6 +1691,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   if(!setModal.hidden){ closeSettings(); return; }
+  if(!searchModal.hidden){ closeSearch(); return; }
   if(hasTerm() && view === 'term' && MTerm.findClose()) return;
   if(!allTasksModal.hidden){ closeAllTasks(); return; }
   if(picked){ closePick(); }
@@ -1401,11 +1792,27 @@ function applyViewBtn(){
     applyViewBtn(); render();
   });
   $('#fs').title = T('fullscreen');
+  $('#searchBtn').title = T('searchAll') + '  (⌘⇧F)';
+  $('#searchBtn').innerHTML = svg('search');
+  $('#searchClose').title = T('close');
+  $('#searchClose').innerHTML = svg('cross');
+  $('#searchTitle').textContent = T('searchAll');
+  $('#searchQ').placeholder = T('searchAll');
   $('#allTasksBtn').title = T('allTasks');
   $('#allTasksBtn').innerHTML = svg('checklist');
   $('#allTasksClose').title = T('close');
   $('#allTasksClose').innerHTML = svg('cross');
   $('#allTasksTitle').textContent = T('allTasks');
+  $('#serverLabel').textContent = T('serverAddr');
+  $('#serverChange').textContent = T('change');
+  $('#fontLabel').textContent = T('termFont');
+  drawFontSel();
+  $('#themeLabel').textContent = T('theme');
+  drawThemeSel();
+  $('#tabKeyLabel').textContent = T('tabKey');
+  $('#langLabel').textContent = T('language');
+  drawLangSel();
+  drawTabKeySel();
   $('#setBtn').title = T('settings');
   $('#setBtn').innerHTML = svg('gear');
   $('#setClose').title = T('close');
@@ -1420,6 +1827,13 @@ applyViewBtn();
 
 // --- tam ekran ---
 $('#fs').onclick = () => {
+  // Android sarmalayicisinda tarayicinin Fullscreen API'si sistem cubuklarini
+  // gizlemiyor, yani dugme hicbir ise yaramiyordu. Orada uygulamanin kendi
+  // immersive kipini cagiriyoruz: durum ve gezinme cubuklari da kayboluyor.
+  if (window.mineClaudeAndroid && window.mineClaudeAndroid.toggleFullscreen) {
+    window.mineClaudeAndroid.toggleFullscreen();
+    return;
+  }
   if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen().catch(()=>{});
 };
@@ -1505,7 +1919,7 @@ function actionBtns(s){
       if(s.sessionId)
         acts.push(`<button class="iconbtn" title="${T('termHere')}: ${esc(s.cwd)}" data-term-cwd-new="${esc(s.cwd)}">${svg('termPlus')}</button>`);
       const title = s.sessionId ? T('termResume') : T('termHere');
-      acts.push(`<button class="iconbtn" title="${title}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}" data-term-session="${esc(s.sessionId || '')}">${svg('term')}</button>`);
+      acts.push(`<button class="iconbtn" title="${title}: ${esc(s.cwd)}" data-term-cwd="${esc(s.cwd)}" data-term-session="${esc(s.sessionId || '')}" data-term-tty="${esc(s.tty || '')}">${svg('term')}</button>`);
     }
   }
   if(s.sessionId) acts.push(`<button class="iconbtn" title="${T('copyResume')}: claude --resume ${s.sessionId}" data-copy="claude --resume ${s.sessionId}">${svg('resume')}</button>`);
@@ -1525,7 +1939,15 @@ function wireActions(root){
     // sessionId varsa tik resume acar, Shift+tik her zaman bos terminal acar
     // (ayni klasorde ikinci bir Claude sureci istersen). Yanindaki "+" dugmesi
     // ayni seye mouse'la ulasmanin gorsel yolu.
-    b.onclick = (e) => {
+    b.onclick = async (e) => {
+      // Once: bu oturum mineClaude'un kendi terminallerinden birinde zaten
+      // kosuyorsa ona baglan. Sunucudaki PTY yasamaya devam ediyor, yani evde
+      // acilan bir oturuma tabletten boyle devam ediliyor. Yeni surec acmak
+      // ayni konusmaya ikinci bir claude demek olurdu.
+      if(b.dataset.termTty && !e.shiftKey && hasTerm()){
+        goTerm();
+        if(await MTerm.adoptByTty(b.dataset.termTty)){ render(); return; }
+      }
       if(b.dataset.termSession && !e.shiftKey){
         // Komutu burada kurmuyoruz: claude'un nasil cagrildigina (platform farki,
         // acik temada --settings) tek yerden pty.js karar veriyor.
@@ -1774,20 +2196,33 @@ function showDown(){
 }
 
 function connect(){
-  es = new EventSource('/events');
-  es.onopen = () => setConn(true, T('live'));
-  es.onmessage = (e) => { state = JSON.parse(e.data); checkNotify(); render(); setConn(true, T('live')); };
+  // Isleyiciler modul seviyesindeki `es`e degil kendi orneklerine bakiyor.
+  // Oncesinde kapanmis eski bir baglantinin gec gelen onerror'u, o sirada
+  // calisan YENI baglantiyi kapatiyordu: basliktaki "baglanti koptu" mesaji
+  // asili kaliyor, akis surekli yeniden kuruluyordu. Terminal ayri bir
+  // WebSocket oldugu icin calismaya devam ediyor ve ariza gizli kaliyordu.
+  // Zayif wifi'da (olculdu: 140 ms sicramalar) ust uste binen ornekler sik.
+  const kendi = new EventSource('/events');
+  es = kendi;
+  const guncel = () => es === kendi;
+  kendi.onopen = () => { if(guncel()) setConn(true, T('live')); };
+  kendi.onmessage = (e) => {
+    if(!guncel()) return;
+    state = JSON.parse(e.data); checkNotify(); render(); setConn(true, T('live'));
+  };
   // `mineclaude --open` (Claude'a "tarayıcıda aç" denince): terminal görünümüne geç, sekmeyi aç
-  es.addEventListener('web-open', (e) => {
+  kendi.addEventListener('web-open', (e) => {
+    if(!guncel()) return;
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if(!hasTerm() || !m || !m.url) return;
     if(view !== 'term'){ view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render(); }
     MTerm.openUrl(m);
   });
-  es.onerror = () => {
+  kendi.onerror = () => {
+    if(!guncel()){ kendi.close(); return; }   // eski ornek: yalniz kendini topla
     setConn(false, T('disconnected'));
     if(!state) showDown();
-    es.close();
+    kendi.close();
     setTimeout(connect, 2500);
   };
 }

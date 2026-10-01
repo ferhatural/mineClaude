@@ -18,6 +18,7 @@ const path = require('path');
 const http = require('http');
 const net = require('net');
 const { execFileSync, spawn } = require('child_process');
+const crypto = require('crypto');
 let SftpClient = null;
 try {
   SftpClient = require('ssh2-sftp-client');
@@ -485,6 +486,39 @@ function projectFileFor(cwd) {
   return path.join(cwd, '.mineclaude', 'project.json');
 }
 
+// Yazan uclar (POST) yalniz panelin kendisinden gelsin. Eskiden yalniz
+// http://localhost kabul ediliyordu; tablet paneli Tailscale uzerinden
+// https://<makine>.ts.net'ten aciyor ve tabletten yapilan her yazma (gorev
+// isaretleme, adres sabitleme) "origin reddedildi" ile sessizce dusuyordu.
+//
+// Herhangi bir *.ts.net KABUL EDILMIYOR: Funnel ile herkes acik bir ts.net
+// sitesi yayinlayabilir. Yalniz istegin geldigi adresin kendisi (Host /
+// X-Forwarded-Host) ya da bu makinenin kendi tailnet adi.
+let tailnetAdi = '';
+try {
+  const sock = path.join(os.homedir(), '.tailscale', 'sock');
+  const args = fs.existsSync(sock) ? ['--socket=' + sock, 'status', '--json'] : ['status', '--json'];
+  const tsBin = ['/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale'].find((f) => fs.existsSync(f)) || 'tailscale';
+  const cp = spawn(tsBin, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+  let out = '';
+  cp.stdout.on('data', (c) => { out += c; });
+  cp.on('close', () => {
+    try { tailnetAdi = String(JSON.parse(out).Self.DNSName || '').replace(/\.$/, '').toLowerCase(); } catch { /* tailscale yok */ }
+  });
+  cp.on('error', () => { /* tailscale kurulu degil */ });
+} catch { /* */ }
+
+function kaynakGuvenli(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;   // curl, APK'nin Java'si; tarayici POST'ta hep gonderiyor
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  let host;
+  try { host = new URL(origin).host.toLowerCase(); } catch { return false; }
+  const gelen = [req.headers.host, req.headers['x-forwarded-host']]
+    .filter(Boolean).map((h) => String(h).split(',')[0].trim().toLowerCase());
+  return gelen.includes(host) || (!!tailnetAdi && host === tailnetAdi);
+}
+
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
 }
@@ -766,7 +800,21 @@ function sftpConfigFor(cwd) {
       username: raw.username,
       password: raw.password,
       privateKey: raw.privateKeyPath ? fs.readFileSync(raw.privateKeyPath) : undefined,
-      remoteDir: String(raw.remotePath).replace(/\/+$/, '') + '/.mineclaude',
+      // Gorev dosyasi web kokune YAZILMAMALI. remotePath cogu kurulumda
+      // dogrudan yayin klasoru (htdocs/..., /var/www/html, kimi zaman /) ve
+      // oraya yazilan .mineclaude/tasks.json'u Apache de nginx de varsayilan
+      // olarak servis ediyor: gorev metinleri https://site/.mineclaude/... ile
+      // herkese acik okunur hale geliyordu.
+      //
+      // Bunun yerine SFTP kullanicisinin ev dizinine yaziyoruz — baglanti
+      // zaten orada basliyor, goreli yol yeterli. "Ayni proje -> ayni dosya"
+      // ozelligi kaybolmasin diye dosya adini host+remotePath ozetinden
+      // turetiyoruz: farkli makinelerdeki farkli yerel yollar ayni uzak
+      // dosyaya denk gelmeye devam ediyor.
+      remoteDir: '.mineclaude',
+      remoteFile: '.mineclaude/tasks-' + crypto.createHash('sha256')
+        .update(raw.host + '\n' + String(raw.remotePath).replace(/\/+$/, ''))
+        .digest('hex').slice(0, 16) + '.json',
     };
   } catch {
     return null; // sftp.json yok ya da bozuk: sessizce yerel dosyaya duser
@@ -796,7 +844,7 @@ async function withSftp(cfg, fn) {
 async function fetchRemoteTasks(cfg) {
   return withSftp(cfg, async (client) => {
     try {
-      const buf = await client.get(cfg.remoteDir + '/tasks.json');
+      const buf = await client.get(cfg.remoteFile);
       const raw = JSON.parse(buf.toString('utf8'));
       return Array.isArray(raw) ? raw : [];
     } catch (e) {
@@ -810,7 +858,13 @@ async function fetchRemoteTasks(cfg) {
 async function uploadRemoteTasks(cfg, tasks) {
   return withSftp(cfg, async (client) => {
     await client.mkdir(cfg.remoteDir, true);
-    await client.put(Buffer.from(JSON.stringify(tasks, null, 2)), cfg.remoteDir + '/tasks.json');
+    // Kemer + askı: bazi barindirmalarda SFTP kullanicisi dogrudan web kokune
+    // chroot'lanmis oluyor, yani "ev dizini" ile yayin klasoru ayni yer.
+    // Apache'de bu dosya klasoru disariya kapatiyor; maliyeti bir kucuk put.
+    try {
+      await client.put(Buffer.from('Require all denied\nDeny from all\n'), cfg.remoteDir + '/.htaccess');
+    } catch { /* sunucu izin vermedi: ana koruma zaten dosyanin yeri */ }
+    await client.put(Buffer.from(JSON.stringify(tasks, null, 2)), cfg.remoteFile);
   });
 }
 
@@ -860,6 +914,100 @@ function allProjectTasks() {
     if (tasks.length) out.push({ cwd: tr.cwd, project: projectName(tr.cwd), tasks });
   }
   return out;
+}
+
+// ---------------------------------------------------------------- arama
+//
+// Tum konusmalarda metin arama — canli olanlar da, aylar once kapanmislar da.
+// Kartlardaki bilgi transcript'in yalnizca son parcasindan okunuyor (parseTail);
+// burada dosyanin tamamina bakmak gerekiyor.
+//
+// Maliyet: ~370 MB / 120 dosya. Her satiri JSON'a cevirmek pahali oldugu icin
+// once dosyanin tamaminda, sonra satirda ucuz bir test yapiyoruz; JSON.parse
+// yalnizca gercekten eslesen satirlar icin calisiyor.
+//
+// Test buyuk/kucuk harf duyarsiz regex ile, toLowerCase() ile degil: olculdu,
+// tum dizinde toLowerCase 2.7sn, /i regex 0.44sn (kopya ayirmadigi icin).
+// latin1 ile okumak 0.09sn'ye iniyor ama Turkce sorguyu tamamen kaciriyor
+// ("güncelleme" -> 0 sonuc), o yuzden utf8'de kaliyoruz.
+
+const SEARCH_MAX_PER_SESSION = 3;   // tek bir uzun konusma sonuclari doldurmasin
+const SEARCH_SNIPPET = 160;
+
+// Bir transcript satirindan okunabilir metni cikar. Icerik bazen duz dize,
+// bazen blok dizisi; tool ciktilarini disarida birakiyoruz, aramada ise
+// yarayan sey konusmanin kendisi.
+function messageText(d) {
+  const m = d && d.message;
+  if (!m) return null;
+  if (typeof m.content === 'string') return m.content;
+  if (!Array.isArray(m.content)) return null;
+  const parcalar = [];
+  for (const c of m.content) {
+    if (c && c.type === 'text' && c.text) parcalar.push(c.text);
+  }
+  return parcalar.length ? parcalar.join('\n') : null;
+}
+
+// Sorgu duz metin, desen degil: kullanici "fiyat (TL)" yazinca regex patlamasin.
+const regexKacis = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function snippetAround(text, re) {
+  const i = text.search(re);
+  if (i === -1) return plainText(text, SEARCH_SNIPPET);
+  const bas = Math.max(0, i - Math.floor(SEARCH_SNIPPET / 3));
+  const kesit = text.slice(bas, bas + SEARCH_SNIPPET);
+  return (bas > 0 ? '…' : '') + plainText(kesit, SEARCH_SNIPPET) + (bas + SEARCH_SNIPPET < text.length ? '…' : '');
+}
+
+function searchTranscripts(q, limit = 60) {
+  const needle = String(q || '').trim();
+  const sonuc = { q: needle, results: [], files: 0, hitFiles: 0, truncated: false };
+  if (needle.length < 2) return sonuc;
+
+  let re;
+  try { re = new RegExp(regexKacis(needle), 'i'); } catch { return sonuc; }
+
+  const idx = transcriptIndex();
+  for (const rec of idx.all) {          // idx.all mtime'a gore sirali: yeni konusmalar once
+    if (sonuc.results.length >= limit) { sonuc.truncated = true; break; }
+    let ham;
+    try { ham = fs.readFileSync(rec.file, 'utf8'); } catch { continue; }
+    sonuc.files++;
+    if (!re.test(ham)) continue;
+    sonuc.hitFiles++;
+
+    let cwd = null, baslik = null, bulundu = 0;
+    for (const line of ham.split('\n')) {
+      if (!line.startsWith('{')) continue;
+      // Dosyada eslesme var ama bu satirda yoksa parse etmeye degmez. cwd ve
+      // basligi yine de toplamak gerekiyor, onlar ayri (ucuz) satirlarda.
+      const satirdaVar = re.test(line);
+      if (!satirdaVar && cwd && baslik) continue;
+      let d;
+      try { d = JSON.parse(line); } catch { continue; }
+      if (d.cwd) cwd = d.cwd;
+      if (d.type === 'ai-title' && d.aiTitle) baslik = d.aiTitle;
+      if (!satirdaVar) continue;
+      if (d.type !== 'user' && d.type !== 'assistant') continue;
+      if (bulundu >= SEARCH_MAX_PER_SESSION) continue;
+
+      const text = messageText(d);
+      if (!text || !re.test(text)) continue;   // eslesme arac ciktisinda ya da ust verideymis
+      bulundu++;
+      sonuc.results.push({
+        sessionId: rec.sessionId,
+        project: cwd ? projectName(cwd) : rec.projectDir,
+        cwd,
+        title: baslik,
+        role: d.type,
+        at: d.timestamp ? Date.parse(d.timestamp) : rec.mtime,
+        snippet: snippetAround(text, re),
+      });
+    }
+  }
+  sonuc.results.sort((a, b) => b.at - a.at);
+  return sonuc;
 }
 
 // ---------------------------------------------------------------- toplayici
@@ -1109,13 +1257,34 @@ function attachTerminals(server) {
   }
 
   const wss = new WebSocketServer({ server, path: '/terminals' });
+
+  // Olu soketleri toplamak: istemci kaybolunca (tablet uykuya daldi, ag gitti)
+  // TCP yari acik kalabiliyor ve sunucu PTY ciktisini bosluga yazmaya devam
+  // ediyor. Protokol seviyesinde ping atip cevap vermeyeni dusuruyoruz.
+  const OLCUM_MS = 30000;
+  const canli = new WeakSet();
+  const kalpAtisi = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (!canli.has(ws)) { ws.terminate(); continue; }
+      canli.delete(ws);
+      try { ws.ping(); } catch { /* zaten kapanmis */ }
+    }
+  }, OLCUM_MS);
+  wss.on('close', () => clearInterval(kalpAtisi));
+
   wss.on('connection', (ws) => {
+    canli.add(ws);
+    ws.on('pong', () => canli.add(ws));
     const mine = new Set();
     const send = (m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
 
     ws.on('message', (raw) => {
       let m;
       try { m = JSON.parse(raw); } catch { return; }
+      // Istemci 10sn'de bir yokluyor; cevap gelmezse soketi kendisi kapatip
+      // yeniden bagliyor (bkz. term.js). Mobil agda kopan baglanti cogu zaman
+      // onclose uretmedigi icin bu tek canlilik kaniti.
+      if (m.t === 'ping') return send({ t: 'pong' });
       if (m.t === 'create') {
         let info;
         try {
@@ -1230,6 +1399,15 @@ function serve() {
       res.end(JSON.stringify({ enabled: TERMINALS, terminals: list }));
       return;
     }
+
+    if (url === '/api/search') {
+      const sp = new URL(req.url, 'http://x').searchParams;
+      const limit = Math.min(200, Math.max(1, parseInt(sp.get('limit'), 10) || 60));
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(JSON.stringify(searchTranscripts(sp.get('q') || '', limit)));
+      return;
+    }
+
     if (url === '/api/all-tasks') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
       res.end(JSON.stringify({ projects: allProjectTasks() }));
@@ -1257,13 +1435,46 @@ function serve() {
       res.end(JSON.stringify(cwd ? projectWeb(cwd) : { url: '', source: null, dev: [] }));
       return;
     }
+    // Tabletten gorsel yapistirma. Claude Code gorseli calistigi makinenin
+    // panosundan okuyor; tabletin panosu ona hic ulasmiyor. APK panodaki
+    // gorseli buraya yukluyor, biz gecici dosyaya yaziyoruz, terminale yolu
+    // yapistiriliyor — Claude Code mesajdaki gorsel yolunu kendisi ekliyor
+    // (masaustu uygulamasinin Ctrl+V'si de ayni sekilde, bkz. electron/main.js).
+    if (url === '/api/paste-image' && req.method === 'POST') {
+      const reply = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(obj));
+      };
+      if (!kaynakGuvenli(req)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      const tur = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const UZANTI = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+      if (!UZANTI[tur]) return reply(415, { ok: false, error: 'desteklenmeyen tur: ' + tur });
+      const parcalar = [];
+      let boy = 0, fazla = false;
+      req.on('data', (c) => {
+        boy += c.length;
+        if (boy > 25 * 1024 * 1024) { fazla = true; req.destroy(); return; }
+        parcalar.push(c);
+      });
+      req.on('end', () => {
+        if (fazla) return;
+        if (!boy) return reply(400, { ok: false, error: 'bos govde' });
+        try {
+          const dir = path.join(os.tmpdir(), 'mineclaude-paste');
+          fs.mkdirSync(dir, { recursive: true });
+          const file = path.join(dir, `paste-${Date.now()}.${UZANTI[tur]}`);
+          fs.writeFileSync(file, Buffer.concat(parcalar));
+          reply(200, { ok: true, path: file });
+        } catch (e) { reply(500, { ok: false, error: String(e.message || e) }); }
+      });
+      return;
+    }
     if (url === '/api/web-open' && req.method === 'POST') {
       const reply = (code, obj) => {
         res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(obj));
       };
-      const origin = req.headers.origin;
-      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      if (!kaynakGuvenli(req)) return reply(403, { ok: false, error: 'origin reddedildi' });
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 8 * 1024) req.destroy(); });
       req.on('end', async () => {
@@ -1295,12 +1506,11 @@ function serve() {
       return;
     }
     if (url === '/api/project-web' && req.method === 'POST') {
-      const origin = req.headers.origin;
       const reply = (code, obj) => {
         res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(obj));
       };
-      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      if (!kaynakGuvenli(req)) return reply(403, { ok: false, error: 'origin reddedildi' });
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 8 * 1024) req.destroy(); });
       req.on('end', () => {
@@ -1323,8 +1533,7 @@ function serve() {
       return;
     }
     if (url === '/api/note' && req.method === 'POST') {
-      const origin = req.headers.origin;
-      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):/.test(origin)) {
+      if (!kaynakGuvenli(req)) {
         res.writeHead(403, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: 'origin reddedildi' }));
         return;

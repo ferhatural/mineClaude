@@ -33,6 +33,24 @@ function webTransport() {
   const openFns = [];
   let connecting = null;
   let tries = 0;
+  let sonMesaj = 0;
+
+  // Mobil agda kopan bir baglanti cogu zaman onclose uretmiyor: FIN/RST hic
+  // gelmedigi icin TCP yari acik kaliyor, tarayici soketi canli saniyor ve
+  // yukaridaki yeniden baglanma mantigi hic tetiklenmiyor. Sonuc: yazdigin
+  // komut gidiyor, cevabi hic gelmiyor, uygulama da sana kopuk oldugunu
+  // soylemiyor. Gercek kullanimda (5G, disarida) tam olarak bu yasandi.
+  //
+  // Bu yuzden canliligi kendimiz olcuyoruz: 10sn'de bir ping, 25sn boyunca
+  // hicbir mesaj gelmezse soketi biz kapatiyoruz. Kapaninca onclose zinciri
+  // devreye girip yeniden baglaniyor ve sekmeler yeniden eslestiriliyor
+  // (bkz. T.onReconnect).
+  const PING_MS = 10000, SESSIZLIK_MS = 25000;
+  setInterval(() => {
+    if (!ws || ws.readyState !== 1) return;
+    if (sonMesaj && Date.now() - sonMesaj > SESSIZLIK_MS) { try { ws.close(); } catch {} return; }
+    try { ws.send(JSON.stringify({ t: 'ping' })); } catch {}
+  }, PING_MS);
 
   const connect = () => {
     if (ws && ws.readyState === 1) return Promise.resolve(ws);
@@ -40,7 +58,9 @@ function webTransport() {
     connecting = new Promise((resolve, reject) => {
       ws = new WebSocket(`${proto}://${location.host}/terminals`);
       ws.onmessage = (e) => {
+        sonMesaj = Date.now();
         let m; try { m = JSON.parse(e.data); } catch { return; }
+        if (m.t === 'pong') return;          // yalniz canlilik kaniti, islenecek bir sey yok
         if (m.t === 'created' || m.t === 'attached' || m.t === 'error') {
           const w = waiting.get(m.ref);
           if (w) { waiting.delete(m.ref); m.t === 'error' ? w.reject(new Error(m.error)) : w.resolve(m); }
@@ -48,11 +68,12 @@ function webTransport() {
         else if (m.t === 'exit') for (const f of exitFns) f({ id: m.id, code: m.code });
         else if (m.t === 'gone') for (const f of exitFns) f({ id: m.id, code: null, gone: true });
       };
-      ws.onopen = () => { connecting = null; tries++; resolve(ws); for (const f of openFns) f(); };
+      ws.onopen = () => { connecting = null; tries++; sonMesaj = Date.now(); resolve(ws); for (const f of openFns) f(); };
       ws.onerror = () => { connecting = null; reject(new Error('terminal baglantisi kurulamadi')); };
       // Tunel dusunce, tablet uyuyunca, ag degisince: PTY'ler sunucuda yasiyor,
       // tek yapmamiz gereken geri baglanip sekmeleri yeniden eslestirmek.
       ws.onclose = () => { connecting = null; setTimeout(() => connect().catch(() => {}), 1500); };
+      sonMesaj = Date.now();
     });
     return connecting;
   };
@@ -61,7 +82,13 @@ function webTransport() {
 
   return {
     kind: 'web',
-    available: () => fetch('/api/terminals').then((r) => r.json()).then((d) => !!d.enabled).catch(() => false),
+    // .catch(() => false) bilerek yok: ag hatasiyla "terminaller kapali"
+    // cevabini ayirt etmek gerekiyor. Ilki gecici, ikincisi kalici.
+    available: () => fetch('/api/terminals').then((r) => r.json()).then((d) => !!d.enabled),
+    // Sunucuda halihazirda calisan PTY'ler. Sayfa her yuklendiginde tabs bos
+    // basliyor; evde acilan terminallere tabletten baglanabilmek icin
+    // sunucuya "elinde ne var" diye sormak gerekiyor (bkz. adoptByTty).
+    list: () => fetch('/api/terminals').then((r) => r.json()).then((d) => d.terminals || []),
     create: (opt) => new Promise((resolve, reject) => {
       const ref = nextRef++;
       waiting.set(ref, { resolve, reject });
@@ -89,7 +116,20 @@ function webTransport() {
 const D = window.mineClaudeDesktop;
 const T = D && D.term ? electronTransport(D.term) : webTransport();
 
-T.available().then((ok) => { if (ok) start(); }).catch(() => {});
+// Acilista ag kopuksa bu istek basarisiz oluyordu ve terminal destegi o sayfa
+// omru boyunca kapali kaliyordu: sag ustteki terminal dugmesi hic gelmiyor,
+// baglanti geri gelse bile gelmiyor, tek care uygulamayi kapatip acmak. Tabletten
+// calisirken ag kopmasi kural, istisna degil — o yuzden vazgecmiyoruz.
+//
+// Ayrim onemli: istek REDDEDILIRSE ag sorunu, tekrar deniyoruz. FALSE donerse
+// sunucu --terminals'siz calisiyor demektir, beklemenin anlami yok.
+// start() basariyla calisinca mterm-ready olayi sayfaya haber veriyor ve
+// gorunum anahtari kendiliginde yeniden ciziliyor (bkz. index.html).
+(function yoklaVeBasla(gecikme = 2000) {
+  T.available()
+    .then((ok) => { if (ok) start(); })
+    .catch(() => setTimeout(() => yoklaVeBasla(Math.min(30000, gecikme * 1.6)), gecikme));
+})();
 
 const GLOBE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c1.8 1.8 2.6 3.9 2.6 6.2S9.8 12.4 8 14.2C6.2 12.4 5.4 10.3 5.4 8S6.2 3.6 8 1.8z"/></svg>';
 const ico = (d) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -119,6 +159,233 @@ function start() {
   const FONT_KEY = 'cc.termFont';
   let fontSize = Math.min(22, Math.max(9, parseFloat(localStorage.getItem(FONT_KEY)) || 12.5));
 
+  // Tarayici yakinlastirmasi terminale gecmiyor (xterm kendi olcusunu tutuyor),
+  // o yuzden yazi boyutunu kendimiz degistiriyoruz. Web sekmelerinde term yok.
+  function setFont(delta) {
+    fontSize = Math.min(22, Math.max(9, fontSize + delta));
+    localStorage.setItem(FONT_KEY, String(fontSize));
+    for (const t of tabs) {
+      if (!t.term) continue;
+      t.term.options.fontSize = fontSize;
+      // fitOne "kutu boyutu degismediyse yeniden olcme" diye erken cikiyor.
+      // Yazi boyutu degisince kutu ayni kaliyor ama satir/sutun sayisi
+      // degismek zorunda — onbellegi gecersiz kilmazsak fit hic calismiyor ve
+      // terminal eski olcusunde kaliyor (Claude Code'un giris alani yukari
+      // kayiyordu). Olculeri sifirlayip gercek bir olcume zorluyoruz.
+      t._fitW = 0;
+      t._fitH = 0;
+    }
+    fitAll();
+  }
+
+  // Dokunmatik tus seridi. Tablette fiziksel klavye olsa bile esc/^C/oklar
+  // her zaman rahat degil; kopyala-yapistir ise dokunmatikte metin secmekten
+  // cok daha guvenilir.
+  //
+  // Yerlesim bilerek sagda: seridin eski hali alt kenari bastan basa kapliyordu
+  // (left:0;right:0) ve Claude'un cevap alanini ortuyordu. Yazi soldan basladigi
+  // icin sag taraf zaten bos duruyor — dugme orada durup sola dogru aciliyor.
+  const KEYS = [
+    ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'], ['^D', '\x04'], ['^Z', '\x1a'],
+    ['\u2191', '\x1b[A'], ['\u2193', '\x1b[B'], ['\u2190', '\x1b[D'], ['\u2192', '\x1b[C'],
+  ];
+  // Pano yazma tek yerden. navigator.clipboard guvenli baglam ve kullanici
+  // etkilesimi istiyor; tutmadigi durumlarda gizli bir textarea + execCommand
+  // ile deniyoruz. Sessizce basarisiz olmuyoruz: cagiran sonuca gore geri
+  // bildirim gosteriyor.
+  // Android sarmalayicisi (APK) panoya kendisi yaziyor/okuyor: oradaki Ctrl+C/V
+  // Java'dan evaluateJavascript ile geliyor, kullanici hareketi sayilmiyor ve
+  // Clipboard API onu reddedebiliyor. Kopru varsa once o.
+  const AND = () => window.mineClaudeAndroid || null;
+
+  async function yazPanoya(metin) {
+    if (!metin) return false;
+    try {
+      if (AND() && AND().copyText) { AND().copyText(metin); return true; }
+    } catch { /* eski APK: kopru yok */ }
+    try {
+      await navigator.clipboard.writeText(metin);
+      return true;
+    } catch { /* izin/etkilesim yok: eski yola dusuyoruz */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = metin;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch { return false; }
+  }
+
+  // Parmakla (ve tabletin touchpad'iyle) kaydirma. xterm 6 dokunmayi hic
+  // islemiyor: icindeki VS Code Gesture sinifi kaydirma alanina baglanmamis.
+  // Fare tekerlegi calisiyordu cunku o `wheel` olayi; parmak ve Android'in
+  // touchpad'i dokunma olayi uretiyor ve onlari dinleyen yoktu.
+  //
+  // Iki yol:
+  //  - Normal tampon, fare izleme yok (Claude Code'un varsayilani): dogrudan
+  //    term.scrollLines. Once sentetik `wheel` denendi, ama xterm 6'nin VS
+  //    Code kaydirma alani ona tepki vermedi (testte gercek tekerlege bile).
+  //  - Tam ekran uygulama ya da fare izleme kipi: sentetik `wheel`. Bu olay
+  //    xterm'in fare kodundan geciyor (izleme kipinde tekerlek kacis dizisi,
+  //    alternatif tamponda ok tuslari), kaydirma alanina ugramiyor.
+  // Dokunma (odak, klavye acilmasi) bozulmasin diye esik var:
+  // parmak 8px dikey kaymadan kaydirma baslamiyor ve touchstart'a
+  // dokunmuyoruz. Birakinca kisa bir atalet.
+  function parmaklaKaydir(el, term) {
+    let birikim = 0;
+    let sonY = null, sonX = 0, baslangic = 0, hedef = null, kayiyor = false, hiz = 0, sonT = 0, atalet = 0;
+    const ortaY = (e) => {
+      let y = 0;
+      for (const p of e.touches) y += p.clientY;
+      return y / e.touches.length;
+    };
+    const tekerlek = (dy, x, y) => {
+      if (!hedef || !dy) return;
+      const satirlar = el.querySelector('.xterm-rows');
+      const hucre = (satirlar && satirlar.offsetHeight / term.rows) || 16;
+      birikim += dy;
+      const n = Math.trunc(birikim / hucre);
+      if (!n) return;
+      birikim -= n * hucre;
+      if (term.buffer.active.type === 'normal' && term.modes.mouseTrackingMode === 'none') {
+        term.scrollLines(n);
+        return;
+      }
+      // Satir birimli (deltaMode 1), satir basina bir olay: piksel birimli
+      // kucuk parcalari xterm'in fare kodu yutuyordu (100px → tek adim).
+      for (let i = 0; i < Math.abs(n); i++) {
+        hedef.dispatchEvent(new WheelEvent('wheel', {
+          deltaY: Math.sign(n), deltaMode: 1, bubbles: true, cancelable: true, clientX: x, clientY: y,
+        }));
+      }
+    };
+    el.addEventListener('touchstart', (e) => {
+      cancelAnimationFrame(atalet);
+      sonY = baslangic = ortaY(e);
+      sonX = e.touches[0].clientX;
+      hedef = e.target;
+      kayiyor = false;
+      hiz = 0;
+      sonT = performance.now();
+    }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (sonY === null) return;
+      const y = ortaY(e);
+      if (!kayiyor) {
+        if (Math.abs(y - baslangic) < 8) return;
+        kayiyor = true;
+        sonY = y;
+      }
+      e.preventDefault();
+      const dy = sonY - y;
+      const simdi = performance.now();
+      const dt = Math.max(1, simdi - sonT);
+      hiz = 0.7 * (dy / dt) + 0.3 * hiz;     // px/ms, yumusatilmis
+      sonT = simdi;
+      sonY = y;
+      tekerlek(dy, sonX, y);
+    }, { passive: false });
+    const bitir = (e) => {
+      if (e.touches && e.touches.length) { sonY = ortaY(e); return; }   // bir parmak kalkti
+      const ekranY = sonY;
+      sonY = null;
+      if (!kayiyor || Math.abs(hiz) < 0.2) return;
+      let v = hiz * 16;                         // kare basina px
+      const adim = () => {
+        v *= 0.92;
+        if (Math.abs(v) < 0.5) return;
+        tekerlek(v, sonX, ekranY);
+        atalet = requestAnimationFrame(adim);
+      };
+      atalet = requestAnimationFrame(adim);
+    };
+    el.addEventListener('touchend', bitir, { passive: true });
+    el.addEventListener('touchcancel', bitir, { passive: true });
+  }
+
+  let keyWrap = null;
+
+  function buildKeys() {
+    const wrap = document.createElement('div');
+    wrap.className = 'tm-keywrap' + (localStorage.getItem('cc.termKeys') === '1' ? '' : ' off');
+
+    const tog = document.createElement('button');
+    tog.className = 'tm-keytoggle';
+    tog.textContent = '\u2328';
+    tog.title = T2('termKeys');
+    tog.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      wrap.classList.toggle('off');
+      localStorage.setItem('cc.termKeys', wrap.classList.contains('off') ? '0' : '1');
+    });
+
+    const bar = document.createElement('div');
+    bar.className = 'tm-keys';
+    const ekle = (ad, fn, cls) => {
+      const b = document.createElement('button');
+      b.textContent = ad;
+      if (cls) b.className = cls;
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); if (active && active.term) active.term.focus(); });
+      bar.appendChild(b);
+      return b;
+    };
+    const yaz = (dizi) => { if (active && !active.web) T.write(active.id, dizi); };
+
+    for (const [ad, dizi] of KEYS) ekle(ad, () => yaz(dizi));
+    // Clipboard API guvenli baglam istiyor; Tailscale HTTPS verdigi icin calisiyor.
+    const kopyaBtn = ekle(T2('termCopy'), async () => {
+      if (!active || !active.term) return;
+      const sel = active.term.getSelection();
+      // Sessiz basarisizlik en kotusuydu: dugmeye basiyordun, hicbir sey
+      // olmuyordu ve nedenini bilmiyordun. Artik sonucu dugmede gosteriyoruz.
+      const ok = sel ? await yazPanoya(sel) : false;
+      kopyaBtn.classList.add(ok ? 'ok' : 'no');
+      setTimeout(() => kopyaBtn.classList.remove('ok', 'no'), 900);
+    }, 'wide');
+    ekle(T2('termPaste'), async () => {
+      if (!active || active.web) return;
+      // APK: Ctrl+V ile ayni yol — panoda gorsel varsa onu da yapistiriyor.
+      if (AND() && AND().paste) { AND().paste(); return; }
+      try {
+        const t = (AND() && AND().readClipboard) ? AND().readClipboard() : await navigator.clipboard.readText();
+        if (t) active.term.paste(t);
+      } catch {}
+    }, 'wide');
+    // Tus teshisi: tarayicinin hangi olayi sayfaya birakip hangisini kendi
+    // yuttugu ancak boyle goruluyor. Belge seviyesinde YAKALAMA evresinde
+    // dinliyoruz — baska bir sey olayi durdursa bile burada goruruz.
+    ekle('tus?', () => {
+      let kutu = document.querySelector('.tm-keylog');
+      if (kutu) { kutu.remove(); return; }
+      kutu = document.createElement('div');
+      kutu.className = 'tm-keylog';
+      kutu.textContent = 'bir tusa bas…';
+      (keyWrap ? keyWrap.parentNode : document.body).appendChild(kutu);
+      const satirlar = [];
+      const dinle = (e) => {
+        satirlar.unshift(`${e.type}  key=${JSON.stringify(e.key)}  code=${e.code}  kc=${e.keyCode}`
+          + `  ctrl=${e.ctrlKey ? 1 : 0} alt=${e.altKey ? 1 : 0} meta=${e.metaKey ? 1 : 0} shift=${e.shiftKey ? 1 : 0}`);
+        kutu.textContent = satirlar.slice(0, 8).join('\n');
+      };
+      document.addEventListener('keydown', dinle, true);
+      kutu.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        document.removeEventListener('keydown', dinle, true);
+        kutu.remove();
+      });
+    }, 'wide');
+    ekle('A\u2212', () => setFont(-1));
+    ekle('A+', () => setFont(1));
+
+    wrap.append(tog, bar);
+    keyWrap = wrap;
+    return wrap;
+  }
+
   const RESTORE_KEY = 'cc.termRestore';
   // Tarayici sekmeleri geri yuklenmiyor: terminaller geri gelince projelerin
   // siteleri zaten kendiliginden aciliyor (openProjectWeb). Eski surumun kaydi:
@@ -129,7 +396,7 @@ function start() {
   if (!Array.isArray(pending)) pending = [];
 
   function saveRestore() {
-    const snap = tabs.filter((t) => !t.dead && !t.web && !t.devTab).map((t) => ({ cwd: t.cwd, title: t.title, sessionId: t.sessionId || null }));
+    const snap = tabs.filter((t) => !t.dead && !t.web && !t.devTab).map((t) => ({ cwd: t.cwd, title: t.title, sessionId: t.sessionId || null, tty: t.tty || null }));
     try { localStorage.setItem(RESTORE_KEY, JSON.stringify(snap)); } catch { /* dolu olabilir */ }
   }
 
@@ -174,6 +441,11 @@ function start() {
     panes = document.createElement('div');
     panes.className = 'tm-panes';
     host.append(strip, panes);
+    // Serit host'a asili, panes'e degil: showEmpty() panes.innerHTML yazdiginda
+    // silinmesin. Yalniz dokunmatik cihazlarda — masaustunde yeri yok.
+    if (matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) {
+      host.appendChild(buildKeys());
+    }
     container.appendChild(host);
     drawStrip();
     applyLayout();
@@ -190,6 +462,7 @@ function start() {
          </div>`
       : '';
     panes.innerHTML = `<div class="tm-empty">
+      <div class="tm-live" hidden></div>
       ${teklif}
       <div>${T2('termEmpty')}</div>
       <button class="tm-open">${T2('termNew')}</button>
@@ -200,6 +473,32 @@ function start() {
       yes.onclick = () => restoreAll();
       panes.querySelector('.tm-no').onclick = () => { pending = []; saveRestore(); showEmpty(); };
     }
+    cizCanliListe(panes.querySelector('.tm-live'));
+  }
+
+  // Sayfa kapanip acilinca tabs bos basliyor, ama sunucudaki PTY'ler yasamaya
+  // devam ediyor — ekran bos goruniyordu ve terminallerine donmenin yolu
+  // yoktu. Bunlari listeliyoruz; kendiliginden acmiyoruz, tiklayinca
+  // devraliyoruz (yeni surec degil, calisan PTY'ye baglanma).
+  //
+  // pending (localStorage) ayri bir sey: o, ARTIK YASAMAYAN oturumlari
+  // `claude --resume` ile geri getirme teklifi. Canli olani iki kere teklif
+  // etmemek icin listeden dusuyoruz.
+  async function cizCanliListe(kutu) {
+    if (!kutu || !T.list) return;
+    let canli;
+    try { canli = (await T.list()).filter((x) => !x.dead); } catch { return; }
+    canli = canli.filter((x) => !tabs.some((t) => t.id === x.id));
+    if (!canli.length || !kutu.isConnected) return;
+    kutu.hidden = false;
+    kutu.innerHTML = `<span>${esc(T2('termLiveAsk', canli.length))}</span>`
+      + canli.map((x) => `<button data-id="${esc(x.id)}">${esc(x.title)}</button>`).join('');
+    kutu.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        const x = canli.find((y) => y.id === b.dataset.id);
+        if (x) open(x.cwd, undefined, null, { adopt: x });
+      };
+    });
   }
 
   async function restoreAll() {
@@ -214,9 +513,30 @@ function start() {
       // ve bos kabukla degil. Fallback mantigi burada bir shell string olarak
       // kurulmuyor artik: POSIX ve Windows'ta sozdizimi farkli (`||` PowerShell
       // 5.1'de yok), o karari resumeSessionId ile pty.js platforma gore veriyor.
+      // Once sunucuda o PTY hala yasiyor mu diye bakiyoruz. Yasiyorsa
+      // devraliyoruz — `claude --resume` ile yeni bir surec acmak, ayni
+      // konusmaya ikinci bir claude baglamak demek. Tablette bu her kapat-ac'ta
+      // bir kopya uretiyordu: kullanicinin elinde birikmesini onleyecek bir yol
+      // yoktu, cunku kopyalari uygulama kendisi aciyordu.
+      if (await adoptLive(r)) continue;
       await open(r.cwd, undefined, r.sessionId || undefined);
     }
     saveRestore();
+  }
+
+  // Geri yuklenecek kayit icin sunucuda hala calisan bir PTY var mi? Once tty
+  // (kayitta duruyorsa, en kesin esleme), sonra ayni klasordeki canli bir
+  // terminal. Bulunursa create degil attach.
+  async function adoptLive(r) {
+    if (!T.list) return false;
+    let canli;
+    try { canli = await T.list(); } catch { return false; }
+    const uygun = canli.filter((x) => !x.dead);
+    const hedef = (r.tty && uygun.find((x) => x.tty === r.tty))
+      || uygun.find((x) => x.cwd === r.cwd && !tabs.some((t) => t.id === x.id));
+    if (!hedef) return false;
+    await open(hedef.cwd, undefined, null, { adopt: hedef });
+    return true;
   }
 
   // --- sekmeleri elle siralama (surukle-birak) ---
@@ -629,12 +949,28 @@ function start() {
   // (bkz. watchDev). Arka planda acilir, Claude sekmesinin yanina, geri yuklenmez.
   async function open(cwd, command, resumeSessionId, opts = {}) {
     if (!panes) return null;
-    // Ayni klasorde ikinci bir terminal (ikinci bir Claude sureci) ayni dosyalari
-    // ayni anda degistirmeye kalkabilir. Ozel bir sey istenmediyse ve o klasor
-    // icin zaten acik bir sekme varsa, yenisini acmak yerine ona geciyoruz.
-    // Resume bunun disinda: belirli bir konusmaya donmek istenmis, mevcut
-    // sekmeye atlamak o istegi sessizce yutardi.
-    if (!command && !resumeSessionId) {
+    // Ikinci bir kopyayi acmamak icin iki ayri tekillestirme var:
+    //
+    // - Resume istenmisse: ayni konusma zaten bir sekmede acikSA ona geciyoruz.
+    //   Iki `claude --resume <ayni id>` sureci ayni transcript'e yazar. Sahada
+    //   boyle oldu: baglanti olduyken dugmeye ust uste dokunuldu, dokunuslar
+    //   kuyrukta bekledi, baglanti gelince hepsi birden calisti — tek
+    //   konusmadan 8 surec cikti.
+    // - Duz "burada terminal ac" istenmisse: ayni klasorde ikinci bir Claude
+    //   sureci ayni dosyalari ayni anda degistirmeye kalkabilir, o yuzden
+    //   varolan sekmeye geciyoruz.
+    //
+    // Ozel bir komut verilmisse (command) hicbirine bakmiyoruz: ne istendigini
+    // bilmiyoruz, karar cagiranin. Tarayici ve dev sekmeleri ikisinin de disinda.
+    if (opts.adopt) { /* belirli bir PTY isteniyor, tekillestirme yok */ }
+    else if (resumeSessionId) {
+      // Iki alana birden bakiyoruz: resumeSessionId acilista belli oluyor,
+      // t.sessionId'yi ise panel tty eslestirmesiyle sonradan yaziyor
+      // (noteSession). Hizli ust uste dokunusta ikincisi henuz dolmamis olur.
+      const ayni = tabs.find((t) => !t.dead && !t.web && !t.devTab &&
+        (t.resumeSessionId === resumeSessionId || t.sessionId === resumeSessionId));
+      if (ayni) { select(ayni); return; }
+    } else if (!command) {
       const existing = tabs.find((t) => t.cwd === cwd && !t.dead && !t.web && !t.devTab);
       if (existing) { select(existing); return; }
     }
@@ -656,23 +992,53 @@ function start() {
     term.loadAddon(fit);
     const search = new SearchAddon();
     term.loadAddon(search);
+    // Claude Code panoya OSC 52 ile yaziyor — "copied" diyen o. xterm bunu
+    // varsayilan olarak islemiyor, yani mesaj cikiyor ama pano bos kaliyordu.
+    // Masaustunde fark edilmiyordu cunku orada zaten sistem panosu vardi;
+    // tablette tek yol bu.
+    term.parser.registerOscHandler(52, (veri) => {
+      const i = veri.indexOf(';');
+      if (i === -1) return false;
+      const yuk = veri.slice(i + 1);
+      // '?' pano ICERIGINI isteyen sorgu. Cevaplamiyoruz: uzaktaki bir sureç
+      // panonun icini okuyabilmemeli.
+      if (yuk === '?') return true;
+      try {
+        const metin = new TextDecoder().decode(Uint8Array.from(atob(yuk), (c) => c.charCodeAt(0)));
+        yazPanoya(metin);
+      } catch { return false; }
+      return true;
+    });
     term.open(el);
     fit.fit();
+    parmaklaKaydir(el, term);
 
     let info;
-    try {
-      // light: acik temada pty.js claude'u --settings ile aciyor, yoksa
-      // Claude Code koyu tema renklerini krem zemine basiyor.
-      info = await T.create({
-        cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
-        light: !!cssVar('--term-light', ''),
-      });
-    } catch (e) {
-      term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
-      return;
+    if (opts.adopt) {
+      // Sunucuda zaten calisan bir PTY'yi devraliyoruz: yeni surec acmiyoruz,
+      // yalnizca ciktisina bagleniyoruz (bkz. adoptByTty).
+      info = opts.adopt;
+      try {
+        await T.reattach(info.id);
+      } catch (e) {
+        term.write('\r\n  terminale baglanilamadi: ' + String(e.message || e) + '\r\n');
+        return;
+      }
+    } else {
+      try {
+        // light: acik temada pty.js claude'u --settings ile aciyor, yoksa
+        // Claude Code koyu tema renklerini krem zemine basiyor.
+        info = await T.create({
+          cwd, cols: term.cols, rows: term.rows, command, resumeSessionId,
+          light: !!cssVar('--term-light', ''),
+        });
+      } catch (e) {
+        term.write('\r\n  terminal acilamadi: ' + String(e.message || e) + '\r\n');
+        return;
+      }
     }
 
-    const t = { ...info, term, fit, search, el, dead: false };
+    const t = { ...info, term, fit, search, el, dead: false, resumeSessionId: resumeSessionId || null };
     if (opts.dev) { t.devTab = true; t.title = t.title + ' · dev'; }
     // Sayac yalniz etkin sekme icin: izgarada digerlerinden gelen sonuc ustune yazmasin
     search.onDidChangeResults((r) => { if (t === active) showCount(r); });
@@ -682,19 +1048,62 @@ function start() {
     // "kopyala" saniyor) tek isleyicide birlesti.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
+      // Sekme gecisi tusu (Ayarlar'dan Alt/Ctrl+1..9): sayfanin kisayolu
+      // isleyecek, xterm terminale ESC<rakam> yazmasin.
+      if (window.mineClaudeTabKey && window.mineClaudeTabKey(e)) return false;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault();
         e.stopPropagation();
-        D.term.readClipboard().then((r) => {
+        // Masaustunde native pano (izin istemi sorun cikarmiyor); tarayicida
+        // window.mineClaudeDesktop yok, oradaki tek yol Clipboard API.
+        const okunan = (D && D.term && D.term.readClipboard)
+          ? D.term.readClipboard()
+          : navigator.clipboard.readText().then((text) => ({ text }));
+        Promise.resolve(okunan).then((r) => {
           if (r && r.text) term.paste(r.text);
           else if (r && r.imagePath) term.paste(`"${r.imagePath}"`);
-        });
+        }).catch(() => {});
         return false;
       }
-      if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'c' || e.key === 'C') && !term.hasSelection()) {
-        T.write(t.id, '\x03');
-        e.preventDefault();
-        return false;
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+        // Secim varsa kopyala, yoksa ^C gonder.
+        //
+        // Eskiden secim varken hicbir sey yapmiyor, tarayicinin kopyalamasina
+        // birakiyorduk. Masaustunde calisiyordu ama tablette hic: xterm tuvale
+        // ciziyor, tarayicinin gordugu bir DOM secimi yok, dolayisiyla
+        // kopyalayacagi bir sey de yok. Sonuc: secim yapip Ctrl+C'ye
+        // basiyordun, ne kopyalaniyor ne kesiliyordu — tuş bosa gidiyordu.
+        const sel = term.getSelection();
+        if (sel) {
+          e.preventDefault();
+          yazPanoya(sel).then((ok) => {
+            el.classList.add(ok ? 'tm-copied' : 'tm-copyfail');
+            setTimeout(() => el.classList.remove('tm-copied', 'tm-copyfail'), 700);
+          });
+          return false;
+        }
+        // Cmd+C secimsizken macOS'ta ^C anlamina gelmiyor: orada birakiyoruz.
+        if (e.ctrlKey && !e.metaKey) {
+          T.write(t.id, '\x03');
+          e.preventDefault();
+          return false;
+        }
+      }
+      // Genel Ctrl+<harf>. Normalde xterm bunu kendisi kontrol karakterine
+      // ceviriyor, ama tablette calismiyordu: tarayici Ctrl+S'yi "sayfayi
+      // kaydet", Ctrl+X'i "kes" sanip kendi isliyor ve terminale hic
+      // birakmiyor. Burada erken yakalayip hem kontrol karakterini
+      // gonderiyoruz hem tarayicinin kisayolunu iptal ediyoruz.
+      //
+      // Ctrl+C ve Ctrl+V yukarida ozel olarak ele alindi (secim/pano), bu dal
+      // onlardan SONRA geliyor, yani onlarin davranisini degistirmiyor.
+      if (e.ctrlKey && !e.metaKey && !e.altKey && e.key && e.key.length === 1) {
+        const kod = e.key.toUpperCase().charCodeAt(0);
+        if (kod >= 64 && kod <= 95) {
+          T.write(t.id, String.fromCharCode(kod & 31));
+          e.preventDefault();
+          return false;
+        }
       }
       return true;
     });
@@ -704,10 +1113,25 @@ function start() {
     t.ro = new ResizeObserver(() => fitOne(t));
     t.ro.observe(el);
     el.addEventListener('mousedown', () => { if (active !== t) select(t); });
+    // Sag tik / uzun basma: xterm tuvale ciziyor, yani tarayicinin gordugu bir
+    // DOM secimi yok — native menude "kopyala" hic cikmiyor, yalnizca
+    // "yapistir" cikiyordu. Secim varsa menuyu biz karsiliyoruz ve dogrudan
+    // kopyaliyoruz; secim yoksa native menu (yapistir) oldugu gibi aciliyor.
+    el.addEventListener('contextmenu', async (e) => {
+      const sel = t.term && t.term.getSelection();
+      if (!sel) return;
+      e.preventDefault();
+      const ok = await yazPanoya(sel);
+      el.classList.add(ok ? 'tm-copied' : 'tm-copyfail');
+      setTimeout(() => el.classList.remove('tm-copied', 'tm-copyfail'), 700);
+    });
     term.onData((d) => T.write(t.id, d));
     term.onResize(({ cols, rows }) => T.resize(t.id, cols, rows));
     const at = opts.after ? tabs.indexOf(opts.after) : -1;
     if (at >= 0) tabs.splice(at + 1, 0, t); else tabs.push(t);
+    // Sunucu ciktiyi tamponlamiyor: devralinan sekme yeni cikti gelene kadar
+    // bos gorunurdu. Olcu bildirimi Claude Code'a arayuzu bastan cizdiriyor.
+    if (opts.adopt) T.resize(t.id, term.cols, term.rows);
     saveRestore();
     applyLayout();
     if (opts.dev) drawStrip();
@@ -908,7 +1332,19 @@ function start() {
       if (!desktop) { t.view.src = t.url; return; }
       if (t.loading) t.view.stop(); else t.view.reload();
     };
-    q('.tm-web-ext').onclick = () => { if (t.url) window.open(t.url, '_blank'); };
+    // "Disarida ac". Android sarmalayicisinda disari degil, uygulamanin kendi
+    // tarayici katmanina veriyoruz: sekmeler <iframe> oldugu icin bazi siteler
+    // (theverge, techcrunch...) X-Frame-Options ile cerceveyi reddediyor ve bos
+    // kaliyor. WebView'da acilan sayfa cerceve degil ust seviye yukleme, o
+    // kisit yok — yani bu dugme orada "engeli as" anlamina geliyor.
+    q('.tm-web-ext').onclick = () => {
+      if (!t.url) return;
+      if (window.mineClaudeAndroid && window.mineClaudeAndroid.openUrl) {
+        window.mineClaudeAndroid.openUrl(t.url);
+        return;
+      }
+      window.open(t.url, '_blank');
+    };
     // 📌 bu adresi (sadece kok: https://site/) soldaki terminalin projesine yaz
     t.pinBtn = q('.tm-web-pin');
     t.pinBtn.onclick = () => {
@@ -1054,7 +1490,41 @@ function start() {
     }
   });
 
+  // Uygulama arka plana alininca tarayici requestAnimationFrame'i askiya
+  // aliyor: veri WebSocket'ten gelmeye devam ediyor ve xterm tamponuna
+  // yaziliyor, ama tuval cizilmiyor. Geri donuldugunde xterm kendiliginden
+  // yeniden cizmiyor, bir sonraki yazimi bekliyor — sahada goruldugu gibi
+  // "Claude tekrar yazmaya baslayinca butun mesajlar bir anda beliriyor".
+  //
+  // Gorunur olur olmaz tamponu ekrana zorluyoruz. fitAll da cagriliyor cunku
+  // arka plandayken pencere boyutu degismis olabilir (donme, klavye).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    for (const t of tabs) {
+      if (!t.term || t.dead || t.web) continue;
+      try { t.term.refresh(0, t.term.rows - 1); } catch { /* sekme kapanmis olabilir */ }
+    }
+    fitAll();
+  });
+
   window.addEventListener('resize', () => fitAll());
+
+  // APK'ya terminalin odakta olup olmadigini bildiriyoruz. Java Ctrl+<harf>'i
+  // IME'den once yakalayip terminale yaziyor (bkz. MainActivity); odak bir web
+  // sekmesindeki metin kutusundaysa bunu yapmamali, yoksa orada Ctrl+C/V/A
+  // yutuluyordu.
+  {
+    let son = null;
+    const bildir = () => {
+      const a = document.activeElement;
+      const odak = !!(a && a.closest && a.closest('.xterm'));
+      if (odak === son) return;
+      son = odak;
+      try { if (AND() && AND().setTermFocus) AND().setTermFocus(odak); } catch { /* */ }
+    };
+    document.addEventListener('focusin', bildir);
+    document.addEventListener('focusout', () => setTimeout(bildir, 0));
+  }
 
   window.MTerm = {
     mount,
@@ -1069,6 +1539,23 @@ function start() {
     // ConPTY'nin /dev/ttysNNN karsiligi yok, ptsName hep null donuyor — tty ile
     // eslesme oradaki hicbir sekmeyi bulamiyor (hepsi ayni "null" ile eslesmeye
     // calisip ilk sekmede takili kalirdi). cwd'ye dusuyoruz, o her platformda var.
+    // Karttan "bu oturuma devam et" denince: sunucuda o tty ile calisan bir PTY
+    // varsa YENI surec acmak yerine ona bagleniyoruz. Evde acilan terminale
+    // tabletten devam etmenin yolu bu. Onceden boyle bir yol yoktu: sayfa
+    // sifirdan yuklendigi icin tabs bos oluyordu, dugme eslesme bulamayip
+    // `claude --resume` ile ikinci bir surec aciyordu — ayni konusmaya iki
+    // claude, ki sahada tek konusmadan sekiz surec cikardi.
+    adoptByTty: async (tty) => {
+      if (!tty) return false;
+      const bizde = tabs.find((t) => t.tty === tty && !t.dead);
+      if (bizde) { select(bizde); return true; }          // bu sayfada zaten sekme var
+      if (!T.list) return false;                          // tasima desteklemiyor
+      let uzak;
+      try { uzak = (await T.list()).find((x) => x.tty === tty && !x.dead); } catch { return false; }
+      if (!uzak) return false;
+      await open(uzak.cwd, undefined, null, { adopt: uzak });
+      return true;
+    },
     tabForTty: (tty, cwd) => (tty ? tabs.find((t) => t.tty === tty) : tabs.find((t) => t.cwd === cwd && !t.dead && !t.web && !t.devTab)) || null,
     // Panel bir sekmede hangi oturumun kostugunu biliyor; geri yuklemede
     // `--resume <id>` diyebilmek icin onu sekmeye yaziyoruz.
@@ -1114,6 +1601,41 @@ function start() {
         return;
       }
       openWeb(url, { after: term });
+    },
+    // Android sarmalayici icin: tus olayini DOM'a hic sokmadan dogrudan
+    // terminale yaziyoruz. Tarayici/WebView/OS zincirinde araya giren ne varsa
+    // atlanmis oluyor — Ctrl+S gibi kisayollarin kapildigi yer orasi.
+    // Ayarlar panelindeki +/- icin. WebView yakinlastirmasi denendi ve geri
+    // alindi (arayuz kucuk kalip buyumuyordu, ustelik fare/parmak da zoom
+    // yapiyordu); xterm'in kendi yazi boyutu hem dogru hem net.
+    setFont: (delta) => { setFont(delta); return fontSize; },
+    fontSize: () => fontSize,
+    sendKey: (metin) => {
+      if (!active || active.web || !metin) return false;
+      T.write(active.id, metin);
+      return true;
+    },
+    // APK'nin Ctrl+V'si. Eskiden \x16 olarak terminale gidiyordu; Claude Code
+    // onu "gorsel yapistir" sayip "image yok" diyordu, panodaki metne hic
+    // bakilmiyordu. term.paste: kabuk/claude kortulu yapistirma istiyorsa
+    // metni onunla sariyor, cok satirli metin satir satir gonderilmis olmuyor.
+    pasteText: (metin) => {
+      if (!active || active.web || !metin) return false;
+      active.term.paste(metin);
+      return true;
+    },
+    // APK'nin Ctrl+C'si: secim varsa kopyala, yoksa ^C. Eskiden her zaman ^C
+    // gidiyordu — kopyalamaya calisirken calisan Claude'u durduruyordu.
+    ctrlC: () => {
+      if (!active || active.web) return false;
+      const sel = active.term.getSelection();
+      if (!sel) { T.write(active.id, '\x03'); return true; }
+      yazPanoya(sel).then((ok) => {
+        const el = active.el;
+        el.classList.add(ok ? 'tm-copied' : 'tm-copyfail');
+        setTimeout(() => el.classList.remove('tm-copied', 'tm-copyfail'), 700);
+      });
+      return true;
     },
     selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
     conn: () => (T.state ? T.state() : { kind: T.kind }),

@@ -235,6 +235,37 @@ Three sessions side by side in tile view, right after `claude` started in each:
 
 ![Terminals view](docs/terminals.png)
 
+## Tablet / Android app
+
+`android/` holds a thin WebView wrapper. It exists for the one thing a browser
+could not solve: **browsers claim Ctrl+S / Ctrl+X for themselves** ("save page",
+"cut") and never pass them to the page. Claude Code needs those keys to send a
+message.
+
+A plain WebView, not a TWA — a TWA runs on the browser engine, so the shortcut
+stealing would continue.
+
+```
+cd android && ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:assembleRelease
+```
+
+The APK is ~19 KB, has no dependencies and one permission (`INTERNET`), and is
+signed with the debug key for sideloading. **The address is not baked in**: the
+app asks on first run, keeps it on the device, and Settings → Server address
+changes it later.
+
+What the wrapper fixes:
+
+| | |
+|---|---|
+| `Ctrl+<letter>` | Caught in `dispatchKeyEventPreIme`, i.e. *before* the IME — the keyboard app was treating Ctrl+C/S/X as its own shortcuts and swallowing them |
+| Sites that refuse framing | "Open externally" in the mini browser opens the app's own layer: a top-level load, not an `<iframe>` |
+| Fullscreen | Hides the system bars too; the browser Fullscreen API leaves them alone inside a WebView |
+| Returning from background | `onResume` + `resumeTimers`, plus a `visibilitychange` repaint on the page side |
+
+The diagnosis and the approaches that were ruled out are in
+`docs/uzaktan-kurulum.md` (Turkish).
+
 ## Statuses
 
 | Status | Meaning |
