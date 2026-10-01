@@ -947,6 +947,9 @@ function start() {
     // "kopyala" saniyor) tek isleyicide birlesti.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
+      // Sekme gecisi tusu (Ayarlar'dan Alt/Ctrl+1..9): sayfanin kisayolu
+      // isleyecek, xterm terminale ESC<rakam> yazmasin.
+      if (window.mineClaudeTabKey && window.mineClaudeTabKey(e)) return false;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault();
         e.stopPropagation();

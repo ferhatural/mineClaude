@@ -678,6 +678,15 @@
           <span class="opt-label" id="themeLabel"></span>
           <div class="opts" id="themeSel"></div>
         </div>
+        <div class="opt-row opt-row-static" id="tabKeyWrap">
+          <span class="opt-icon">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1.6" y="4" width="12.8" height="8" rx="1.4"/><path d="M4.2 6.8h.01M6.7 6.8h.01M9.3 6.8h.01M11.8 6.8h.01M5 9.4h6"/>
+            </svg>
+          </span>
+          <span class="opt-label" id="tabKeyLabel"></span>
+          <div class="opts" id="tabKeySel"></div>
+        </div>
         <div class="opt-row opt-row-static" id="colsWrap">
           <span class="opt-icon">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -784,7 +793,7 @@ const I18N = {
     msgEnded:'Oturum kapalı. Alttaki “devam ettir” düğmesiyle mineClaude’da açarsan buradan mesaj gönderebilirsin.',
     msgNoTerm:'Mesaj göndermek için terminal desteği gerekiyor.',
     msgFailed:'Gönderilemedi: terminal sekmesi kapanmış olabilir.',
-    settings:'Ayarlar', termFont:'Terminal yazı boyutu', serverAddr:'Sunucu adresi', change:'Değiştir', theme:'Tema', themeSystem:'Sistem', themeLight:'Açık', themeDark:'Koyu',
+    settings:'Ayarlar', termFont:'Terminal yazı boyutu', serverAddr:'Sunucu adresi', change:'Değiştir', theme:'Tema', themeSystem:'Sistem', themeLight:'Açık', themeDark:'Koyu', tabKey:'Sekme geçişi (1–9)', tabKeyOff:'Kapalı',
     allTasks:'Tüm görevler', noTasksAnywhere:'Hiçbir projede görev yok.',
     searchAll:'Tüm konuşmalarda ara', searchHint:'Aramak için en az iki harf yaz',
     searchNone:'Eşleşen konuşma yok.', searchBusy:'aranıyor…',
@@ -846,7 +855,7 @@ const I18N = {
     msgEnded:'This session has ended. Resume it in mineClaude with the button below to send messages here.',
     msgNoTerm:'Sending messages needs terminal support.',
     msgFailed:'Couldn’t send: the terminal tab may have closed.',
-    settings:'Settings', termFont:'Terminal font size', serverAddr:'Server address', change:'Change', theme:'Theme', themeSystem:'System', themeLight:'Light', themeDark:'Dark',
+    settings:'Settings', termFont:'Terminal font size', serverAddr:'Server address', change:'Change', theme:'Theme', themeSystem:'System', themeLight:'Light', themeDark:'Dark', tabKey:'Tab switching (1–9)', tabKeyOff:'Off',
     allTasks:'All tasks', noTasksAnywhere:'No tasks in any project.',
     searchAll:'Search all conversations', searchHint:'Type at least two characters',
     searchNone:'No conversation matches.', searchBusy:'searching…',
@@ -997,6 +1006,38 @@ function drawThemeSel(){
   });
 }
 sistemKoyu.addEventListener('change', () => { if(temaSecimi() === 'system') applyTheme(); });
+
+// --- sekme gecisi tusu ---
+// Alt+1..9 mi Ctrl+1..9 mu: ikisi birden acikti, kullanici yalniz Alt istedi
+// (Ctrl+rakam bos kalsin, terminale gitsin). Varsayilan Alt. Mac'te satir
+// gizli: orada ⌘+rakam her zaman calisiyor, Alt ise Option ve karakter yaziyor.
+const TABKEY_KEY = 'cc.tabKey';
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+function tabKey(){ const v = localStorage.getItem(TABKEY_KEY); return v === 'ctrl' || v === 'off' ? v : 'alt'; }
+// Alt/Ctrl+rakam secilen sekme tusu mu. term.js de soruyor: xterm Alt+1'i
+// ESC 1 olarak terminale yaziyordu, yani sekme degisirken eski sekmedeki
+// Claude'a bir ESC (= durdur) gidiyordu. Eslesince xterm tusu hic islemiyor.
+function sekmeTusu(e){
+  if(IS_MAC || !(e.key >= '1' && e.key <= '9') || e.metaKey) return false;
+  const tk = tabKey();
+  if(tk === 'alt') return e.altKey && !e.ctrlKey;
+  if(tk === 'ctrl') return e.ctrlKey && !e.altKey;
+  return false;
+}
+window.mineClaudeTabKey = sekmeTusu;
+function drawTabKeySel(){
+  const el = $('#tabKeySel');
+  if(!el) return;
+  $('#tabKeyWrap').hidden = IS_MAC;
+  const sec = tabKey();
+  el.innerHTML = [['alt','Alt'],['ctrl','Ctrl'],['off',T('tabKeyOff')]]
+    .map(([v,l]) => `<button data-k="${v}" class="${sec===v?'on':''}">${esc(l)}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => {
+    const v = b.dataset.k;
+    if(v === 'alt') localStorage.removeItem(TABKEY_KEY); else localStorage.setItem(TABKEY_KEY, v);
+    drawTabKeySel();
+  });
+}
 
 // --- ses: dosya yok, iki nota WebAudio ile sentezleniyor ---
 const soundBox = $('#sound');
@@ -1594,7 +1635,8 @@ document.addEventListener('keydown', (e) => {
   // Kisayollar ⌘ ile yazilmisti; tablet klavyesinde ⌘ yok, dolayisiyla hicbiri
   // calismiyordu — sekmeler arasi gecis dahil.
   //
-  // Sekme secimi icin Ctrl ve Alt de kabul ediliyor, ama YALNIZ RAKAMLARLA.
+  // Sekme secimi icin Alt ya da Ctrl de kabul ediliyor (hangisi: Ayarlar >
+  // Sekme gecisi, bkz. tabKey()), ama YALNIZ RAKAMLARLA.
   // Harfler bilerek disarida: Ctrl+T/W/F/C ve Alt+<harf> (ESC<harf> olarak
   // gider) terminalde gercek anlam tasiyor, onlari kapmak yaziyi bozardi.
   // Ctrl+<rakam> terminalde atil; Alt+<rakam> ESC<rakam> uretir ama pratikte
@@ -1604,10 +1646,10 @@ document.addEventListener('keydown', (e) => {
   // macOS istisnasi: orada Alt = Option ve Option+3 gibi kombinasyonlar gercek
   // karakter yaziyor (£, ¢...). Mac'te Alt'i hic kapmiyoruz, zaten ⌘ var.
   const rakam = e.key >= '1' && e.key <= '9';
-  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
-  const altGecerli = !mac && e.altKey && rakam;
+  const altGecerli = sekmeTusu(e) && e.altKey;
+  const ctrlGecerli = sekmeTusu(e) && e.ctrlKey;
   if(e.altKey && !altGecerli) return;
-  if(!e.metaKey && !(e.ctrlKey && rakam) && !altGecerli) return;
+  if(!e.metaKey && !ctrlGecerli && !altGecerli) return;
   if(e.metaKey && e.ctrlKey) return;
   // ⌘⇧F her görünümde çalışıyor: terminal ⌘F'i o anki tamponda arar, bu ise
   // makinedeki tüm konuşmalarda. Terminal kısayollarının önünde, çünkü onlar
@@ -1741,6 +1783,8 @@ function applyViewBtn(){
   drawFontSel();
   $('#themeLabel').textContent = T('theme');
   drawThemeSel();
+  $('#tabKeyLabel').textContent = T('tabKey');
+  drawTabKeySel();
   $('#setBtn').title = T('settings');
   $('#setBtn').innerHTML = svg('gear');
   $('#setClose').title = T('close');
