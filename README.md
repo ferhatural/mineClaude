@@ -245,6 +245,11 @@ message.
 A plain WebView, not a TWA — a TWA runs on the browser engine, so the shortcut
 stealing would continue.
 
+**Download:** every release ships the APK as `mineClaude-<version>.apk` —
+[latest release](https://github.com/hakanngok/mineClaude/releases/latest). Open it on
+the tablet and allow installing from that source. Releases are signed with the
+same fixed key, so a new APK installs over the old one. To build it yourself:
+
 ```
 cd android && ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:assembleRelease
 ```
