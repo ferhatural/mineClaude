@@ -1,0 +1,82 @@
+name: android
+
+# android/ altindaki WebView sarmalayicisinin APK'sini derleyip surum etiketinin
+# Release'ine ekler (mineClaude-<surum>.apk). release.yml'den ayri: var olan bir
+# Release'e sonradan APK eklemek icin masaustu paketlerini yeniden derlemek
+# gerekmesin.
+#
+#   gh workflow run android.yml --repo hakanngok/mineClaude -f tag=v1.4.3
+#
+# Imza: build.gradle release'i debug anahtariyla imzaliyor (sideload icin).
+# Runner'in debug anahtari her calismada yeni uretilir; farkli imzali APK eskisinin
+# uzerine kurulamaz. O yuzden sabit anahtar ANDROID_KEYSTORE_B64 sirrinda duruyor
+# ve ~/.android/debug.keystore olarak yaziliyor (alias androiddebugkey, parola
+# android — Android'in debug anahtari varsayilanlari). Sir yoksa derleme duruyor.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'APK eklenecek surum etiketi (or. v1.4.3)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Imza anahtarini yaz
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 sirri yok — her derleme farkli imzayla cikip guncellemeyi bozardi" >&2
+            exit 1
+          fi
+          mkdir -p ~/.android
+          printf '%s' "$KS" | base64 --decode > ~/.android/debug.keystore
+
+      # APK surumu masaustu surumuyle ayni: 1.4.3 -> versionName 1.4.3, versionCode 10403
+      - name: Surumu etiketten ver
+        run: |
+          v="${TAG#v}"
+          IFS=. read -r a b c <<< "$v"
+          code=$(( a * 10000 + b * 100 + c ))
+          sed -i -E "s/versionCode [0-9]+/versionCode $code/; s/versionName '[^']*'/versionName '$v'/" android/app/build.gradle
+          grep -E 'versionCode|versionName' android/app/build.gradle
+
+      - name: APK derle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Release'e ekle
+        run: |
+          v="${TAG#v}"
+          cp android/app/build/outputs/apk/release/app-release.apk "mineClaude-$v.apk"
+          ls -lh "mineClaude-$v.apk"
+          # Release kaydini release.yml > prepare-release aciyor; burada da acarsak
+          # ayni etikete iki kayit olusabiliyor. Gelmesini bekliyoruz.
+          for i in $(seq 1 40); do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            echo "Release $TAG henuz yok, bekleniyor..."; sleep 15
+          done
+          gh release upload "$TAG" "mineClaude-$v.apk" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
