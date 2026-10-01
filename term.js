@@ -220,6 +220,93 @@ function start() {
     } catch { return false; }
   }
 
+  // Parmakla (ve tabletin touchpad'iyle) kaydirma. xterm 6 dokunmayi hic
+  // islemiyor: icindeki VS Code Gesture sinifi kaydirma alanina baglanmamis.
+  // Fare tekerlegi calisiyordu cunku o `wheel` olayi; parmak ve Android'in
+  // touchpad'i dokunma olayi uretiyor ve onlari dinleyen yoktu.
+  //
+  // Iki yol:
+  //  - Normal tampon, fare izleme yok (Claude Code'un varsayilani): dogrudan
+  //    term.scrollLines. Once sentetik `wheel` denendi, ama xterm 6'nin VS
+  //    Code kaydirma alani ona tepki vermedi (testte gercek tekerlege bile).
+  //  - Tam ekran uygulama ya da fare izleme kipi: sentetik `wheel`. Bu olay
+  //    xterm'in fare kodundan geciyor (izleme kipinde tekerlek kacis dizisi,
+  //    alternatif tamponda ok tuslari), kaydirma alanina ugramiyor.
+  // Dokunma (odak, klavye acilmasi) bozulmasin diye esik var:
+  // parmak 8px dikey kaymadan kaydirma baslamiyor ve touchstart'a
+  // dokunmuyoruz. Birakinca kisa bir atalet.
+  function parmaklaKaydir(el, term) {
+    let birikim = 0;
+    let sonY = null, sonX = 0, baslangic = 0, hedef = null, kayiyor = false, hiz = 0, sonT = 0, atalet = 0;
+    const ortaY = (e) => {
+      let y = 0;
+      for (const p of e.touches) y += p.clientY;
+      return y / e.touches.length;
+    };
+    const tekerlek = (dy, x, y) => {
+      if (!hedef || !dy) return;
+      const satirlar = el.querySelector('.xterm-rows');
+      const hucre = (satirlar && satirlar.offsetHeight / term.rows) || 16;
+      birikim += dy;
+      const n = Math.trunc(birikim / hucre);
+      if (!n) return;
+      birikim -= n * hucre;
+      if (term.buffer.active.type === 'normal' && term.modes.mouseTrackingMode === 'none') {
+        term.scrollLines(n);
+        return;
+      }
+      // Satir birimli (deltaMode 1), satir basina bir olay: piksel birimli
+      // kucuk parcalari xterm'in fare kodu yutuyordu (100px → tek adim).
+      for (let i = 0; i < Math.abs(n); i++) {
+        hedef.dispatchEvent(new WheelEvent('wheel', {
+          deltaY: Math.sign(n), deltaMode: 1, bubbles: true, cancelable: true, clientX: x, clientY: y,
+        }));
+      }
+    };
+    el.addEventListener('touchstart', (e) => {
+      cancelAnimationFrame(atalet);
+      sonY = baslangic = ortaY(e);
+      sonX = e.touches[0].clientX;
+      hedef = e.target;
+      kayiyor = false;
+      hiz = 0;
+      sonT = performance.now();
+    }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (sonY === null) return;
+      const y = ortaY(e);
+      if (!kayiyor) {
+        if (Math.abs(y - baslangic) < 8) return;
+        kayiyor = true;
+        sonY = y;
+      }
+      e.preventDefault();
+      const dy = sonY - y;
+      const simdi = performance.now();
+      const dt = Math.max(1, simdi - sonT);
+      hiz = 0.7 * (dy / dt) + 0.3 * hiz;     // px/ms, yumusatilmis
+      sonT = simdi;
+      sonY = y;
+      tekerlek(dy, sonX, y);
+    }, { passive: false });
+    const bitir = (e) => {
+      if (e.touches && e.touches.length) { sonY = ortaY(e); return; }   // bir parmak kalkti
+      const ekranY = sonY;
+      sonY = null;
+      if (!kayiyor || Math.abs(hiz) < 0.2) return;
+      let v = hiz * 16;                         // kare basina px
+      const adim = () => {
+        v *= 0.92;
+        if (Math.abs(v) < 0.5) return;
+        tekerlek(v, sonX, ekranY);
+        atalet = requestAnimationFrame(adim);
+      };
+      atalet = requestAnimationFrame(adim);
+    };
+    el.addEventListener('touchend', bitir, { passive: true });
+    el.addEventListener('touchcancel', bitir, { passive: true });
+  }
+
   let keyWrap = null;
 
   function buildKeys() {
@@ -922,6 +1009,7 @@ function start() {
     });
     term.open(el);
     fit.fit();
+    parmaklaKaydir(el, term);
 
     let info;
     if (opts.adopt) {
