@@ -2196,20 +2196,33 @@ function showDown(){
 }
 
 function connect(){
-  es = new EventSource('/events');
-  es.onopen = () => setConn(true, T('live'));
-  es.onmessage = (e) => { state = JSON.parse(e.data); checkNotify(); render(); setConn(true, T('live')); };
+  // Isleyiciler modul seviyesindeki `es`e degil kendi orneklerine bakiyor.
+  // Oncesinde kapanmis eski bir baglantinin gec gelen onerror'u, o sirada
+  // calisan YENI baglantiyi kapatiyordu: basliktaki "baglanti koptu" mesaji
+  // asili kaliyor, akis surekli yeniden kuruluyordu. Terminal ayri bir
+  // WebSocket oldugu icin calismaya devam ediyor ve ariza gizli kaliyordu.
+  // Zayif wifi'da (olculdu: 140 ms sicramalar) ust uste binen ornekler sik.
+  const kendi = new EventSource('/events');
+  es = kendi;
+  const guncel = () => es === kendi;
+  kendi.onopen = () => { if(guncel()) setConn(true, T('live')); };
+  kendi.onmessage = (e) => {
+    if(!guncel()) return;
+    state = JSON.parse(e.data); checkNotify(); render(); setConn(true, T('live'));
+  };
   // `mineclaude --open` (Claude'a "tarayıcıda aç" denince): terminal görünümüne geç, sekmeyi aç
-  es.addEventListener('web-open', (e) => {
+  kendi.addEventListener('web-open', (e) => {
+    if(!guncel()) return;
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if(!hasTerm() || !m || !m.url) return;
     if(view !== 'term'){ view = 'term'; localStorage.setItem('cc.view', view); applyViewBtn(); render(); }
     MTerm.openUrl(m);
   });
-  es.onerror = () => {
+  kendi.onerror = () => {
+    if(!guncel()){ kendi.close(); return; }   // eski ornek: yalniz kendini topla
     setConn(false, T('disconnected'));
     if(!state) showDown();
-    es.close();
+    kendi.close();
     setTimeout(connect, 2500);
   };
 }
