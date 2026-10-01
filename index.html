@@ -422,10 +422,10 @@
   .update-head-txt{min-width:0}
   .update-head-txt b{font-size:15px;letter-spacing:-.01em}
   .update-version{color:var(--faint);font-size:12px;margin-top:1px}
-  .update-notes{list-style:none;margin:0 0 16px;max-height:38vh;overflow-y:auto;
+  .update-notes{list-style:none;margin:0 0 16px;max-height:38vh;overflow-y:auto;overflow-x:hidden;
     display:flex;flex-direction:column;gap:7px;background:var(--panel2);
     border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-  .update-notes li{font-size:12.5px;color:var(--dim);line-height:1.5;position:relative;padding-left:14px}
+  .update-notes li{font-size:12.5px;color:var(--dim);line-height:1.5;position:relative;padding-left:14px;overflow-wrap:anywhere}
   .update-notes li::before{content:"";position:absolute;left:0;top:.55em;
     width:4px;height:4px;border-radius:50%;background:var(--idle)}
   .update-notes li.update-notes-empty{padding-left:0;color:var(--faint)}

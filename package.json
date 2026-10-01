@@ -63,6 +63,7 @@
       "electron/assets/tray*.png",
       "term.js",
       "pty.js",
+      "claude-context.js",
       "server.js",
       "index.html",
       "office.js",

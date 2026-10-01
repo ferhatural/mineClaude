@@ -607,7 +607,71 @@ function projectSite(cwd, cfg) {
     const dom = sftp.remotePath.split('/').reverse().find((seg) => DOMAIN_RE.test(seg));
     if (dom) return { url: 'https://' + dom.replace(/^www\./i, '') + '/', source: 'sftp.json' };
   }
+  const guess = siteFromFiles(cwd);
+  if (guess) return { url: guess, source: 'files' };
   return { url: '', source: null };
+}
+
+// Deploy ayari alan adini soylemiyorsa (sftp.json "/var/www/html", host bir IP)
+// projenin kendi dosyalarina bakiyoruz. Dosyalarda yuzlerce alan adi geciyor
+// (codemirror.net, github.com, w3.org...); sitenin kendisi genelde klasorun adini
+// tasiyanidir: Frenox -> www.frenox.com, Spice -> spice.com.tr, "Nippon Boya" ->
+// nipponboya.com. Adla eslesenlerden en sik geceni aliyoruz. Eslesen yoksa acik bir
+// "bu sitenin adresi" isareti (og:url, canonical, APP_URL, WP_HOME...) varsa o.
+// Kutuphane/yukleme klasorlerine girmiyoruz, dosya ve boyut siniri var; sonuc
+// onbellekte (her terminal acilisinda yeniden taranmasin).
+const SCAN_SKIP = new Set(['node_modules', 'vendor', 'bower_components', '.git', '.svn', '.vscode', '.idea',
+  '.claude', '.mineclaude', '.angular', '.next', '.nuxt', '.svelte-kit', 'dist', 'build', 'out', 'coverage',
+  'storage', 'cache', 'tmp', 'temp', 'logs', 'uploads', 'upload', 'media', 'images', 'img', 'fonts',
+  'wp-admin', 'wp-includes', 'plugins-vendor', 'android', 'ios', 'www', 'platforms']);
+const SCAN_EXT = /\.(php|html?|twig|blade\.php|tpl|js|mjs|ts|jsx|tsx|vue|svelte|astro|json|env|ini|conf|ya?ml|xml|txt|md|py|rb)$/i;
+const JUNK_HOST = /(^|\.)(example\.(com|org|net)|localhost|w3\.org|schema\.org|github\.com|githubusercontent\.com|google(apis)?\.com|gstatic\.com|googletagmanager\.com|facebook\.com|twitter\.com|x\.com|instagram\.com|linkedin\.com|youtube\.com|wa\.me|cloudflare\.com|jsdelivr\.net|unpkg\.com|npmjs\.(com|org)|wordpress\.org|gravatar\.com|fontawesome\.com|bootstrapcdn\.com|jquery\.com)$/i;
+const siteGuessCache = new Map();          // cwd -> { at, url }
+
+function foldName(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[çćč]/g, 'c').replace(/ğ/g, 'g').replace(/[ıì]/g, 'i').replace(/[öø]/g, 'o')
+    .replace(/[şś]/g, 's').replace(/[üù]/g, 'u').replace(/[^a-z0-9]/g, '');
+}
+
+function siteFromFiles(cwd) {
+  const hit = siteGuessCache.get(cwd);
+  if (hit && Date.now() - hit.at < 5 * 60e3) return hit.url;
+  const key = foldName(path.basename(cwd));
+  const byName = new Map(), strong = new Map();
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  let files = 0;
+  const walk = (dir, depth) => {
+    if (depth > 5 || files > 4000) return;
+    let ents;
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (files > 4000) return;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (!SCAN_SKIP.has(e.name.toLowerCase()) && !e.name.startsWith('.')) walk(p, depth + 1); continue; }
+      if (!e.isFile() || !(SCAN_EXT.test(e.name) || e.name === '.env')) continue;
+      let txt;
+      try { if (fs.statSync(p).size > 400 * 1024) continue; txt = fs.readFileSync(p, 'utf8'); } catch { continue; }
+      files++;
+      for (const m of txt.matchAll(/https?:\/\/((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})/gi)) {
+        const host = m[1].toLowerCase();
+        if (JUNK_HOST.test(host)) continue;
+        const bare = host.replace(/^www\./, '');
+        const compact = foldName(bare);
+        const first = foldName(bare.split('.')[0]);
+        if (key.length >= 3 && (compact.includes(key) || (first.length >= 4 && key.includes(first)))) bump(byName, host);
+      }
+      for (const m of txt.matchAll(/(?:og:url"\s+content=|rel="canonical"\s+href=|(?:APP_URL|SITE_URL|WP_HOME|WP_SITEURL|BASE_URL)\W{1,6})["']?(https?:\/\/[^\s"'<>]+)/gi)) {
+        try { const u = new URL(m[1]); if (!JUNK_HOST.test(u.hostname)) bump(strong, u.hostname.toLowerCase()); } catch { /* */ }
+      }
+    }
+  };
+  walk(cwd, 0);
+  const best = (m) => [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+  const pick = best(byName) || best(strong);
+  const url = pick ? 'https://' + pick[0] + '/' : '';
+  siteGuessCache.set(cwd, { at: Date.now(), url });
+  return url;
 }
 
 // key: 'webUrl' (yayindaki site) ya da 'devUrl' (yerel dev sunucusu, yol dahil)
@@ -1601,7 +1665,10 @@ function openCommand(raw) {
 
 // ---------------------------------------------------------------- giris
 
-if (hasFlag('--open')) {
+if (hasFlag('--claude-context')) {
+  // mineClaude terminalindeki Claude'un SessionStart kancasi (bkz. pty.js claudeSettingsFile)
+  process.stdout.write(require('./claude-context').CLAUDE_CONTEXT + '\n');
+} else if (hasFlag('--open')) {
   openCommand(argv[argv.indexOf('--open') + 1] && !argv[argv.indexOf('--open') + 1].startsWith('--')
     ? argv[argv.indexOf('--open') + 1] : '');
 } else if (hasFlag('--tasks')) {
