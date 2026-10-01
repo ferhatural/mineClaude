@@ -234,6 +234,29 @@ public class MainActivity extends Activity {
   private class TermWebView extends WebView {
     TermWebView(android.content.Context c) { super(c); }
 
+    /**
+     * Hizli yazarken harf kayboluyordu. Fiziksel klavyenin tuslari da once
+     * klavye uygulamasindan geciyor; o, oneri/otomatik duzeltme icin yazilani
+     * "olusturulan sozcuk" (composition) olarak tutuyor ve xterm hizli yazimda
+     * bu olaylarin bir kismini kaciriyor. Termux'un yolu: alani "gorunur
+     * parola, oneri yok" diye tanitmak — klavye uygulamasi o zaman sozcuk
+     * olusturmuyor, her tus dogrudan geliyor. Yalniz terminal odaktayken;
+     * web sekmesindeki metin kutularinda oneriler kalsin.
+     */
+    @Override
+    public android.view.inputmethod.InputConnection onCreateInputConnection(
+        android.view.inputmethod.EditorInfo outAttrs) {
+      android.view.inputmethod.InputConnection ic = super.onCreateInputConnection(outAttrs);
+      if (termOdakta && outAttrs != null) {
+        outAttrs.inputType = android.text.InputType.TYPE_CLASS_TEXT
+            | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+        outAttrs.imeOptions |= android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            | android.view.inputmethod.EditorInfo.IME_FLAG_NO_FULLSCREEN;
+      }
+      return ic;
+    }
+
     @Override
     public boolean dispatchKeyEventPreIme(KeyEvent e) {
       if (e.getAction() == KeyEvent.ACTION_DOWN && e.isCtrlPressed() && termOdakta) {
@@ -507,7 +530,17 @@ public class MainActivity extends Activity {
   /** Sayfadan cagrilan tek yontem: bir adresi ust katmanda ac. */
   private class Kopru {
     @JavascriptInterface
-    public void setTermFocus(boolean odak) { termOdakta = odak; }
+    public void setTermFocus(boolean odak) {
+      if (termOdakta == odak) return;
+      termOdakta = odak;
+      // Klavye uygulamasi alan turunu baglanirken okuyor: odak terminal ile
+      // web kutusu arasinda gecince yeniden baglansin ki oneri kipi dogru olsun.
+      runOnUiThread(() -> {
+        android.view.inputmethod.InputMethodManager imm =
+            (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null && web != null) imm.restartInput(web);
+      });
+    }
 
     /** Seritteki Yapistir: Ctrl+V ile ayni yol (metin ya da gorsel). */
     @JavascriptInterface
