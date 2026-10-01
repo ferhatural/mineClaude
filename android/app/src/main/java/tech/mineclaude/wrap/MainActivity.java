@@ -1,6 +1,8 @@
 package tech.mineclaude.wrap;
 
 import android.annotation.SuppressLint;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -11,10 +13,13 @@ import android.view.WindowInsetsController;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.net.Uri;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -26,6 +31,17 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import android.app.Activity;
+
+import org.json.JSONObject;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * mineClaude paneli icin ince bir WebView sarmalayici.
@@ -53,6 +69,17 @@ public class MainActivity extends Activity {
    * kombinasyonlari keyCode ve unicode degeriyle gosteriyor.
    */
   private boolean tehis = false;
+
+  /**
+   * Odak terminalde mi. Sayfa focusin/focusout ile bildiriyor (term.js).
+   * Ctrl+<harf>'i yalniz terminal odaktayken kapiyoruz; odak bir web
+   * sekmesindeki metin kutusundaysa Ctrl+C/V/A oraya gitmeli. Varsayilan true:
+   * eski bir sayfa surumu bildirmiyorsa davranis eskisi gibi kalsin.
+   */
+  private volatile boolean termOdakta = true;
+
+  /** Panelin kendi adresi: iframe basliklarini yalniz BASKA sitelerde temizliyoruz. */
+  private String panelHost = "";
 
   @Override
   protected void onCreate(Bundle state) {
@@ -132,8 +159,25 @@ public class MainActivity extends Activity {
     web.setBackgroundColor(Color.parseColor("#0e1013"));
 
     // Baglantilari disari atmiyoruz: panel kendi icinde geziyor.
+    panelHost = hostOf(url);
+    // Cerceve icindeki siteler cerezsiz kalmasin (oturum acilan siteler).
+    CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
     web.setWebViewClient(new WebViewClient() {
-      @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return false; }
+      @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+        // Cerceveden kurtulmaya calisan siteler (top.location = ...) paneli
+        // komple o siteye goturmesin: baska bir siteye ust seviye gezinme ust
+        // katmandaki tarayiciya gidiyor, panel yerinde kaliyor.
+        Uri u = r.getUrl();
+        if (r.isForMainFrame() && u != null && !panelHost.isEmpty()
+            && !panelHost.equalsIgnoreCase(u.getHost())) {
+          miniTarayiciAc(u.toString());
+          return true;
+        }
+        return false;
+      }
+      @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+        return cerceveyeIzinVer(r);
+      }
       @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
         // Yalniz ana belge hatasi ilgilendiriyor; alt istekler (ikon vb.) degil.
         if (r != null && r.isForMainFrame()) {
@@ -186,9 +230,28 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEventPreIme(KeyEvent e) {
-      if (e.getAction() == KeyEvent.ACTION_DOWN && e.isCtrlPressed()) {
+      if (e.getAction() == KeyEvent.ACTION_DOWN && e.isCtrlPressed() && termOdakta) {
         int kc = e.getKeyCode();
         boolean ctrlTusu = kc == KeyEvent.KEYCODE_CTRL_LEFT || kc == KeyEvent.KEYCODE_CTRL_RIGHT;
+        // Ctrl+V: panodaki METNI yapistir. Eskiden \x16 gidiyordu; Claude Code
+        // onu "gorsel yapistir" sayip "image yok" diyordu. Panoda metin yoksa
+        // \x16 yine gidiyor — gorsel yapistirma niyeti oyle ifade ediliyor.
+        if (kc == KeyEvent.KEYCODE_V && !e.isAltPressed()) {
+          String metin = panoOku();
+          if (metin != null && !metin.isEmpty()) {
+            web.evaluateJavascript("window.MTerm && MTerm.pasteText(" + JSONObject.quote(metin) + ")", null);
+          } else {
+            yazTerminale(0x16);
+          }
+          return true;
+        }
+        // Ctrl+C: secim varsa kopyala, yoksa ^C — karari sayfa veriyor, secim
+        // xterm'de. Eskiden her zaman ^C gidiyordu ve kopyalamaya calisirken
+        // calisan Claude'u durduruyordu.
+        if (kc == KeyEvent.KEYCODE_C && !e.isAltPressed()) {
+          web.evaluateJavascript("window.MTerm && MTerm.ctrlC()", null);
+          return true;
+        }
         if (!ctrlTusu) {
           int u = e.getUnicodeChar(0);              // degistiricisiz temel karakter
           int buyuk = u > 0 ? Character.toUpperCase(u) : 0;
@@ -208,6 +271,139 @@ public class MainActivity extends Activity {
   }
 
 
+  private String panoOku() {
+    try {
+      ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+      if (cm == null || !cm.hasPrimaryClip()) return null;
+      ClipData c = cm.getPrimaryClip();
+      if (c == null || c.getItemCount() == 0) return null;
+      CharSequence t = c.getItemAt(0).coerceToText(this);
+      return t == null ? null : t.toString();
+    } catch (Exception ex) {
+      return null;
+    }
+  }
+
+  private static String hostOf(String url) {
+    try { String h = Uri.parse(url).getHost(); return h == null ? "" : h; }
+    catch (Exception ex) { return ""; }
+  }
+
+  /**
+   * Mini tarayici sekmeleri sayfada <iframe>; cogu site X-Frame-Options ya da
+   * CSP frame-ancestors ile cerceveye girmeyi reddediyor ve sekme bos kaliyor
+   * (signal360.carvist.org: XFO SAMEORIGIN). Normal tarayicida acilan site
+   * burada acilmiyordu.
+   *
+   * Cozum: cerceve BELGESI istegini (ana cerceve degil, GET, Accept text/html,
+   * panelin kendisi degil) kendimiz yapip yaniti bu iki baslik cikarilmis
+   * olarak WebView'a veriyoruz. Gorseller, betikler, XHR dokunulmadan WebView'in
+   * kendi yolundan gidiyor — cerceve kisiti yalniz belgenin yanitina bakiyor.
+   *
+   * Sinirlar: POST ile gelen sayfalar (form gonderimi) yakalanamiyor — WebView
+   * istek govdesini vermiyor; onlar eskisi gibi. Yonlendirmeyi WebView'a 3xx
+   * olarak veremiyoruz (WebResourceResponse 3xx kabul etmiyor): hedefe
+   * location.replace yapan kucuk bir sayfa donuyoruz, o istek de buradan gecip
+   * dogru adresle yukleniyor. Cerezler CookieManager ile iki yonlu esleniyor.
+   */
+  private WebResourceResponse cerceveyeIzinVer(WebResourceRequest r) {
+    try {
+      if (r.isForMainFrame() || !"GET".equalsIgnoreCase(r.getMethod())) return null;
+      Uri u = r.getUrl();
+      String sema = u.getScheme();
+      if (!"https".equalsIgnoreCase(sema) && !"http".equalsIgnoreCase(sema)) return null;
+      if (panelHost.equalsIgnoreCase(u.getHost())) return null;
+      Map<String, String> h = r.getRequestHeaders();
+      String accept = null;
+      for (Map.Entry<String, String> en : h.entrySet()) {
+        if ("accept".equalsIgnoreCase(en.getKey())) accept = en.getValue();
+      }
+      if (accept == null || !accept.contains("text/html")) return null;
+
+      String adres = u.toString();
+      HttpURLConnection c = (HttpURLConnection) new URL(adres).openConnection();
+      c.setInstanceFollowRedirects(false);
+      c.setConnectTimeout(15000);
+      c.setReadTimeout(30000);
+      for (Map.Entry<String, String> en : h.entrySet()) {
+        String k = en.getKey().toLowerCase();
+        // Sikistirmayi HttpURLConnection kendisi cozuyor (basligi biz koyarsak
+        // cozmuyor); kosullu istek 304 dondurur, o da bos bir cerceve demek.
+        if (k.equals("accept-encoding") || k.equals("if-none-match") || k.equals("if-modified-since")
+            || k.equals("cookie") || k.equals("host")) continue;
+        c.setRequestProperty(en.getKey(), en.getValue());
+      }
+      CookieManager cm = CookieManager.getInstance();
+      String cerez = cm.getCookie(adres);
+      if (cerez != null && !cerez.isEmpty()) c.setRequestProperty("Cookie", cerez);
+
+      int kod = c.getResponseCode();
+      Map<String, List<String>> yb = c.getHeaderFields();
+      for (Map.Entry<String, List<String>> en : yb.entrySet()) {
+        if (en.getKey() != null && en.getKey().equalsIgnoreCase("set-cookie")) {
+          for (String v : en.getValue()) cm.setCookie(adres, v);
+        }
+      }
+      cm.flush();
+
+      if (kod >= 300 && kod < 400) {
+        String hedef = c.getHeaderField("Location");
+        c.disconnect();
+        if (hedef == null) return null;
+        hedef = new URL(new URL(adres), hedef).toString();
+        String sayfa = "<!doctype html><meta charset=utf-8><script>location.replace("
+            + JSONObject.quote(hedef) + ")</script>";
+        return new WebResourceResponse("text/html", "utf-8", 200, "OK",
+            new HashMap<>(), new ByteArrayInputStream(sayfa.getBytes(StandardCharsets.UTF_8)));
+      }
+
+      Map<String, String> cikis = new HashMap<>();
+      for (Map.Entry<String, List<String>> en : yb.entrySet()) {
+        String k = en.getKey();
+        if (k == null || en.getValue().isEmpty()) continue;
+        String kl = k.toLowerCase();
+        if (kl.equals("x-frame-options") || kl.equals("set-cookie") || kl.equals("content-encoding")
+            || kl.equals("content-length") || kl.equals("transfer-encoding") || kl.equals("connection")) continue;
+        String v = String.join(", ", en.getValue());
+        if (kl.equals("content-security-policy")) {
+          v = cspTemizle(v);
+          if (v.isEmpty()) continue;
+        }
+        cikis.put(k, v);
+      }
+
+      String tur = c.getContentType();
+      String mime = "text/html", kodlama = null;
+      if (tur != null) {
+        String[] p = tur.split(";");
+        mime = p[0].trim();
+        for (int i = 1; i < p.length; i++) {
+          String q = p[i].trim();
+          if (q.toLowerCase().startsWith("charset=")) kodlama = q.substring(8).replace("\"", "").trim();
+        }
+      }
+      InputStream govde = kod >= 400 ? c.getErrorStream() : c.getInputStream();
+      if (govde == null) govde = new ByteArrayInputStream(new byte[0]);
+      String neden = c.getResponseMessage();
+      if (neden == null || neden.isEmpty()) neden = "OK";
+      return new WebResourceResponse(mime, kodlama, kod, neden, cikis, govde);
+    } catch (Exception ex) {
+      return null;   // bir sey ters giderse WebView kendi yolundan yuklesin
+    }
+  }
+
+  /** CSP'den yalniz frame-ancestors yonergesini cikariyoruz; gerisi yerinde. */
+  private static String cspTemizle(String csp) {
+    StringBuilder b = new StringBuilder();
+    for (String y : csp.split(";")) {
+      String t = y.trim();
+      if (t.isEmpty() || t.toLowerCase().startsWith("frame-ancestors")) continue;
+      if (b.length() > 0) b.append("; ");
+      b.append(t);
+    }
+    return b.toString();
+  }
+
   /** Kontrol karakterini sayfaya, DOM olayina hic dokunmadan veriyoruz. */
   private void yazTerminale(int kod) {
     web.evaluateJavascript(
@@ -216,6 +412,28 @@ public class MainActivity extends Activity {
 
   /** Sayfadan cagrilan tek yontem: bir adresi ust katmanda ac. */
   private class Kopru {
+    @JavascriptInterface
+    public void setTermFocus(boolean odak) { termOdakta = odak; }
+
+    @JavascriptInterface
+    public void copyText(final String metin) {
+      if (metin == null) return;
+      runOnUiThread(() -> {
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("mineClaude", metin));
+      });
+    }
+
+    /** Pano okumasi Android 10+'da odak istiyor; UI is parcacigindan okuyoruz. */
+    @JavascriptInterface
+    public String readClipboard() {
+      final String[] sonuc = { null };
+      final java.util.concurrent.CountDownLatch bitti = new java.util.concurrent.CountDownLatch(1);
+      runOnUiThread(() -> { sonuc[0] = panoOku(); bitti.countDown(); });
+      try { bitti.await(2, java.util.concurrent.TimeUnit.SECONDS); } catch (InterruptedException ex) { /* */ }
+      return sonuc[0];
+    }
+
     @JavascriptInterface
     public void openUrl(final String url) {
       if (url == null || url.isEmpty()) return;

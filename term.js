@@ -193,8 +193,16 @@ function start() {
   // etkilesimi istiyor; tutmadigi durumlarda gizli bir textarea + execCommand
   // ile deniyoruz. Sessizce basarisiz olmuyoruz: cagiran sonuca gore geri
   // bildirim gosteriyor.
+  // Android sarmalayicisi (APK) panoya kendisi yaziyor/okuyor: oradaki Ctrl+C/V
+  // Java'dan evaluateJavascript ile geliyor, kullanici hareketi sayilmiyor ve
+  // Clipboard API onu reddedebiliyor. Kopru varsa once o.
+  const AND = () => window.mineClaudeAndroid || null;
+
   async function yazPanoya(metin) {
     if (!metin) return false;
+    try {
+      if (AND() && AND().copyText) { AND().copyText(metin); return true; }
+    } catch { /* eski APK: kopru yok */ }
     try {
       await navigator.clipboard.writeText(metin);
       return true;
@@ -253,7 +261,10 @@ function start() {
     }, 'wide');
     ekle(T2('termPaste'), async () => {
       if (!active || active.web) return;
-      try { const t = await navigator.clipboard.readText(); if (t) T.write(active.id, t); } catch {}
+      try {
+        const t = (AND() && AND().readClipboard) ? AND().readClipboard() : await navigator.clipboard.readText();
+        if (t) active.term.paste(t);
+      } catch {}
     }, 'wide');
     // Tus teshisi: tarayicinin hangi olayi sayfaya birakip hangisini kendi
     // yuttugu ancak boyle goruluyor. Belge seviyesinde YAKALAMA evresinde
@@ -1408,6 +1419,23 @@ function start() {
 
   window.addEventListener('resize', () => fitAll());
 
+  // APK'ya terminalin odakta olup olmadigini bildiriyoruz. Java Ctrl+<harf>'i
+  // IME'den once yakalayip terminale yaziyor (bkz. MainActivity); odak bir web
+  // sekmesindeki metin kutusundaysa bunu yapmamali, yoksa orada Ctrl+C/V/A
+  // yutuluyordu.
+  {
+    let son = null;
+    const bildir = () => {
+      const a = document.activeElement;
+      const odak = !!(a && a.closest && a.closest('.xterm'));
+      if (odak === son) return;
+      son = odak;
+      try { if (AND() && AND().setTermFocus) AND().setTermFocus(odak); } catch { /* */ }
+    };
+    document.addEventListener('focusin', bildir);
+    document.addEventListener('focusout', () => setTimeout(bildir, 0));
+  }
+
   window.MTerm = {
     mount,
     open,                              // panel/kart "burada terminal ac" icin
@@ -1495,6 +1523,28 @@ function start() {
     sendKey: (metin) => {
       if (!active || active.web || !metin) return false;
       T.write(active.id, metin);
+      return true;
+    },
+    // APK'nin Ctrl+V'si. Eskiden \x16 olarak terminale gidiyordu; Claude Code
+    // onu "gorsel yapistir" sayip "image yok" diyordu, panodaki metne hic
+    // bakilmiyordu. term.paste: kabuk/claude kortulu yapistirma istiyorsa
+    // metni onunla sariyor, cok satirli metin satir satir gonderilmis olmuyor.
+    pasteText: (metin) => {
+      if (!active || active.web || !metin) return false;
+      active.term.paste(metin);
+      return true;
+    },
+    // APK'nin Ctrl+C'si: secim varsa kopyala, yoksa ^C. Eskiden her zaman ^C
+    // gidiyordu — kopyalamaya calisirken calisan Claude'u durduruyordu.
+    ctrlC: () => {
+      if (!active || active.web) return false;
+      const sel = active.term.getSelection();
+      if (!sel) { T.write(active.id, '\x03'); return true; }
+      yazPanoya(sel).then((ok) => {
+        const el = active.el;
+        el.classList.add(ok ? 'tm-copied' : 'tm-copyfail');
+        setTimeout(() => el.classList.remove('tm-copied', 'tm-copyfail'), 700);
+      });
       return true;
     },
     selectById: (id) => { const t = tabs.find((x) => x.id === id); if (t) select(t); return !!t; },
