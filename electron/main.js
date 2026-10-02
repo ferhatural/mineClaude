@@ -748,6 +748,14 @@ function checkForUpdatesManually() {
 
 // ---------------------------------------------------------------- giris
 
+// Windows gorev cubugu pencereyi kisayola AppUserModelID ile esliyor. Kurulumcu
+// kisayollara appId'yi (package.json > build.appId) yaziyor; biz bir sey
+// demezsek Electron "electron.app.mineClaude" kullaniyor ve sabitlenmis ikonun
+// yaninda ikinci bir mineClaude ikonu aciliyor. Pencere acilmadan once olmali.
+// package.json'dan okunmuyor: electron-builder paketteki kopyadan "build"i siliyor.
+// appId degisirse burasi da degismeli.
+if (process.platform === 'win32') app.setAppUserModelId('com.github.ferhatural.mineclaude');
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
