@@ -642,13 +642,31 @@ function showAbout() {
 // isi Release'i "gh release create --generate-notes" ile aciyor). Birden fazla
 // surum atlanmissa (ör. 1.3.5 -> 1.4.0) dizi olarak da gelebiliyor — her ikisini de
 // sayfanin kendi <li> listesine uygun duz satirlara ceviriyoruz.
+// GitHub saglayicisi govdeyi markdown degil, render edilmis HTML olarak veriyor
+// (<h2>, <ul><li>, <p><strong>Full Changelog</strong>...) — once etiketleri
+// satir sonlarina/duz metne indiriyoruz, yoksa modalda ham HTML gorunuyor.
+function htmlToText(html) {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(p|div|li|ul|ol|h[1-6]|blockquote|pre)\b[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, '&');
+}
+
 function parseReleaseNotes(raw) {
-  const text = Array.isArray(raw) ? raw.map((r) => r && r.note).filter(Boolean).join('\n') : raw;
+  let text = Array.isArray(raw) ? raw.map((r) => r && r.note).filter(Boolean).join('\n') : raw;
   if (!text || typeof text !== 'string') return [];
+  if (/<[a-z][^>]*>/i.test(text)) text = htmlToText(text);
   return text
     .split('\n')
     .map((l) => l.replace(/^#+\s*/, '').replace(/^[-*]\s+/, '').trim())
-    .filter((l) => l && !l.startsWith('**Full Changelog**'));
+    .filter((l) => l && !/^(\*\*)?Full Changelog/i.test(l) && !/^What's Changed$/i.test(l));
 }
 
 function setupAutoUpdate() {
@@ -729,6 +747,14 @@ function checkForUpdatesManually() {
 }
 
 // ---------------------------------------------------------------- giris
+
+// Windows gorev cubugu pencereyi kisayola AppUserModelID ile esliyor. Kurulumcu
+// kisayollara appId'yi (package.json > build.appId) yaziyor; biz bir sey
+// demezsek Electron "electron.app.mineClaude" kullaniyor ve sabitlenmis ikonun
+// yaninda ikinci bir mineClaude ikonu aciliyor. Pencere acilmadan once olmali.
+// package.json'dan okunmuyor: electron-builder paketteki kopyadan "build"i siliyor.
+// appId degisirse burasi da degismeli.
+if (process.platform === 'win32') app.setAppUserModelId('com.github.ferhatural.mineclaude');
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
