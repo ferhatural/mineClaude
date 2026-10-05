@@ -1211,7 +1211,10 @@ function attachTerminals(server) {
   wss.on('connection', (ws) => {
     canli.add(ws);
     ws.on('pong', () => canli.add(ws));
-    const mine = new Set();
+    // id -> abonelikten cikma fonksiyonu. Eskiden sade bir Set'ti; artik
+    // attach geriye detach donduruyor ve baglanti kapanirken onu cagiriyoruz,
+    // yoksa olu soketin alicisi PTY'nin kumesinde sonsuza kadar kalirdi.
+    const mine = new Map();
     const send = (m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
 
     ws.on('message', (raw) => {
@@ -1232,22 +1235,33 @@ function attachTerminals(server) {
         } catch (e) {
           return send({ t: 'error', ref: m.ref, error: String(e.message || e) });
         }
-        mine.add(info.id);
-        term.attach(info.id, (id, data) => send({ t: 'data', id, data }), (id, code) => send({ t: 'exit', id, code }));
+        mine.set(info.id, term.attach(
+          info.id,
+          (id, data) => send({ t: 'data', id, data }),
+          (id, code) => send({ t: 'exit', id, code }),
+        ));
         send({ t: 'created', ref: m.ref, ...info });
       } else if (m.t === 'attach') {
         // Baglanti koptu, PTY yasiyor. Yeni baglantiya geri baglamak: tunel
         // duserse ya da tablet uykuya dalarsa oturum kaybolmasin.
         const live = term.list().find((x) => x.id === m.id && !x.dead);
         if (!live) return send({ t: 'gone', id: m.id });
-        mine.add(m.id);
-        term.attach(m.id, (id, data) => send({ t: 'data', id, data }), (id, code) => send({ t: 'exit', id, code }));
+        // Ayni baglanti ayni terminale iki kez attach ederse cikti cift gider.
+        const eski = mine.get(m.id);
+        if (eski) eski();
+        mine.set(m.id, term.attach(
+          m.id,
+          (id, data) => send({ t: 'data', id, data }),
+          (id, code) => send({ t: 'exit', id, code }),
+        ));
         send({ t: 'attached', ref: m.ref, ...live });
       } else if (m.t === 'write' && mine.has(m.id)) {
         term.write(m.id, m.data);
       } else if (m.t === 'resize' && mine.has(m.id)) {
         term.resize(m.id, m.cols, m.rows);
       } else if (m.t === 'kill' && mine.has(m.id)) {
+        const birak = mine.get(m.id);
+        if (birak) birak();
         term.kill(m.id);
         mine.delete(m.id);
       }
@@ -1255,7 +1269,13 @@ function attachTerminals(server) {
 
     // Baglanti kopunca PTY'leri birakmiyoruz: tablet uykuya daldi diye Claude
     // oturumu olmesin. Sekmeler yeniden baglandiginda listeden geri bulunuyor.
-    ws.on('close', () => { /* PTY'ler yasamaya devam eder */ });
+    // PTY'leri oldurmuyoruz (tablet uykuya daldi diye Claude oturumu olmesin),
+    // ama bu soketin aliciligini birakiyoruz: aksi halde her yeniden baglanma
+    // PTY'nin alici kumesinde olu bir kayit birakirdi.
+    ws.on('close', () => {
+      for (const birak of mine.values()) { try { birak(); } catch { /* onemsiz */ } }
+      mine.clear();
+    });
   });
 
   console.log('  terminaller acik  -> ws://127.0.0.1:' + PORT + '/terminals');

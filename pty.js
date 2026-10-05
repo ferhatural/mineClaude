@@ -251,21 +251,32 @@ function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   return { id, cwd: dir, title, tty };
 }
 
+// Geriye aboneligi birakan bir fonksiyon donuyor; cagirani birakmak zorunda
+// degil ama birakmazsa olu alici kumede kalir.
+//
+// Eskiden tek alici vardi (t.onData = onData) ve ikinci bir istemci baglanir
+// baglanmaz birincinin ciktisi sessizce kesiliyordu: ayni terminale tabletten
+// ve laptoptan bakinca biri bos kaliyor, PTY yasadigi halde "donmus" gibi
+// gorunuyordu. node-pty dinleyicisi yine bir kez baglaniyor (biriktiriyor),
+// degisen yalnizca kac aliciya dagitildigi.
 function attach(id, onData, onExit) {
   const t = terms.get(id);
-  if (!t) return;
-  // Yeniden baglanmada attach tekrar cagriliyor. node-pty dinleyicileri
-  // biriktirdigi icin cikti her seferinde bir fazla kopyalanirdi; guncel
-  // alicilari tek yerde tutup dinleyiciyi bir kez baglıyoruz.
-  t.onData = onData;
-  t.onExit = onExit;
-  if (t.wired) return;
-  t.wired = true;
-  t.p.onData((d) => { if (t.onData) t.onData(id, d); });
-  t.p.onExit(({ exitCode, signal }) => {
-    t.dead = true;
-    if (t.onExit) t.onExit(id, exitCode, signal);
-  });
+  if (!t) return () => {};
+  if (!t.subs) t.subs = new Set();
+  const sub = { onData, onExit };
+  t.subs.add(sub);
+  if (!t.wired) {
+    t.wired = true;
+    // Kopya uzerinde donuyoruz: bir alici kendi icinde detach edebilir.
+    t.p.onData((d) => {
+      for (const s of [...t.subs]) { try { if (s.onData) s.onData(id, d); } catch { /* bir alici digerlerini dusurmesin */ } }
+    });
+    t.p.onExit(({ exitCode, signal }) => {
+      t.dead = true;
+      for (const s of [...t.subs]) { try { if (s.onExit) s.onExit(id, exitCode, signal); } catch { /* ayni */ } }
+    });
+  }
+  return () => { t.subs.delete(sub); };
 }
 
 function write(id, data) {
