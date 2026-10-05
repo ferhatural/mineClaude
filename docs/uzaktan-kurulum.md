@@ -340,3 +340,88 @@ Tablete ulastirma (USB gerekmiyor): APK'yi yerel bir porttan sunup
 `tailscale serve --bg --set-path=/apk http://127.0.0.1:<port>` ile tailnet'e
 baglamak yeterli. Tailscale **dosya** sunmayi root'a kisitliyor, **servise
 proxy** serbest — o yuzden araya kucuk bir sunucu giriyor.
+
+---
+
+# Ekransiz mini — yeniden baslatma sonrasi (5 Ekim 2026)
+
+Mini'nin ekrani tamamen kaldirildi. Bunun bedeli, yeniden baslatmanin tek
+basina hicbir seyi geri getirmemesi.
+
+## Neden her sey birden oluyor
+
+Mini'deki **dort** sey de kullanici oturumuna bagli:
+
+| | |
+|---|---|
+| `com.ferhatural.tailscaled` | kullanici LaunchAgent'i |
+| `com.github.ferhatural.mineclaude` | kullanici LaunchAgent'i |
+| `com.ferhatural.mineclaude-telegram` | kullanici LaunchAgent'i |
+| RustDesk | oturum icinde calisiyor |
+
+LaunchAgent **acilista degil girise** bagli. FileVault aciksa yeniden baslatma
+sonrasi makine on-acilis kilit ekraninda bekler, kimse giris yapmaz ve dordu
+birden kalkmaz. Disaridan bakinca "mini olmus" gibi gorunur: tailnet adresi
+olu, panel yok, Telegram sessiz, RustDesk offline. Hepsinin tek bir sebebi var.
+
+Teshis: `ping 192.168.70.11` cevap veriyorsa makine **ayakta**, sorun kilit.
+(Tailnet IP'sine ping zaten hicbir zaman cevap vermiyor — mini'nin tailscaled'i
+`--tun=userspace-networking` kipinde, o kipte ICMP yok ama TCP calisiyor.
+"Ping atmiyor" demek "ulasilamiyor" demek degil.)
+
+## Cozum: FileVault'u SSH'tan acmak
+
+Apple Silicon'da on-acilis ortami aga cikiyor ve disk SSH'tan acilabiliyor.
+Ekran gerekmiyor.
+
+```
+ssh -o PubkeyAuthentication=no \
+    -o PreferredAuthentications=keyboard-interactive,password \
+    ferhatural@192.168.70.11
+```
+
+Sorulan parola **mini'nin macOS kullanici parolasi**. Dogru girilince:
+
+```
+System successfully unlocked.
+You may now use SSH to authenticate normally.
+```
+
+Anahtar denemelerini kapatmak sart (`PubkeyAuthentication=no`): yoksa ssh once
+anahtarlari deniyor, parola soramadan `Too many authentication failures`
+aliyorsun. Istemde "This system is locked..." yaziyorsa dogru yerdesin, o
+FileVault'un kendi istemi.
+
+Bu islem diski acmakla kalmiyor, **kullaniciyi da oturum actiriyor** — yani
+tailscaled, mineClaude, Telegram koprusu ve RustDesk dordu birden geri geliyor.
+Ayrica beklemek gerekmiyor, bir dakika icinde hepsi ayakta.
+
+## `macmini-lan`
+
+`~/.ssh/config`'de `macmini` tanimi **tailnet IP'sine** bakiyor; Tailscale
+kalkmamissa ise yaramaz. Yedek tanim eklendi:
+
+```
+Host macmini-lan
+  HostName 192.168.70.11
+  User ferhatural
+  IdentityFile ~/.ssh/macmini
+  IdentitiesOnly yes
+```
+
+`IdentityFile` sart: ham IP'ye baglanirken `Host macmini` kurali eslesmiyor ve
+ssh var olmayan `~/.ssh/id_*` anahtarlarini deneyip parolaya dusuyor.
+
+## Planli yeniden baslatmalarda
+
+```
+sudo fdesetup authrestart
+```
+
+Bir sonraki acilista FileVault'u otomatik aciyor, yukaridaki adima hic gerek
+kalmiyor. Elektrik kesintisi gibi plansiz durumlarda ise yaramaz.
+
+Kalici olarak kurtulmanin tek yolu FileVault'u kapatip otomatik girisi acmak
+(macOS FileVault aciksa otomatik girise izin vermiyor). Bedeli diskin sifresiz
+kalmasi; o makinede SSH anahtarlari ve musteri sunucu erisimleri var, bilerek
+karar verilmeli. Simdilik `authrestart` + nadiren SSH ile acma yolu secildi.
