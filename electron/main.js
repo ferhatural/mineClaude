@@ -14,6 +14,7 @@ const fs = require('fs');
 const os = require('os');
 const net = require('net');
 const http = require('http');
+const https = require('https');
 const { spawn, execFile } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 const term = require('../pty');
@@ -79,6 +80,26 @@ function initL() {
   langMenu:  TR ? 'Dil'                    : 'Language',
   langSystem:TR ? 'Sistem (varsayılan)'    : 'System (default)',
   themeMenu: TR ? 'Tema'                   : 'Theme',
+  srvMenu:   TR ? 'Sunucu'                 : 'Server',
+  srvLocal:  TR ? 'Bu Mac (yerel)'         : 'This Mac (local)',
+  srvAdd:    TR ? 'Sunucu ekle…'           : 'Add server…',
+  srvForget: TR ? 'Listeden çıkar…'        : 'Remove from list…',
+  srvTitle:  TR ? 'Sunucu ekle'            : 'Add server',
+  srvHint:   TR ? 'mineClaude’in çalıştığı makinenin adresi.'
+                : 'Address of the machine running mineClaude.',
+  srvOk:     TR ? 'Bağlan'                 : 'Connect',
+  srvCancel: TR ? 'Vazgeç'                 : 'Cancel',
+  srvSwitch: TR ? 'mineClaude yeniden başlatılacak'
+                : 'mineClaude will restart',
+  srvSwitchD:TR ? 'Sunucu değişikliği ancak yeniden başlatınca geçerli olur. Açık terminaller kapanmaz — onlar sunucuda yaşıyor.'
+                : 'The server change only takes effect after a restart. Open terminals are not closed — they live on the server.',
+  srvGo:     TR ? 'Yeniden başlat'         : 'Restart',
+  srvFailT:  TR ? 'Sunucuya ulaşılamadı'   : 'Cannot reach the server',
+  srvFailD:  (u) => (TR
+    ? `${u} yanıt vermiyor. Makine açık mı, aynı ağda mısın (Tailscale) kontrol et.`
+    : `${u} is not responding. Check that the machine is up and you are on the same network (Tailscale).`),
+  srvRetry:  TR ? 'Yeniden dene'           : 'Retry',
+  srvUseLocal: TR ? 'Yerele dön'           : 'Switch to local',
   themeSystem: TR ? 'Sistem (varsayılan)'  : 'System (default)',
   themeLight:TR ? 'Açık'                   : 'Light',
   themeDark: TR ? 'Koyu'                   : 'Dark',
@@ -113,12 +134,22 @@ const configFile = () => path.join(app.getPath('userData'), 'config.json');
 // theme: null = sistemin temasina uy, 'light'/'dark' = Ayarlar > Tema'dan secilen zorlama.
 // lastTermDir: yeni terminal icin klasor secme diyalogu en son nereden secildiyse
 // orada acilsin diye — Windows'ta bu diyalog kendiliginden hatirlamiyor.
-const config = { port: DEFAULT_PORT, bounds: null, lang: null, theme: null, lastTermDir: null };
+// server: null = bu makinedeki sunucu. Dolu ise (ornegin
+// 'https://ferhat-macmini.taila07197.ts.net') pencere oraya yukleniyor ve BURADA
+// hic sunucu dogurulmuyor — ayni oturumun iki kopyasi olmasin diye.
+// servers: menude hatirlanan adresler.
+const config = {
+  port: DEFAULT_PORT, bounds: null, lang: null, theme: null, lastTermDir: null,
+  server: null, servers: [],
+};
 
 function loadConfig() {
   try {
     Object.assign(config, JSON.parse(fs.readFileSync(configFile(), 'utf8')));
   } catch { /* ilk acilis */ }
+  // Elle duzenlenmis ya da eski bir config.json menuyu cokertmesin.
+  if (!Array.isArray(config.servers)) config.servers = [];
+  if (typeof config.server !== 'string' || !config.server) config.server = null;
 }
 
 let saveTimer = null;
@@ -130,6 +161,137 @@ function saveConfig() {
       fs.writeFileSync(configFile(), JSON.stringify(config, null, 2));
     } catch { /* yazamazsak ayarlar ucar, uygulama calismaya devam eder */ }
   }, 400);
+}
+
+// Yeniden baslatmadan once: gecikmeli yazma relaunch'a yetismiyor.
+function saveConfigNow() {
+  clearTimeout(saveTimer);
+  try {
+    fs.mkdirSync(path.dirname(configFile()), { recursive: true });
+    fs.writeFileSync(configFile(), JSON.stringify(config, null, 2));
+  } catch { /* yazamazsak secim bu oturumda kalir */ }
+}
+
+// ------------------------------------------------- hangi sunucuya bagliyiz
+
+const uzak = () => !!config.server;
+
+// Menude ve tray'de gosterilecek kisa ad: tam URL cok uzun.
+function sunucuAdi(url) {
+  try { const u = new URL(url); return u.host; } catch { return url; }
+}
+
+// Adres gercekten bir mineClaude mi? Sonuc: /api/state govdesi | null
+function probeUrl(url, ms = 4000) {
+  return new Promise((resolve) => {
+    let u;
+    try { u = new URL('/api/state', url); } catch { return resolve(null); }
+    const mod = u.protocol === 'https:' ? https : http;
+    const req = mod.get(u, { timeout: ms }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return resolve(null); }
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => { buf += d; if (buf.length > 200000) req.destroy(); });
+      res.on('end', () => {
+        try { const j = JSON.parse(buf); resolve(j && typeof j === 'object' ? j : null); }
+        catch { resolve(null); }
+      });
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(null));
+  });
+}
+
+// url: null = yerele don. Degisiklik ancak yeniden baslatinca gecerli, cunku
+// preload'un `term` koprusunu verip vermedigi pencere kuruldugunda belirleniyor.
+function sunucuSec(url, sor = true) {
+  const yeni = url || null;
+  if (yeni === config.server) return;
+  const uygula = () => {
+    config.server = yeni;
+    if (yeni && !config.servers.includes(yeni)) config.servers.push(yeni);
+    saveConfigNow();
+    app.relaunch();
+    app.exit(0);
+  };
+  if (!sor) return uygula();
+  dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+    type: 'question',
+    message: L.srvSwitch,
+    detail: L.srvSwitchD,
+    buttons: [L.srvGo, L.srvCancel],
+    defaultId: 0,
+    cancelId: 1,
+  }).then(({ response }) => { if (response === 0) uygula(); });
+}
+
+// Ayarlar penceresindeki "Sunucu adresi > Degistir" dugmesi. Menu cubugundaki
+// alt menunun ayni isi, tek bir yerli diyalogda toplanmis hali.
+function sunucuMenusu() {
+  const secenekler = [null, ...config.servers];          // null = bu Mac
+  const etiketler = secenekler.map((u) => (u ? sunucuAdi(u) : L.srvLocal));
+  const simdiki = secenekler.indexOf(config.server);
+  dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+    type: 'question',
+    message: L.srvMenu,
+    detail: uzak() ? sunucuAdi(config.server) : L.srvLocal,
+    buttons: [...etiketler, L.srvAdd, L.srvCancel],
+    defaultId: simdiki >= 0 ? simdiki : 0,
+    cancelId: etiketler.length + 1,
+  }).then(({ response }) => {
+    if (response < etiketler.length) sunucuSec(secenekler[response]);
+    else if (response === etiketler.length) sunucuSor();
+  });
+}
+
+let promptWin = null;
+
+function sunucuSor() {
+  if (promptWin && !promptWin.isDestroyed()) return promptWin.focus();
+  promptWin = new BrowserWindow({
+    width: 460,
+    height: 260,
+    parent: win && !win.isDestroyed() ? win : undefined,
+    modal: !!(win && !win.isDestroyed()),
+    show: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    title: L.srvTitle,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e1013' : '#fbf7ee',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      additionalArguments: ['--mineclaude-prompt'],
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  promptWin.setMenuBarVisibility(false);
+  promptWin.loadFile(path.join(__dirname, 'server-prompt.html'));
+  promptWin.once('ready-to-show', () => promptWin.show());
+  promptWin.on('closed', () => { promptWin = null; });
+}
+
+// Hatirlanan adresi listeden cikar. Cikarilan su an bagli oldugumuzsa yerele
+// donuyoruz (yani yeniden baslatma), degilse menuyu tazelemek yetiyor.
+function unutSunucu() {
+  if (!config.servers.length) return;
+  const secenekler = config.servers.slice(0, 8);
+  dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+    type: 'question',
+    message: L.srvForget,
+    buttons: [...secenekler.map(sunucuAdi), L.srvCancel],
+    defaultId: secenekler.length,
+    cancelId: secenekler.length,
+  }).then(({ response }) => {
+    if (response < 0 || response >= secenekler.length) return;
+    const giden = secenekler[response];
+    config.servers = config.servers.filter((u) => u !== giden);
+    if (config.server === giden) { config.server = null; saveConfigNow(); app.relaunch(); app.exit(0); return; }
+    saveConfig();
+    setAppMenu();
+  });
 }
 
 // ---------------------------------------------------------------- sunucu
@@ -259,6 +421,9 @@ function createWindow() {
     backgroundColor: '#0e1013',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // Uzak kipte preload `term` koprusunu hic vermiyor; term.js de boylece
+      // WebSocket tasiyicisina dusup PTY'leri uzak sunucudan aliyor.
+      additionalArguments: uzak() ? ['--mineclaude-remote'] : [],
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false, // gizliyken de SSE'yi dinlesin, bildirimler gecikmesin
@@ -269,6 +434,28 @@ function createWindow() {
   browser.attach(win, () => TR);
 
   win.loadURL(serverUrl);
+
+  // Uzak sunucu kapaliysa pencerede tarayicinin hata sayfasi kalir ve geri donus
+  // yolu gorunmez. Menuye gitmek yerine dogrudan soralim.
+  let hataAcik = false;
+  win.webContents.on('did-fail-load', (_e, code, _desc, url, mainFrame) => {
+    if (!mainFrame || code === -3) return;      // -3: iptal (yonlendirme vb.)
+    if (!uzak() || hataAcik) return;
+    hataAcik = true;
+    dialog.showMessageBox(win, {
+      type: 'warning',
+      message: L.srvFailT,
+      detail: L.srvFailD(url || config.server),
+      buttons: [L.srvRetry, L.srvUseLocal, L.quit],
+      defaultId: 0,
+      cancelId: 0,
+    }).then(({ response }) => {
+      hataAcik = false;
+      if (response === 0) win.loadURL(serverUrl);
+      else if (response === 1) sunucuSec(null, false);   // zaten soruldu, bir daha sorma
+      else app.quit();
+    });
+  });
 
   // GECICI TEST: MINECLAUDE_TEST_UPDATE=1 ile calistirilinca acilista sahte bir
   // "guncelleme hazir" bildirimi tetikler, boylece gercek bir surum yayinlamadan
@@ -368,7 +555,9 @@ function buildMenu() {
     },
     { type: 'separator' },
     {
-      label: `${L.server}: localhost:${config.port}` + (child ? '' : ` (${L.external})`),
+      label: uzak()
+        ? `${L.server}: ${sunucuAdi(config.server)}`
+        : `${L.server}: localhost:${config.port}` + (child ? '' : ` (${L.external})`),
       enabled: false,
     },
     { type: 'separator' },
@@ -590,6 +779,30 @@ function setAppMenu() {
           ],
         },
         {
+          label: L.srvMenu,
+          submenu: [
+            {
+              label: L.srvLocal,
+              type: 'radio',
+              checked: !config.server,
+              click: () => sunucuSec(null),
+            },
+            ...config.servers.map((u) => ({
+              label: sunucuAdi(u),
+              type: 'radio',
+              checked: config.server === u,
+              click: () => sunucuSec(u),
+            })),
+            { type: 'separator' },
+            { label: L.srvAdd, click: () => sunucuSor() },
+            {
+              label: L.srvForget,
+              enabled: config.servers.length > 0,
+              click: () => unutSunucu(),
+            },
+          ],
+        },
+        {
           label: L.langMenu,
           submenu: [
             { label: L.langSystem, type: 'radio', checked: !config.lang, click: () => applyLangOverride(null) },
@@ -745,9 +958,15 @@ if (!app.requestSingleInstanceLock()) {
     setAppMenu();
     createTray();
 
-    const port = await ensureServer();
-    serverUrl = `http://127.0.0.1:${port}`;
-    process.env.MINECLAUDE_PORT = String(port);   // gomulu terminaldeki `mineclaude --open` bu portu bulsun
+    if (uzak()) {
+      // Baska makinedeki mineClaude: burada sunucu kurmuyoruz. Gomulu terminal
+      // IPC'si de kapali (bkz. preload.js), her sey WebSocket'ten gidiyor.
+      serverUrl = config.server;
+    } else {
+      const port = await ensureServer();
+      serverUrl = `http://127.0.0.1:${port}`;
+      process.env.MINECLAUDE_PORT = String(port); // gomulu terminaldeki `mineclaude --open` bu portu bulsun
+    }
     createWindow();
     showWindow(); // ilk acilista pencereyi goster; sonraki acilislar tray'den
     setupAutoUpdate();
@@ -758,6 +977,43 @@ if (!app.requestSingleInstanceLock()) {
   // Sayfanin kendi guncelleme-hazir modalindaki "Simdi yeniden baslat" butonu.
   ipcMain.on('mineclaude:update-restart', () => autoUpdater.quitAndInstall());
   ipcMain.handle('mineclaude:focus-terminal', (_e, s) => focusTerminal(s || {}));
+  ipcMain.on('mineclaude:server-change', () => sunucuMenusu());
+
+  // ---- Ayarlar > Sunucu > "Sunucu ekle…" penceresi
+  ipcMain.handle('mineclaude:prompt-init', () => ({
+    title: L.srvTitle,
+    hint: L.srvHint,
+    ok: L.srvOk,
+    cancel: L.srvCancel,
+    placeholder: 'https://ferhat-macmini.taila07197.ts.net',
+    value: config.server || '',
+  }));
+  ipcMain.on('mineclaude:prompt-cancel', () => {
+    if (promptWin && !promptWin.isDestroyed()) promptWin.close();
+  });
+  ipcMain.on('mineclaude:prompt-submit', async (_e, url) => {
+    const pw = promptWin;
+    // Adresi once yoklayalim: ulasilmayan bir sunucuya gecip uygulamayi hata
+    // sayfasinda birakmak, menuye geri donmesi zor bir durum.
+    const bilgi = await probeUrl(url);
+    if (!pw || pw.isDestroyed()) return;
+    if (!bilgi) {
+      const { response } = await dialog.showMessageBox(pw, {
+        type: 'warning',
+        message: L.srvFailT,
+        detail: L.srvFailD(url),
+        buttons: [L.srvOk, L.srvCancel],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      if (response !== 0) {
+        if (pw && !pw.isDestroyed()) pw.close();
+        return;
+      }
+    }
+    if (pw && !pw.isDestroyed()) pw.close();
+    sunucuSec(url);
+  });
 
   // ---- gomulu terminaller
   ipcMain.handle('mineclaude:term-available', () => ({ ok: term.available(), error: term.loadError() }));

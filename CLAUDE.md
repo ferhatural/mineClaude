@@ -39,6 +39,25 @@ WebSocket'e hic bakmiyor). Sonuc:
 
 Tabletten calisilacaksa her seyi tabletten (ya da tarayicidan) acmak lazim.
 
+**Ucuncu yol — uygulamadan uzak sunucuya baglanmak.** Ayarlar > Sunucu'dan bir
+adres secilince (`config.server`) uygulama BURADA hic sunucu dogurmuyor, pencereyi
+dogrudan o adrese yukluyor. Isin tamami tek bir karari ters cevirmekten ibaret:
+
+```
+preload.js   uzak kipte `term` koprusunu HIC vermiyor
+term.js:117  const T = D && D.term ? electronTransport(D.term) : webTransport()
+```
+
+Kopru yoksa WebSocket tasiyicisi devreye giriyor ve PTY'ler uzak sunucunun
+havuzundan geliyor — yani yukaridaki "iki havuz" sorunu da kendiliginden
+kayboluyor, cunku yerel havuz hic kurulmuyor. Ayni sebeple `focusTerminal` de
+verilmiyor: oradaki tty bu makinede bir pencereye denk gelmiyor.
+
+Secim pencere kurulurken (`additionalArguments`) belirlendigi icin degisiklik
+yeniden baslatma istiyor; `sunucuSec()` bunu kendisi yapiyor. Adres once
+yoklaniyor (`probeUrl`), ulasilamazsa uygulama hata sayfasinda kilitli kalmasin
+diye `did-fail-load`'da "yeniden dene / yerele don" soruluyor.
+
 ## Oturum kopyalanmasi
 
 Ayni konusmaya birden fazla `claude --resume <ayni id>` baglamak transcript'i

@@ -1056,8 +1056,14 @@ function start() {
         e.stopPropagation();
         // Masaustunde native pano (izin istemi sorun cikarmiyor); tarayicida
         // window.mineClaudeDesktop yok, oradaki tek yol Clipboard API.
-        const okunan = (D && D.term && D.term.readClipboard)
-          ? D.term.readClipboard()
+        //
+        // Uzak sunucuya bagli uygulamada `term` koprusu yok ama pano hala BU
+        // makinenin panosu — okuyucu o yuzden ayrica ust seviyede duruyor.
+        const panoOku = (D && D.term && D.term.readClipboard) ? D.term.readClipboard
+                      : (D && D.clipboard && D.clipboard.read) ? D.clipboard.read
+                      : null;
+        const okunan = panoOku
+          ? panoOku()
           : navigator.clipboard.readText().then((text) => ({ text }));
         Promise.resolve(okunan).then((r) => {
           if (r && r.text) term.paste(r.text);

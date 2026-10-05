@@ -963,6 +963,14 @@ if(window.mineClaudeAndroid && window.mineClaudeAndroid.changeServer){
   $('#serverWrap').hidden = false;
   $('#serverChange').onclick = () => window.mineClaudeAndroid.changeServer();
 }
+// Masaustu uygulamasi: ayni satir, ayni is. Menu cubugunda da var (Ayarlar >
+// Sunucu) ama aranan ilk yer bu pencere — Tema da ikisinde birden duruyor.
+// Secimi ana surec yapiyor: hangi sunucuya baglandigimiz pencere kurulurken
+// belirleniyor (bkz. preload.js, uzak kipte `term` koprusu verilmiyor).
+else if(window.mineClaudeDesktop && window.mineClaudeDesktop.server){
+  $('#serverWrap').hidden = false;
+  $('#serverChange').onclick = () => window.mineClaudeDesktop.server.change();
+}
 
 // --- terminal yazi boyutu ---
 // WebView yakinlastirmasi denendi ve geri alindi: arayuz kuculup buyumuyordu,
@@ -1909,8 +1917,10 @@ function actionBtns(s){
     // digeri ayni klasorde ikinci bir terminal aciyordu. Tek dogru eylem var.
     acts.push(`<button class="iconbtn" title="${T('termGoTab')}: ${esc(tab.title)}" data-term-id="${esc(tab.id)}">${svg('term')}</button>`);
   } else {
-    // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda var
-    if(window.mineClaudeDesktop && s.kind === 'live' && s.tty)
+    // Terminal sekmesine gitmek AppleScript istiyor: yalniz masaustu uygulamasinda,
+    // ustelik yalniz YEREL sunucuya bagliyken var. Uzak sunucudayken o tty bu
+    // makinede bir pencereye denk gelmiyor; kopru de bilerek verilmiyor.
+    if(window.mineClaudeDesktop && window.mineClaudeDesktop.focusTerminal && s.kind === 'live' && s.tty)
       acts.push(`<button class="iconbtn" title="${T('focusTty', esc(s.tty))}" data-tty="${esc(s.tty)}" data-host="${esc(s.host || '')}">${svg('terminal')}</button>`);
     // uygulamanin icinde: sessionId varsa o konusmayi resume ediyoruz, yoksa
     // bos bir terminal aciyoruz. Resume varken yanina ayrica bos terminal icin
@@ -1960,7 +1970,8 @@ function wireActions(root){
   });
   root.querySelectorAll('button[data-copy]').forEach(b => b.onclick = () => copy(b, b.dataset.copy));
   root.querySelectorAll('button[data-tty]').forEach(b => b.onclick = async () => {
-    const r = await window.mineClaudeDesktop.focusTerminal({ tty: b.dataset.tty, host: b.dataset.host });
+    const f = window.mineClaudeDesktop && window.mineClaudeDesktop.focusTerminal;
+    const r = f && await f({ tty: b.dataset.tty, host: b.dataset.host });
     if(!r || !r.ok){ flash(b, 'err'); b.title = T('focusTtyNone'); }
   });
 }
