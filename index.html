@@ -29,7 +29,7 @@
 <style>
   :root{
     --bg:#0e1013; --panel:#16191e; --panel2:#1c2027; --line:#272c34;
-    --text:#e7eaef; --dim:#9aa3b0; --faint:#6b7482;
+    --text:#e7eaef; --dim:#9aa3b0; --faint:#6b7482; --strong:#fff;
     --wait:#f2b53b; --busy:#41c46a; --idle:#5b9cf0; --unknown:#8b93a1; --ended:#5c636e;
     --radius:14px; --gtc:repeat(auto-fill,minmax(min(340px,100%),1fr));
     /* Terminal kendi degiskenlerini kullaniyor: panel rengiyle ayni olmasi
@@ -47,7 +47,7 @@
      devam ediyor (bkz. applyTheme). */
   :root[data-theme="light"]{
       --bg:#f4f5f7; --panel:#ffffff; --panel2:#f8f9fb; --line:#e3e6eb;
-      --text:#171a1f; --dim:#5c6472; --faint:#8b94a3;
+      --text:#171a1f; --dim:#5c6472; --faint:#8b94a3; --strong:#000;
       --wait:#c8880c; --busy:#1c9c4b; --idle:#2a6fd4; --unknown:#7b838f; --ended:#98a0ac;
       /* Terminal zemini bembeyaz degil krem: uzun okumada beyaz parlamasi
          yoruyor. Yazi da saf siyah degil sicak koyu gri — ayrica ters video
@@ -261,7 +261,8 @@
     padding:5px 9px 6px;cursor:pointer;max-width:210px;transition:.12s}
   .tm-tab .tm-tab-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tm-tab:hover{color:var(--text)}
-  .tm-tab.on{color:var(--text);background:var(--panel);border-color:var(--line);border-top-color:var(--c,var(--line))}
+  /* Secili sekme hover'la ayni renkteydi, hangisinin secili oldugu anlasilmiyordu */
+  .tm-tab.on{color:var(--strong);background:var(--panel);border-color:var(--line);border-top-color:var(--c,var(--line))}
   .tm-tab.dead{opacity:.5}
   /* Filtre satirindakiyle ayni renk dili (.count.waiting/.busy/.ready/.idle) */
   .tm-tab.waiting{color:var(--wait)}

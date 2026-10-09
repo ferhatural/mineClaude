@@ -189,6 +189,26 @@ function start() {
     ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'], ['^D', '\x04'], ['^Z', '\x1a'],
     ['\u2191', '\x1b[A'], ['\u2193', '\x1b[B'], ['\u2190', '\x1b[D'], ['\u2192', '\x1b[C'],
   ];
+  // Tarayicida pano: once gorsel var mi diye bak (clipboard.read), yoksa ya da
+  // tarayici izin vermezse duz metin. Gorsel gorselYukle ile sunucuya gidiyor.
+  async function tarayiciPanosu() {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const tur = item.types.find((t) => t.startsWith('image/'));
+        if (tur) return { png: await item.getType(tur), type: tur };
+      }
+    } catch {}
+    return { text: await navigator.clipboard.readText() };
+  }
+
+  async function gorselYukle(veri, tur) {
+    try {
+      const r = await fetch('/api/paste-image', { method: 'POST', headers: { 'content-type': tur }, body: veri });
+      const j = await r.json();
+      return j.ok ? j.path : null;
+    } catch { return null; }
+  }
+
   // Pano yazma tek yerden. navigator.clipboard guvenli baglam ve kullanici
   // etkilesimi istiyor; tutmadigi durumlarda gizli bir textarea + execCommand
   // ile deniyoruz. Sessizce basarisiz olmuyoruz: cagiran sonuca gore geri
@@ -1062,12 +1082,16 @@ function start() {
         const panoOku = (D && D.term && D.term.readClipboard) ? D.term.readClipboard
                       : (D && D.clipboard && D.clipboard.read) ? D.clipboard.read
                       : null;
-        const okunan = panoOku
-          ? panoOku()
-          : navigator.clipboard.readText().then((text) => ({ text }));
-        Promise.resolve(okunan).then((r) => {
+        const okunan = panoOku ? panoOku() : tarayiciPanosu();
+        Promise.resolve(okunan).then(async (r) => {
           if (r && r.text) term.paste(r.text);
           else if (r && r.imagePath) term.paste(`"${r.imagePath}"`);
+          // Gorsel bayt olarak geldiyse terminal baska makinede: dosyayi oraya
+          // yukleyip ORADAKI yolu yapistiriyoruz (bkz. /api/paste-image).
+          else if (r && r.png) {
+            const yol = await gorselYukle(r.png, r.type || 'image/png');
+            if (yol) term.paste(`"${yol}"`);
+          }
         }).catch(() => {});
         return false;
       }

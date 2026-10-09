@@ -28,8 +28,9 @@ const kopru = {
 
   // Pano her zaman BU makinenin panosu, sunucu nerede olursa olsun. Uzak kipte
   // `term` kaldirildigi icin okuyucuyu ayrica ust seviyede veriyoruz.
+  // Uzak kipte gorsel dosya olarak degil bayt olarak geliyor (bkz. main.js).
   clipboard: {
-    read: () => ipcRenderer.invoke('mineclaude:clipboard-read'),
+    read: () => ipcRenderer.invoke('mineclaude:clipboard-read', { bytes: UZAK }),
   },
 
   // ⌘W: sayfa "su an terminal kapatilmali" durumunu onceden bildiriyor, ana surec

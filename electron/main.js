@@ -1051,11 +1051,16 @@ if (!app.requestSingleInstanceLock()) {
   // Panoda metin yoksa (ekran goruntusu gibi bir gorsel varsa) onu gecici bir
   // PNG dosyasina kaydedip yolunu donuyoruz — Claude Code mesajda gecen bir
   // gorsel dosya yolunu kendisi tanıyip ekliyor.
-  ipcMain.handle('mineclaude:clipboard-read', () => {
+  //
+  // Uzak kipte bu yol ise yaramiyor: dosya BU makinenin tmp'sine yaziliyor,
+  // terminal ise oteki makinede — yapistirilan yol orada yok. O zaman gorselin
+  // kendisini donuyoruz, term.js onu sunucunun /api/paste-image'ine yukluyor.
+  ipcMain.handle('mineclaude:clipboard-read', (_e, opt) => {
     const text = clipboard.readText();
     if (text) return { text, imagePath: null };
     const image = clipboard.readImage();
     if (image.isEmpty()) return { text: '', imagePath: null };
+    if (opt && opt.bytes) return { text: '', imagePath: null, png: image.toPNG() };
     const dir = path.join(os.tmpdir(), 'mineclaude-paste');
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, `paste-${Date.now()}.png`);
