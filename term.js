@@ -925,9 +925,9 @@ function start() {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   async function openPicked() {
-    // Electron'da isletim sisteminin klasor secicisi var. Tarayicida yok: onun
-    // yerine panelin zaten bildigi klasorleri listeleyip bir de elle yol yazma
-    // imkani veriyoruz.
+    // Electron'da (yerel kip) isletim sisteminin klasor secicisi var. Tarayicida
+    // ve uzak kipte yok — terminal sunucu makinesinde aciliyor, o yuzden
+    // klasorleri de sunucudan geziyoruz (/api/dirs).
     if (T.pickFolder) {
       const dir = await T.pickFolder();
       if (dir) open(dir);
@@ -939,15 +939,20 @@ function start() {
     showPicker(known);
   }
 
+  // Son secilen klasorun bir ustu: ayni yerde yeni proje acmak en sik durum
+  // (Electron'daki lastTermDir'in karsiligi).
+  const PICK_KEY = 'cc.termPickDir';
+  const pickBas = () => { try { return localStorage.getItem(PICK_KEY) || '~'; } catch { return '~'; } };
+  const pickHatirla = (d) => { try { localStorage.setItem(PICK_KEY, d); } catch {} };
+
   function showPicker(known) {
     const box = document.createElement('div');
     box.className = 'tm-picker';
     box.innerHTML = `
       <div class="tm-picker-in">
         <div class="tm-picker-head">${T2('termPick')}</div>
-        <input type="text" placeholder="~/Projects/…" spellcheck="false" autocomplete="off">
-        <div class="tm-picker-list">${known.map((k) =>
-          `<button data-dir="${esc(k)}">${esc(k.replace(/^\/Users\/[^/]+/, '~'))}</button>`).join('')}</div>
+        <input type="text" placeholder="~/…" spellcheck="false" autocomplete="off" autocapitalize="off">
+        <div class="tm-picker-list"></div>
         <div class="tm-picker-foot">
           <button class="tm-picker-go">${T2('termPickGo')}</button>
           <button class="tm-picker-x">${T2('close')}</button>
@@ -955,14 +960,82 @@ function start() {
       </div>`;
     document.body.appendChild(box);
     const input = box.querySelector('input');
-    input.focus();
+    const list = box.querySelector('.tm-picker-list');
+    let home = '';
+    let sira = 0;                          // gec gelen eski cevap yenisini ezmesin
+    const tilde = (p) => (home && p === home) ? '~'
+      : (home && p.startsWith(home + '/')) ? '~' + p.slice(home.length) : p;
+    const birlestir = (dir, ad) => (dir.endsWith('/') ? dir : dir + '/') + ad;
+
     const kapat = () => box.remove();
-    const git = (d) => { if (d && d.trim()) { kapat(); open(d.trim()); } };
+    const git = (d) => {
+      d = String(d || '').trim().replace(/(.)\/+$/, '$1');
+      if (!d) return;
+      const ust = d.replace(/\/[^/]*$/, '') || '/';
+      pickHatirla(ust);
+      kapat();
+      open(d);
+    };
+
+    // Yazilan yol "/" ile bitiyorsa o klasorun icini, bitmiyorsa ustunu
+    // gosteriyoruz ve son parcaya gore suzuyoruz — kabuktaki Tab gibi.
+    async function goster() {
+      const v = input.value.trim() || '~';
+      const tam = v === '~' || v.endsWith('/');
+      const dir = tam ? v : (v.includes('/') ? v.slice(0, v.lastIndexOf('/') + 1) : '~');
+      const suz = tam ? '' : v.slice(v.lastIndexOf('/') + 1).toLowerCase();
+      const benim = ++sira;
+      const d = await fetch('/api/dirs?path=' + encodeURIComponent(dir)).then((r) => r.json()).catch(() => null);
+      if (benim !== sira || !box.isConnected) return;
+      if (d && d.home) home = d.home;
+      // Hatirlanan klasor silinmis/tasinmissa bos bir hatayla acilmasin
+      if (benim === 1 && d && !d.ok && v !== '~/') { input.value = '~/'; return goster(); }
+      let html = '';
+      if (d && d.ok) {
+        const adlar = suz
+          ? [...d.dirs.filter((x) => x.toLowerCase().startsWith(suz)),
+             ...d.dirs.filter((x) => !x.toLowerCase().startsWith(suz) && x.toLowerCase().includes(suz))]
+          : d.dirs;
+        if (d.parent && !suz) html += `<button class="tm-picker-up" data-nav="${esc(d.parent)}">↑ ${esc(T2('termPickUp'))} <span class="tm-picker-dim">${esc(tilde(d.parent))}</span></button>`;
+        html += adlar.map((x) => `<button data-nav="${esc(birlestir(d.path, x))}">📁 ${esc(x)}</button>`).join('');
+        if (!adlar.length) html += `<div class="tm-picker-note">${esc(T2('termPickNone'))}</div>`;
+      } else {
+        html += `<div class="tm-picker-note">${esc(d ? d.error || '' : T2('termPickNone'))}</div>`;
+      }
+      if (known.length && !suz) {
+        html += `<div class="tm-picker-sec">${esc(T2('termPickRecent'))}</div>`;
+        html += known.map((k) => `<button data-dir="${esc(k)}">${esc(tilde(k))}</button>`).join('');
+      }
+      list.innerHTML = html;
+      list.scrollTop = 0;
+    }
+
+    const gez = (p) => { input.value = tilde(p).replace(/\/?$/, '/'); input.focus(); goster(); };
+    list.onclick = (e) => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.nav) gez(b.dataset.nav);
+      else if (b.dataset.dir) git(b.dataset.dir);
+    };
+    let bekle;
+    input.oninput = () => { clearTimeout(bekle); bekle = setTimeout(goster, 120); };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); git(input.value); }
+      else if (e.key === 'Escape') kapat();
+      else if (e.key === 'Tab') {
+        // Suzulmus listenin ilkini tamamla
+        const ilk = list.querySelector('[data-nav]:not(.tm-picker-up)');
+        if (ilk) { e.preventDefault(); gez(ilk.dataset.nav); }
+      }
+    };
     box.querySelector('.tm-picker-go').onclick = () => git(input.value);
     box.querySelector('.tm-picker-x').onclick = kapat;
     box.onpointerdown = (e) => { if (e.target === box) kapat(); };
-    input.onkeydown = (e) => { if (e.key === 'Enter') git(input.value); if (e.key === 'Escape') kapat(); };
-    box.querySelectorAll('[data-dir]').forEach((b) => { b.onclick = () => git(b.dataset.dir); });
+
+    const bas = pickBas();
+    input.value = bas === '~' ? '~/' : bas.replace(/\/?$/, '/');
+    input.focus();
+    goster();
   }
 
   // opts.dev: projenin dev sunucusu icin mineClaude'un kendisinin actigi sekme

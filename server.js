@@ -1356,6 +1356,38 @@ function serve() {
       return;
     }
 
+    // Klasor secici (term.js showPicker). Tarayicida ve uzak kipte isletim
+    // sisteminin secicisi yok — olsa da istemcinin diskini gosterirdi, terminal
+    // ise BU makinede aciliyor. Yalniz --terminals ile: terminal zaten tam kabuk
+    // erisimi, bu ondan fazlasini acmiyor.
+    if (url === '/api/dirs') {
+      const reply = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      if (!TERMINALS) return reply(403, { ok: false, error: 'terminaller kapali' });
+      const home = os.homedir();
+      let p = String(new URL(req.url, 'http://x').searchParams.get('path') || '').trim() || '~';
+      if (p === '~') p = home;
+      else if (p.startsWith('~/')) p = path.join(home, p.slice(2));
+      p = path.resolve(p);
+      let entries;
+      try { entries = fs.readdirSync(p, { withFileTypes: true }); } catch (e) {
+        return reply(200, { ok: false, path: p, home, error: e.code || String(e.message || e) });
+      }
+      const dirs = [];
+      for (const d of entries) {
+        if (d.name.startsWith('.')) continue;
+        let dir = d.isDirectory();
+        // Sembolik bag: hedefi klasorse klasor say (~/Projects cogu kurulumda bag)
+        if (!dir && d.isSymbolicLink()) { try { dir = fs.statSync(path.join(p, d.name)).isDirectory(); } catch {} }
+        if (dir) dirs.push(d.name);
+      }
+      dirs.sort((a, b) => a.localeCompare(b, 'tr', { sensitivity: 'base' }));
+      const parent = path.dirname(p);
+      return reply(200, { ok: true, path: p, home, parent: parent === p ? null : parent, dirs: dirs.slice(0, 1000) });
+    }
+
     if (url === '/api/search') {
       const sp = new URL(req.url, 'http://x').searchParams;
       const limit = Math.min(200, Math.max(1, parseInt(sp.get('limit'), 10) || 60));

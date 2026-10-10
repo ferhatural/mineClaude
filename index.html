@@ -431,6 +431,10 @@
     min-height:34px;line-height:1.5;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tm-picker-list button:hover{background:var(--panel2);color:var(--text)}
+  .tm-picker-dim{color:var(--faint);margin-left:6px}
+  .tm-picker-sec{flex:none;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;
+    padding:10px 9px 4px;border-top:1px solid var(--line);margin-top:6px}
+  .tm-picker-note{flex:none;font-size:12px;color:var(--faint);padding:6px 9px}
   .tm-picker-foot{display:flex;gap:8px;justify-content:flex-end}
   .tm-picker-foot button{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;padding:6px 13px;cursor:pointer}
@@ -826,7 +830,7 @@ const I18N = {
     termRestoreAsk:(n)=>`Geçen sefer ${n} terminal açıktı. Geri yüklensin mi?`,
     termRestoreYes:'Geri yükle', termRestoreNo:'Yoksay',
     termLiveAsk:(n)=>`Şu an açık ${n} terminal — dokununca bağlanırsın:`,
-    termPick:'Terminal hangi klasörde açılsın?', termPickGo:'Aç', termGone:'Oturum artık yok',
+    termPick:'Terminal hangi klasörde açılsın?', termPickGo:'Aç', termPickUp:'Üst klasör', termPickRecent:'Son açılanlar', termPickNone:'Alt klasör yok', termGone:'Oturum artık yok',
     termFind:'Terminalde ara', termFindNone:'Yok', termFindCase:'Büyük/küçük harf duyarlı',
     askedWhy:'Claude turu bitirirken bir soru sordu. Bu bizim çıkarımımız: Claude Code bunu "input bekliyor" diye yazmıyor, mesajın sonundaki soru işaretinden anlıyoruz.',
     noneInFilter:'Bu filtrede oturum yok.', recentlyClosed:'Son kapanan oturumlar',
@@ -888,7 +892,7 @@ const I18N = {
     termRestoreAsk:(n)=>`${n} terminal${n>1?'s were':' was'} open last time. Restore ${n>1?'them':'it'}?`,
     termRestoreYes:'Restore', termRestoreNo:'Dismiss',
     termLiveAsk:(n)=>`${n} terminal${n>1?'s are':' is'} open — tap to attach:`,
-    termPick:'Which folder should the terminal open in?', termPickGo:'Open', termGone:'Session is gone',
+    termPick:'Which folder should the terminal open in?', termPickGo:'Open', termPickUp:'Parent folder', termPickRecent:'Recent', termPickNone:'No subfolders', termGone:'Session is gone',
     termFind:'Find in terminal', termFindNone:'None', termFindCase:'Match case',
     askedWhy:'Claude ended its turn with a question. This one is inferred: Claude Code does not record it as waiting for input, we read it off the question mark at the end of the message.',
     noneInFilter:'No sessions in this filter.', recentlyClosed:'Recently closed sessions',
