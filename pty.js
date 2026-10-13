@@ -110,8 +110,8 @@ function expandHome(p) {
 //      calistirilabilirini ELECTRON_RUN_AS_NODE ile server.js'e yonlendiriyor. Paketli
 //      uygulamada server.js asar icinde; Electron-as-node onu okuyabiliyor, duz node okuyamaz.
 //      Windows'ta iki kopya: Git Bash (Claude'un Bash araci) icin sh, PowerShell/cmd icin .cmd.
-//   2) Claude bu komutu kendiliginden bilmiyor: acarken --append-system-prompt-file ile
-//      kisa bir talimat veriyoruz. --settings'teki gibi dosya yolu: tirnaklama derdi yok.
+//   2) Claude bu komutu kendiliginden bilmiyor: talimati --settings dosyasindaki bir
+//      SessionStart kancasi veriyor (bkz. claude-context.js, claudeSettingsFile).
 let binDir = null;
 function taskBinDir() {
   if (binDir) return binDir;
@@ -131,52 +131,31 @@ function taskBinDir() {
   return dir;
 }
 
-// Iki ayri, birbirinden bagimsiz ozellik; talimatta da ayri duruyorlar.
-const TASKS_PROMPT = [
-  '## mineClaude task list',
-  'mineClaude shows a per-project task list (stored in .mineclaude/tasks.json).',
-  'When the user asks you to add, note or remember a task / to-do (Turkish: "görev ekle", "görevlere ekle",',
-  '"yapılacaklara ekle", "not al", "şunu görev olarak yaz"...), add it with the shell command',
-  'mineclaude --task-add "<short task text>" run from the project folder, in the user\'s language,',
-  'one command per task, then confirm briefly. It shows up in the mineClaude panel within a second.',
-  'Other commands: mineclaude --tasks (list), mineclaude --task-done "<id or part of text>",',
-  'mineclaude --task-undone "<...>", mineclaude --task-rm "<...>". Mark a task done only when',
-  'the user says it is done or asks you to. Do not edit tasks.json by hand.',
-].join('\n');
-
-const BROWSER_PROMPT = [
-  '## mineClaude browser',
-  'mineClaude has its own built-in browser tabs, next to this terminal. When the user asks you to open',
-  'or show something in a browser (Turkish: "tarayıcıda aç", "projeyi aç", "siteyi aç", "önizlemeyi göster",',
-  '"localhost\'u aç"...), open it there with the shell command mineclaude --open "<url>" — never an external',
-  'browser (no start/open/xdg-open/explorer, no Playwright for this). mineclaude --open with no URL opens this',
-  'project itself: its running dev server if one is up, otherwise its live site. Relative forms work too:',
-  'mineclaude --open 8100, mineclaude --open localhost:5173/admin. If you start a dev server, pass its',
-  '"don\'t open a browser" flag (ionic serve --no-open, ng serve without --open, vite without --open) —',
-  'mineClaude notices the server and opens it itself.',
-].join('\n');
-
-const TASK_PROMPT = ['You are running inside mineClaude.', TASKS_PROMPT, BROWSER_PROMPT].join('\n\n');
-
-let taskPromptPath = null;
-function taskPromptFile() {
-  if (!taskPromptPath) {
-    taskPromptPath = path.join(os.tmpdir(), 'mineclaude-task-prompt.txt');
-    fs.writeFileSync(taskPromptPath, TASK_PROMPT);
+// Claude'a verdigimiz tek ayar dosyasi (--settings, yalniz bu oturum; kullanicinin
+// global ayarina dokunmuyor, kendi kancalariyla birlesiyor):
+//   - SessionStart kancasi: `mineclaude --claude-context` talimati basiyor. Yeni
+//     oturumda, --resume'da, /clear'da ve sikistirmada calisiyor (bkz. claude-context.js).
+//     Komut PATH'teki sarmalayici (taskBinDir): Git Bash, PowerShell, cmd — hepsinde ayni.
+//   - Yalniz `mineclaude` komutuna onceden izin: "gorev ekle" her seferinde sormasin.
+//   - Acik temada theme: light — Claude Code renklerini 24-bit basiyor, koyu tema
+//     renkleri krem zeminde okunmuyor.
+// JSON'u komut satirina gommuyoruz: PowerShell native komutlara ic ice cift tirnagi
+// bozuyor (PowerShell/PowerShell#1995, "Invalid JSON provided to --settings").
+// Dosya yolu vermek her kabukta guvenilir.
+const settingsPaths = {};
+function claudeSettingsFile(light) {
+  const key = light ? 'light' : 'dark';
+  if (!settingsPaths[key]) {
+    const cfg = {
+      hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'mineclaude --claude-context' }] }] },
+      permissions: { allow: ['Bash(mineclaude:*)', 'PowerShell(mineclaude:*)'] },
+    };
+    if (light) cfg.theme = 'light';
+    const file = path.join(os.tmpdir(), `mineclaude-claude-settings-${key}.json`);
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    settingsPaths[key] = file;
   }
-  return taskPromptPath;
-}
-
-// Acik tema oturumu icin --settings'e verilecek JSON'u bir kere yazip yolunu
-// onbellekliyoruz: her terminal acilisinda yeniden yazmaya gerek yok, icerik
-// hic degismiyor.
-let lightSettingsPath = null;
-function lightThemeSettingsFile() {
-  if (!lightSettingsPath) {
-    lightSettingsPath = path.join(os.tmpdir(), 'mineclaude-light-theme-settings.json');
-    fs.writeFileSync(lightSettingsPath, '{"theme":"light"}');
-  }
-  return lightSettingsPath;
+  return settingsPaths[key];
 }
 
 function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
@@ -191,27 +170,10 @@ function create({ cwd, cols, rows, command, resumeSessionId, light } = {}) {
   // (Ag uzerinden terminal acikken -- --terminals -- bu payload disaridan geliyor.)
   const resume = /^[A-Za-z0-9-]{6,80}$/.test(String(resumeSessionId || '')) ? resumeSessionId : null;
 
-  // Claude Code temasini ~/.claude/settings.json'dan okuyor ve renklerini 24-bit
-  // basiyor, yani xterm paletiyle ezilemiyorlar: uygulama acik temadayken onun
-  // koyu tema renkleri krem zeminde okunmuyor. --settings yalniz bu oturumu
-  // baglıyor, kullanicinin global ayarina dokunmuyoruz.
-  //
-  // JSON'u dogrudan komut satirina gomup kabuga gore tirnaklamaya guvenmiyoruz:
-  // PowerShell native komutlara arguman aktarirken ic ice cift tirnaklari
-  // bozuyor (bkz. PowerShell/PowerShell#1995) ve "Invalid JSON provided to
-  // --settings" hatasi veriyordu. Bunun yerine JSON'u bir dosyaya yazip
-  // --settings <dosya yolu> veriyoruz: tek kacis sorunu path'i kabuga gore
-  // tirnaklamak, ki bu her kabukta guvenilir calisiyor.
   const q = isWin && !ps ? '"' : "'";
-  const temaArg = !light ? '' : ` --settings ${q}${lightThemeSettingsFile()}${q}`;
-  let gorevArg = '';
-  // Yalniz `mineclaude` komutuna onceden izin: "gorev ekle" her seferinde izin sormasin.
-  // --allowedTools degisken sayida arguman aliyor; en sonda duruyor ki baska bir seyi yutmasin.
-  try {
-    gorevArg = ` --append-system-prompt-file ${q}${taskPromptFile()}${q}`
-      + ` --allowedTools ${q}Bash(mineclaude:*)${q} ${q}PowerShell(mineclaude:*)${q}`;
-  } catch { /* yazilamadi: talimatsiz ac */ }
-  const claude = (extra = '') => `claude${extra}${temaArg}${gorevArg}`;
+  let ayarArg = '';
+  try { ayarArg = ` --settings ${q}${claudeSettingsFile(!!light)}${q}`; } catch { /* yazilamadi: ayarsiz ac */ }
+  const claude = (extra = '') => `claude${extra}${ayarArg}`;
 
   // Oturum kimligi verilmisse ona don, bulunamazsa (silinmis, hic konusulmamis)
   // taze bir claude ac. POSIX ve cmd.exe'de `||` bunu tek satirda hallediyor;

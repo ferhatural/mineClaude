@@ -210,6 +210,11 @@ hic birakmiyor. Claude Code'da bu tuslar mesaj gondermek icin gerekiyor.
 
 TWA degil duz WebView — TWA tarayici motorunu kullanir, kapma aynen surerdi.
 
+**İndir:** her sürümde APK `mineClaude-<sürüm>.apk` adıyla release'te —
+[son sürüm](https://github.com/hakanngok/mineClaude/releases/latest). Tablette açıp o
+kaynaktan kuruluma izin vermen yeterli. Sürümler aynı sabit anahtarla imzalı, yeni APK
+eskisinin üzerine kuruluyor. Kendin derlemek istersen:
+
 ```
 cd android && ANDROID_HOME=~/Library/Android/sdk ./gradlew :app:assembleRelease
 ```
