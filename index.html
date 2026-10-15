@@ -341,6 +341,9 @@
   /* Sag tik ile kopyalayinca kisa bir cerceve: dokunmatikte geri bildirim sart,
      yoksa bir sey olup olmadigi anlasilmiyor. */
   .tm-pane.tm-copied{outline:2px solid var(--busy);outline-offset:-2px}
+  /* Dosya birakma ve yukleme: birakilacak yer ve suren yukleme gorunsun. */
+  .tm-pane.tm-dropping{outline:2px dashed var(--idle);outline-offset:-4px}
+  .tm-pane.tm-uploading{outline:2px solid var(--wait);outline-offset:-2px}
   .tm-pane.tm-copyfail{outline:2px solid var(--wait);outline-offset:-2px}
   /* Tus teshisi kutusu (serittteki "tus?" dugmesi). Uzerine basinca kapaniyor. */
   .tm-keylog{position:absolute;right:8px;bottom:56px;z-index:5;max-width:calc(100% - 16px);
@@ -822,7 +825,7 @@ const I18N = {
     termTiles:'Izgara görünümü', termTabs:'Sekme görünümü',
     termGoTab:'Sekmesine git', termInApp:'mineClaude terminali',
     webNew:'Yeni tarayıcı sekmesi', webTab:'Tarayıcı', webBack:'Geri', webFwd:'İleri', webReload:'Yenile',
-    termKeys:'Tuş şeridi', termCopy:'kopyala', termPaste:'yapıştır',
+    termKeys:'Tuş şeridi', termCopy:'kopyala', termPaste:'yapıştır', termAttach:'dosya gönder', termUploadFail:'Dosya gönderilemedi',
     webExt:'Varsayılan tarayıcıda aç', webEmpty:'Kod beklerken gez: yukarıya ara ya da bir adres yaz.',
     webPin:(n)=>`Bu adresi “${n}” projesinin sitesi yap (proje açılınca burada açılır)`, webPinned:(n)=>`“${n}” projesinin sitesi bu`,
     webPinDev:(n)=>`Bu adresi “${n}” projesinin dev adresi yap (dev sunucusu kalkınca bu açılır)`, webPinnedDev:(n)=>`“${n}” projesinin dev adresi bu`,
@@ -884,7 +887,7 @@ const I18N = {
     termTiles:'Tile view', termTabs:'Tab view',
     termGoTab:'Go to its tab', termInApp:'mineClaude terminal',
     webNew:'New browser tab', webTab:'Browser', webBack:'Back', webFwd:'Forward', webReload:'Reload',
-    termKeys:'Key bar', termCopy:'copy', termPaste:'paste',
+    termKeys:'Key bar', termCopy:'copy', termPaste:'paste', termAttach:'send a file', termUploadFail:'Could not send the file',
     webExt:'Open in default browser', webEmpty:'Browse while the code runs: search or type an address above.',
     webPin:(n)=>`Make this “${n}”’s site (opens here when the project opens)`, webPinned:(n)=>`This is “${n}”’s site`,
     webPinDev:(n)=>`Make this “${n}”’s dev address (opens when its dev server is up)`, webPinnedDev:(n)=>`This is “${n}”’s dev address`,

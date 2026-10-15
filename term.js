@@ -209,6 +209,37 @@ function start() {
     } catch { return null; }
   }
 
+  // Her tur dosya: sunucuya (terminalin calistigi makineye) yukle, oradaki
+  // yolu don. Tarayicidaki dosya terminale baska turlu ulasamiyor — tablet de,
+  // uzak sunucuya bagli uygulama da ayni yoldan geciyor.
+  async function dosyaYukle(dosya) {
+    try {
+      const r = await fetch('/api/upload?name=' + encodeURIComponent(dosya.name || 'dosya'), {
+        method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: dosya,
+      });
+      const j = await r.json();
+      return j.ok ? j.path : null;
+    } catch { return null; }
+  }
+
+  // Dosyalari yukleyip yollarini terminale yazar (bosluklu ad olabilir diye
+  // tirnakli). Claude Code gorsel yolunu ek olarak aliyor, digerlerine Read
+  // ile bakiyor. Pane yukleme suresince sari, bitince yesil/kirmizi cerceve.
+  async function dosyalariGonder(dosyalar, hedef) {
+    const liste = Array.from(dosyalar || []);
+    if (!liste.length || !hedef || !hedef.term) return;
+    hedef.el.classList.add('tm-uploading');
+    const yollar = await Promise.all(liste.map(dosyaYukle));
+    hedef.el.classList.remove('tm-uploading');
+    const iyi = yollar.filter(Boolean);
+    if (iyi.length) hedef.term.paste(iyi.map((y) => `"${y}"`).join(' ') + ' ');
+    const ok = iyi.length === liste.length;
+    hedef.el.classList.add(ok ? 'tm-copied' : 'tm-copyfail');
+    setTimeout(() => hedef.el.classList.remove('tm-copied', 'tm-copyfail'), 900);
+    if (!ok) console.warn(T2('termUploadFail'));
+    hedef.term.focus();
+  }
+
   // Pano yazma tek yerden. navigator.clipboard guvenli baglam ve kullanici
   // etkilesimi istiyor; tutmadigi durumlarda gizli bir textarea + execCommand
   // ile deniyoruz. Sessizce basarisiz olmuyoruz: cagiran sonuca gore geri
@@ -375,6 +406,19 @@ function start() {
         if (t) active.term.paste(t);
       } catch {}
     }, 'wide');
+    // Dosya gonder: gizli bir <input type=file> acilip secilenler yukleniyor.
+    // Tablette tek yol bu (surukle-birak yok); APK'da secici MainActivity'de.
+    ekle('\u{1F4CE}', () => {
+      if (!active || active.web) return;
+      const hedef = active;
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.multiple = true;
+      inp.style.display = 'none';
+      inp.addEventListener('change', () => { dosyalariGonder(inp.files, hedef); inp.remove(); });
+      document.body.appendChild(inp);
+      inp.click();
+    }).title = T2('termAttach');
     // Tus teshisi: tarayicinin hangi olayi sayfaya birakip hangisini kendi
     // yuttugu ancak boyle goruluyor. Belge seviyesinde YAKALAMA evresinde
     // dinliyoruz — baska bir sey olayi durdursa bile burada goruruz.
@@ -1133,6 +1177,23 @@ function start() {
 
     const t = { ...info, term, fit, search, el, dead: false, resumeSessionId: resumeSessionId || null };
     if (opts.dev) { t.devTab = true; t.title = t.title + ' · dev'; }
+    // Finder'dan (ya da masaustunden) terminale dosya birakmak: yukle, yolu yaz.
+    // preventDefault sart; yoksa Electron dosyayi pencerede acmaya kalkiyor.
+    const dosyaVar = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
+    el.addEventListener('dragover', (e) => {
+      if (!dosyaVar(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      el.classList.add('tm-dropping');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('tm-dropping'));
+    el.addEventListener('drop', (e) => {
+      el.classList.remove('tm-dropping');
+      if (!dosyaVar(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dosyalariGonder(e.dataTransfer.files, t);
+    });
     // Sayac yalniz etkin sekme icin: izgarada digerlerinden gelen sonuc ustune yazmasin
     search.onDidChangeResults((r) => { if (t === active) showCount(r); });
     // xterm.js'de attachCustomKeyEventHandler tek bir isleyici tutuyor — ikinci

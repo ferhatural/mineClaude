@@ -1457,6 +1457,39 @@ function serve() {
       });
       return;
     }
+    // Terminale dosya gondermek: suruklenip birakilan ya da seritteki ataşla
+    // secilen her tur dosya. Terminal bu makinede, dosya ise baska bir
+    // cihazda olabilir — o yuzden once buraya yukleniyor, terminale yolu
+    // yapistiriliyor. Ozgun adi koruyoruz (Claude dosyaya adiyla bakiyor);
+    // ayni adli iki yukleme carpismasin diye her biri kendi alt klasorunde.
+    if (url === '/api/upload' && req.method === 'POST') {
+      const reply = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(obj));
+      };
+      if (!kaynakGuvenli(req)) return reply(403, { ok: false, error: 'origin reddedildi' });
+      let ad = new URL(req.url, 'http://x').searchParams.get('name') || 'dosya';
+      ad = path.basename(ad).replace(/[\x00-\x1f/\\:]/g, '_').replace(/^\.+/, '_').slice(0, 200) || 'dosya';
+      const SINIR = 200 * 1024 * 1024;
+      const parcalar = [];
+      let boy = 0, fazla = false;
+      req.on('data', (c) => {
+        boy += c.length;
+        if (boy > SINIR) { fazla = true; reply(413, { ok: false, error: 'dosya 200 MB sinirini asiyor' }); req.destroy(); return; }
+        parcalar.push(c);
+      });
+      req.on('end', () => {
+        if (fazla) return;
+        try {
+          const dir = path.join(os.tmpdir(), 'mineclaude-upload', `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+          fs.mkdirSync(dir, { recursive: true });
+          const file = path.join(dir, ad);
+          fs.writeFileSync(file, Buffer.concat(parcalar));
+          reply(200, { ok: true, path: file });
+        } catch (e) { reply(500, { ok: false, error: String(e.message || e) }); }
+      });
+      return;
+    }
     if (url === '/api/web-open' && req.method === 'POST') {
       const reply = (code, obj) => {
         res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' });

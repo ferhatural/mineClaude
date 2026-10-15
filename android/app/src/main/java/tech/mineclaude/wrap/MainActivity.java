@@ -14,7 +14,9 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.net.Uri;
+import android.content.Intent;
 import android.webkit.CookieManager;
+import android.webkit.ValueCallback;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -192,7 +194,27 @@ public class MainActivity extends Activity {
       }
     });
     // Konsol/izin koprusu: pano ve bildirim gibi seyler icin gerekli.
-    web.setWebChromeClient(new WebChromeClient());
+    // Terminal seridindeki ataş (<input type=file>): WebView dosya seciciyi
+    // kendisi acmiyor, uygulama acmak zorunda. Bos WebChromeClient'ta dugme
+    // hicbir sey yapmiyordu.
+    web.setWebChromeClient(new WebChromeClient() {
+      @Override
+      public boolean onShowFileChooser(WebView w, ValueCallback<Uri[]> cb, FileChooserParams p) {
+        if (dosyaGeriDonus != null) dosyaGeriDonus.onReceiveValue(null);
+        dosyaGeriDonus = cb;
+        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, p.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+        try {
+          startActivityForResult(Intent.createChooser(i, null), DOSYA_SEC);
+        } catch (Exception e) {
+          dosyaGeriDonus = null;
+          return false;
+        }
+        return true;
+      }
+    });
     // Panelin mini tarayicisi icin kopru. Tarayicida o sekmeler <iframe> ile
     // aciliyor ve cogu site X-Frame-Options ile cerceveyi reddediyor —
     // "blocked". Burada gercek bir WebView actigimiz icin o kisit yok:
@@ -697,6 +719,28 @@ public class MainActivity extends Activity {
   protected void onResume() {
     super.onResume();
     if (web != null) { web.onResume(); web.resumeTimers(); }
+  }
+
+  private static final int DOSYA_SEC = 41;
+  private ValueCallback<Uri[]> dosyaGeriDonus;
+
+  @Override
+  protected void onActivityResult(int istek, int sonuc, Intent veri) {
+    if (istek != DOSYA_SEC) { super.onActivityResult(istek, sonuc, veri); return; }
+    if (dosyaGeriDonus == null) return;
+    Uri[] secilen = null;
+    if (sonuc == RESULT_OK && veri != null) {
+      if (veri.getClipData() != null) {
+        ClipData c = veri.getClipData();
+        secilen = new Uri[c.getItemCount()];
+        for (int i = 0; i < c.getItemCount(); i++) secilen[i] = c.getItemAt(i).getUri();
+      } else if (veri.getData() != null) {
+        secilen = new Uri[] { veri.getData() };
+      }
+    }
+    // Iptalde de null donmek sart: yoksa WebView bir daha secici acmiyor.
+    dosyaGeriDonus.onReceiveValue(secilen);
+    dosyaGeriDonus = null;
   }
 
   /** Geri tusu sayfada geri gitsin, uygulamadan cikmasin. */
