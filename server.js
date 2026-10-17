@@ -1893,11 +1893,52 @@ function openCommand(raw) {
   req.end(body);
 }
 
+// ---------------------------------------------------------------- telegram
+
+// Terminaldeki Claude'un Telegram'a dosya/mesaj gondermesi. Koprunun
+// (mineclaude-telegram/bridge.js) okudugu bir giden kutusuna yaziyoruz:
+// ~/.mineclaude/outbox/*.json. Kopru calismiyorsa dosya bekler, kalkinca
+// gider — bu komut agi hic bilmiyor. Proje (konu) klasorden: taskCwd().
+const TG_OUTBOX = path.join(HOME, '.mineclaude', 'outbox');
+
+function telegramCommand(kind, arg) {
+  const cwd = taskCwd();
+  if (!arg) {
+    console.error(kind === 'file'
+      ? '  dosya eksik. ornek: mineclaude --tg-file rapor.pdf --caption "subat raporu"'
+      : '  metin eksik. ornek: mineclaude --tg-msg "deploy bitti"');
+    process.exitCode = 1;
+    return;
+  }
+  const kayit = { cwd, at: Date.now() };
+  if (kind === 'file') {
+    const dosya = path.resolve(cwd, arg);
+    let st;
+    try { st = fs.statSync(dosya); } catch { st = null; }
+    if (!st || !st.isFile()) { console.error('  dosya yok: ' + dosya); process.exitCode = 1; return; }
+    if (st.size > 50 * 1024 * 1024) { console.error('  Telegram botlari 50 MB ustunu gonderemiyor: ' + dosya); process.exitCode = 1; return; }
+    kayit.file = dosya;
+    const altyazi = flagValue('--caption', '');
+    if (altyazi && !altyazi.startsWith('--')) kayit.caption = altyazi.slice(0, 1000);
+  } else {
+    kayit.text = String(arg).slice(0, 3500);
+  }
+  fs.mkdirSync(TG_OUTBOX, { recursive: true });
+  const ad = path.join(TG_OUTBOX, `${kayit.at}-${Math.random().toString(36).slice(2, 7)}.json`);
+  fs.writeFileSync(ad + '.tmp', JSON.stringify(kayit));
+  fs.renameSync(ad + '.tmp', ad);                 // kopru yarim dosya okumasin
+  console.log('  Telegram\'a siraya alindi (' + projectName(cwd) + '). Birkac saniye icinde gider.');
+}
+
 // ---------------------------------------------------------------- giris
 
 if (hasFlag('--open')) {
   openCommand(argv[argv.indexOf('--open') + 1] && !argv[argv.indexOf('--open') + 1].startsWith('--')
     ? argv[argv.indexOf('--open') + 1] : '');
+} else if (hasFlag('--tg-file')) {
+  telegramCommand('file', flagValue('--tg-file', ''));
+} else if (hasFlag('--tg-msg')) {
+  telegramCommand('msg', flagValue('--tg-msg', ''));
 } else if (hasFlag('--tasks')) {
   taskCommand('list');
 } else if (hasFlag('--task-add')) {

@@ -156,7 +156,15 @@ const BROWSER_PROMPT = [
   'mineClaude notices the server and opens it itself.',
 ].join('\n');
 
-const TASK_PROMPT = ['You are running inside mineClaude.', TASKS_PROMPT, BROWSER_PROMPT].join('\n\n');
+const TELEGRAM_PROMPT = [
+  '## Telegram',
+  'The user follows this project from Telegram too (a bridge posts your replies there). When they ask you to',
+  'send them a file or a message on Telegram (Turkish: "telegramdan gönder", "bana at", "dosyayı yolla"...),',
+  'run mineclaude --tg-file "<path>" [--caption "<short note>"] or mineclaude --tg-msg "<text>" from the',
+  'project folder. It lands in this project\'s Telegram topic within seconds. Files up to 50 MB.',
+].join('\n');
+
+const TASK_PROMPT = ['You are running inside mineClaude.', TASKS_PROMPT, BROWSER_PROMPT, TELEGRAM_PROMPT].join('\n\n');
 
 let taskPromptPath = null;
 function taskPromptFile() {
