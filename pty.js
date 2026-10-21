@@ -112,9 +112,12 @@ function expandHome(p) {
 //      Windows'ta iki kopya: Git Bash (Claude'un Bash araci) icin sh, PowerShell/cmd icin .cmd.
 //   2) Claude bu komutu kendiliginden bilmiyor: acarken --append-system-prompt-file ile
 //      kisa bir talimat veriyoruz. --settings'teki gibi dosya yolu: tirnaklama derdi yok.
+// macOS os.tmpdir()'de 3 gundur dokunulmayan dosyalari kendisi siliyor; sunucu
+// gunlerce ayakta kalinca onbellekteki yol bos cikiyordu ("Append system prompt
+// file not found", claude hic acilmiyor). Bu yuzden her seferinde varligina bakiyoruz.
 let binDir = null;
 function taskBinDir() {
-  if (binDir) return binDir;
+  if (binDir && fs.existsSync(path.join(binDir, 'mineclaude'))) return binDir;
   const dir = path.join(os.tmpdir(), 'mineclaude-bin');
   fs.mkdirSync(dir, { recursive: true });
   const exe = process.execPath;
@@ -168,7 +171,7 @@ const TASK_PROMPT = ['You are running inside mineClaude.', TASKS_PROMPT, BROWSER
 
 let taskPromptPath = null;
 function taskPromptFile() {
-  if (!taskPromptPath) {
+  if (!taskPromptPath || !fs.existsSync(taskPromptPath)) {
     taskPromptPath = path.join(os.tmpdir(), 'mineclaude-task-prompt.txt');
     fs.writeFileSync(taskPromptPath, TASK_PROMPT);
   }
@@ -180,7 +183,7 @@ function taskPromptFile() {
 // hic degismiyor.
 let lightSettingsPath = null;
 function lightThemeSettingsFile() {
-  if (!lightSettingsPath) {
+  if (!lightSettingsPath || !fs.existsSync(lightSettingsPath)) {
     lightSettingsPath = path.join(os.tmpdir(), 'mineclaude-light-theme-settings.json');
     fs.writeFileSync(lightSettingsPath, '{"theme":"light"}');
   }
